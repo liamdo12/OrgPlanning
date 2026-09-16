@@ -1,0 +1,23 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+
+.git
+.github
+.env
+.env.*
+!.env.example
+
+# Reference material and planning records — not part of the image.
+design
+docs
+plans
+supabase/.branches
+supabase/.temp
+*.pdf
+*.md
+!README.md

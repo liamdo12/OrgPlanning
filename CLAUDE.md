@@ -1,0 +1,110 @@
+# CLAUDE.md
+
+Agent context for the Occasion monorepo. Read this before changing code.
+
+## What this is
+
+Toronto event-services marketplace. pnpm + Turborepo, one deployable Next.js
+app (`apps/web`) whose business logic lives in framework-free packages.
+
+The plan of record is
+`plans/260915-2246-occasion-monorepo-admin-first/plan.md`. It is red-teamed and
+validated. Do not re-litigate a decision recorded there without new evidence —
+the rationale is in the plan, and reversing one silently is how this repo
+drifts. Reference plan decisions in the plan and in commit discussion, not in
+code comments: a comment should explain the invariant directly, so it still
+makes sense to someone who never reads the plan.
+
+## Commands
+
+```bash
+pnpm install
+pnpm dev              # packages in watch mode + Next dev server
+pnpm build            # packages, then a standalone Next build
+pnpm lint             # includes the boundary rules below
+pnpm typecheck
+pnpm test
+pnpm db:start         # local Supabase (API 54321, db 54322, Studio 54323, mail 54324)
+```
+
+Run the narrowest thing first (`pnpm --filter @occasion/core test`), then widen
+when a shared contract changed.
+
+Configuration lives in `.env.local`. Turborepo runs in strict environment mode,
+so a variable exported in your shell does not reach the task.
+
+## Layout
+
+| Package           | Rule                                                                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts` and build configs are exempt from `no-process-env`. |
+| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                 |
+| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                       |
+| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                        |
+| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                         |
+
+ESLint enforces these over `src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}` — the glob is
+wide on purpose, since a rule that stops applying to `.tsx` would not survive
+the first email template. `packages/core/src/boundaries.test.ts` asserts core's
+rules actually fire, so deleting one fails `pnpm test`.
+
+## Non-negotiables
+
+**Context, never globals.** Every domain function takes `(ctx: CoreContext, ...)`
+or comes from a factory bound to one. No module-level singletons in
+`packages/core`. `apps/web` builds the context per request via
+`createRequestContext()` / `withCore()`. Never import `@occasion/core/testing`
+into application code — its fakes permit the clock override and report every
+caller as anonymous.
+
+**`APP_TIER`, not `NODE_ENV`.** The deployed demo is a production build that must
+still demo the clock; a production tier must refuse the same build's override.
+`production` + `ALLOW_CLOCK_OVERRIDE=true` fails at boot, in both the zod schema
+and `createCoreContext()`, and the returned config is frozen so it cannot be
+re-enabled afterwards.
+
+**Money.** `bigint` cents, CAD. Commission on the pre-tax subtotal; HST follows
+the vendor as supplier. Rates are integer basis points. Never a float.
+
+**Time.** Do not call `Date.now()` or `new Date()` in the domain — use
+`ctx.clock.now()`, with `ctx.clock.realNow()` for audit timestamps. This is a
+convention, not yet a lint rule. Under a clock override the job runner may touch
+demo-flagged rows only.
+
+**Stripe is test mode.** The env schema refuses anything but `sk_test_*`. Live
+mode is gated on a review this plan excludes.
+
+**Emailed URLs carry opaque single-use tokens**, never domain ids.
+
+**Prototype parity needs a citation.** Any "matches the prototype" claim cites a
+line in `design/Event Marketplace Glass.dc.html`. Divergences go in
+`docs/design-gaps.md`. See `design/README.md`.
+
+## Writing code here
+
+- Follow the local patterns before inventing one. KISS, DRY.
+- Real behaviour only. An unimplemented adapter method calls `notImplemented()`
+  and throws — it does not return a plausible fake.
+- Keep public contracts stable unless the change is the point, and say so.
+- Comments explain the invariant, not the plan. No plan IDs, phase numbers or
+  finding codes in code comments, migration names, test names or commit
+  messages.
+- Conventional commits, no AI references.
+- Never commit secrets, `.env` files, tokens or keys.
+- Back up before any schema or data change.
+
+## Phase status
+
+The plan's phase files carry their own `status`; treat those as authoritative
+rather than duplicating them here. Work the phases in the plan's build order —
+it is sequential for a solo build, and the orders-and-payments domain sits on
+the critical path ahead of the cheap screens.
+
+## Known carry-overs from the foundation
+
+- `apps/web/src/lib/core.ts` holds the connection pool in a module-level `let`
+  and nothing closes it. Harmless while no query is issued; before the schema
+  lands it needs a dev-mode `globalThis` cache (module scope re-evaluates on
+  every hot reload, opening another pool each time) and a SIGTERM handler.
+- The Edge runtime never runs `instrumentation.ts`, so anything deployed there
+  would skip environment validation entirely.

@@ -1,0 +1,9 @@
+{
+  "extends": "@occasion/config/tsconfig/node-library.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "eslint.config.mjs"]
+}

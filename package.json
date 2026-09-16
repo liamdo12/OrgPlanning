@@ -1,0 +1,38 @@
+{
+  "name": "occasion",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Occasion — Toronto event-services marketplace (monorepo, admin view first)",
+  "packageManager": "pnpm@10.30.1",
+  "engines": {
+    "node": ">=22.14.0",
+    "pnpm": ">=10.30.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "e2e": "turbo run e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,yaml,yml}\"",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "supabase": "supabase",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop"
+  },
+  "devDependencies": {
+    "@occasion/config": "workspace:*",
+    "prettier": "catalog:",
+    "supabase": "^2.117.0",
+    "turbo": "^2.10.13",
+    "typescript": "catalog:"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "unrs-resolver"
+    ]
+  }
+}

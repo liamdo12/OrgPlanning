@@ -1,0 +1,18 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Single source of truth for versions shared across packages (D1: one pinned toolchain).
+# TypeScript is held at 5.9.x because typescript-eslint 8.x declares `typescript <6.1.0`.
+catalog:
+  "@types/node": ^22.20.0
+  "@types/react": ^19.3.0
+  "@types/react-dom": ^19.3.0
+  eslint: ^9.39.5
+  prettier: ^3.6.2
+  react: ^19.3.0
+  react-dom: ^19.3.0
+  typescript: 5.9.3
+  typescript-eslint: ^8.70.0
+  vitest: ^5.0.1
+  zod: ^4.6.5

@@ -1,0 +1,10 @@
+{
+  "extends": "@occasion/config/tsconfig/react-library.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    // Presentation only: no ambient Node globals leak into components.
+    "types": []
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

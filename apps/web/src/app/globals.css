@@ -1,0 +1,10 @@
+/*
+ * The app's only stylesheet entry. Everything visual comes from the design
+ * system package, so there is one source of truth for parity with the
+ * prototype.
+ */
+@import "@occasion/ui/styles.css";
+
+/* Tailwind v4 scans the importing project by default; this is explicit so the
+ * app's own routes are registered even when the entry moves. */
+@source "../";

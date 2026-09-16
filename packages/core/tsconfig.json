@@ -1,0 +1,12 @@
+{
+  "extends": "@occasion/config/tsconfig/node-library.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "eslint.config.mjs", "vitest.config.ts"],
+  // Written and removed by boundaries.test.ts. Excluded here too, so a fixture
+  // left by an interrupted run cannot fail the next typecheck.
+  "exclude": ["src/boundary-fixture-*/**"]
+}

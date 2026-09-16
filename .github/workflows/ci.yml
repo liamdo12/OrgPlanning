@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+  NEXT_TELEMETRY_DISABLED: 1
+
+jobs:
+  verify:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Format check
+        run: pnpm format:check
+
+      # Includes the domain boundary rules: no framework imports and no reading
+      # of global process state inside packages/core and packages/db. Those
+      # packages' own tests assert the rules actually fire.
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # No environment variables are set here on purpose: the build must not
+      # require secrets, and a domain service must be testable without them.
+      - name: Build
+        run: pnpm build
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # A syntactically valid configuration for a demo-tier container. These are
+      # placeholders, not credentials; no request in these steps reaches a
+      # provider, because the container is only asked to boot and serve a page.
+      BASE_ENV: >-
+        -e DATABASE_URL=postgresql://u:p@127.0.0.1:5432/postgres
+        -e SUPABASE_URL=http://127.0.0.1:54321
+        -e SUPABASE_ANON_KEY=ci-anon
+        -e SUPABASE_SERVICE_ROLE_KEY=ci-service
+        -e STRIPE_SECRET_KEY=sk_test_ci
+        -e STRIPE_WEBHOOK_SECRET=whsec_ci
+        -e RESEND_API_KEY=re_ci
+        -e APP_URL=http://localhost:3000
+        -e JOBS_TICK_SECRET=ci-secret-ci-secret
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Proves the standalone image still builds, which is the portability
+      # guarantee behind running this anywhere but the current host.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: occasion:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The other half of the contract: a good configuration must actually serve.
+      - name: Container serves the app
+        run: |
+          set -euo pipefail
+          docker run -d --name occasion-ci -p 3000:3000 \
+            -e APP_TIER=demo \
+            -e ALLOW_CLOCK_OVERRIDE=true \
+            -e ALLOW_DESTRUCTIVE_SEED=true \
+            ${{ env.BASE_ENV }} \
+            occasion:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000 > /dev/null; then
+              echo "served after ${i}s"
+              docker rm -f occasion-ci
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::container did not serve within 30s"
+          docker logs occasion-ci || true
+          docker rm -f occasion-ci
+          exit 1
+
+      # A container that boots with a contradictory configuration must die
+      # rather than serve. The timeout matters: without it, a regression here
+      # means a container that serves forever and a job killed at timeout-minutes
+      # with a message that points at nothing.
+      - name: Refuse a production tier that allows the clock override
+        run: |
+          set -euo pipefail
+          status=0
+          output=$(timeout 60 docker run --rm \
+            -e APP_TIER=production \
+            -e ALLOW_CLOCK_OVERRIDE=true \
+            -e ALLOW_DESTRUCTIVE_SEED=false \
+            ${{ env.BASE_ENV }} \
+            occasion:ci 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::container booted with APP_TIER=production and ALLOW_CLOCK_OVERRIDE=true"
+            exit 1
+          fi
+          if [ "$status" -eq 124 ]; then
+            echo "::error::container neither exited nor was refused; it hung"
+            exit 1
+          fi
+          # The exit code alone would also be satisfied by docker failing to
+          # start the image at all, so assert on the reason.
+          echo "$output" | grep -q "ALLOW_CLOCK_OVERRIDE"

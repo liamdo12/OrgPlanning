@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    // Written and removed by boundaries.test.ts; excluded so a crashed run
+    // cannot leave a fixture that breaks the next build.
+    "src/boundary-fixture-*/**"
+  ]
+}

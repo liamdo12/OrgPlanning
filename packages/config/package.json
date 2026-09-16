@@ -1,0 +1,32 @@
+{
+  "name": "@occasion/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/node-library.json": "./tsconfig/node-library.json",
+    "./tsconfig/react-library.json": "./tsconfig/react-library.json",
+    "./tsconfig/nextjs.json": "./tsconfig/nextjs.json",
+    "./eslint/base": "./eslint/base.mjs",
+    "./eslint/node-library": "./eslint/node-library.mjs",
+    "./eslint/react-library": "./eslint/react-library.mjs",
+    "./eslint/nextjs": "./eslint/nextjs.mjs",
+    "./prettier": "./prettier/index.mjs",
+    "./tailwind/preset.css": "./tailwind/preset.css"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.0",
+    "globals": "^16.5.0",
+    "tailwindcss": "^4.3.3",
+    "typescript-eslint": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:"
+  }
+}

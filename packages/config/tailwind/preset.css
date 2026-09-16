@@ -1,0 +1,19 @@
+/*
+ * Shared Tailwind v4 entry for every surface that renders UI.
+ *
+ * Tailwind v4 is CSS-first: there is no tailwind.config.js. Design tokens live
+ * in `@theme` and become utilities automatically.
+ *
+ * SCOPE: this ships the plumbing plus enough tokens to prove the pipeline
+ * compiles. The glass design system replaces the `@theme` block below with
+ * tokens extracted from `design/Event Marketplace Glass.dc.html`, each citing a
+ * source line number. Do not hand-pick brand values here.
+ */
+@import "tailwindcss";
+
+@theme {
+  /* Placeholder — superseded by the extracted design tokens. */
+  --color-ink: #1f2421;
+  --color-canvas: #f4f1e9;
+  --color-forest: #1f4d3a;
+}

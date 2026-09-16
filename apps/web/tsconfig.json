@@ -1,0 +1,18 @@
+{
+  "extends": "@occasion/config/tsconfig/nextjs.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "eslint.config.mjs",
+    "postcss.config.mjs"
+  ],
+  "exclude": ["node_modules", ".next", "dist"]
+}

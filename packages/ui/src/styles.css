@@ -1,0 +1,14 @@
+/*
+ * The design system's stylesheet. `apps/web` imports this one file.
+ *
+ * It carries the glass tokens, primitives and admin patterns extracted from
+ * the prototype. For now it only proves the Tailwind v4 pipeline resolves
+ * across package boundaries.
+ */
+@import "@occasion/config/tailwind/preset.css";
+
+/*
+ * Tailwind v4 scans the importing project's sources by default. This registers
+ * the components shipped from this package so their utility classes survive.
+ */
+@source "./";
