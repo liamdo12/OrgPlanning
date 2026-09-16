@@ -25,6 +25,11 @@ pnpm lint             # includes the boundary rules below
 pnpm typecheck
 pnpm test
 pnpm db:start         # local Supabase (API 54321, db 54322, Studio 54323, mail 54324)
+
+pnpm --filter @occasion/db db:reset     # drop, migrate, seed
+pnpm --filter @occasion/db db:migrate   # apply pending migrations
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
+  pnpm --filter @occasion/db test       # suites that need a real database
 ```
 
 Run the narrowest thing first (`pnpm --filter @occasion/core test`), then widen
@@ -64,7 +69,19 @@ and `createCoreContext()`, and the returned config is frozen so it cannot be
 re-enabled afterwards.
 
 **Money.** `bigint` cents, CAD. Commission on the pre-tax subtotal; HST follows
-the vendor as supplier. Rates are integer basis points. Never a float.
+the vendor as supplier, so an HST-registered vendor's tax reaches them. Rates
+are integer basis points. Never a float. The split is implemented in
+`packages/db/src/seed/money.ts`, with three reconciliation identities asserted
+over the seeded orders. The canonical version belongs with the ordering
+service; delete the seed copy rather than let the two drift once it exists.
+
+**The database denies by default.** RLS is on for every table with no policies;
+`app_rw` is exempt and the service layer is the authorization boundary. Never
+add a policy to "fix" a query returning nothing — check the role first.
+
+**Seed data is deterministic and anchor-relative.** Ids come from
+`seedId(name)`; instants are offsets from `seed_meta.anchor_at`. Never write a
+literal date into the seed, and never assert one in a test.
 
 **Time.** Do not call `Date.now()` or `new Date()` in the domain — use
 `ctx.clock.now()`, with `ctx.clock.realNow()` for audit timestamps. This is a

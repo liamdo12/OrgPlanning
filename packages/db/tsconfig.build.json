@@ -1,6 +1,9 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "@occasion/config/tsconfig/node-library.json",
   "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"],
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],

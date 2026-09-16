@@ -22,6 +22,7 @@ pnpm install
 cp .env.example .env.local     # then fill in the values
 
 pnpm db:start                  # local Supabase; prints the keys for .env.local
+pnpm --filter @occasion/db db:reset   # schema + demo data
 pnpm dev                       # http://localhost:3000
 ```
 
@@ -34,22 +35,24 @@ strict environment mode and filters anything a task has not declared.
 
 ## Commands
 
-| Command                        | What it does                                              |
-| ------------------------------ | --------------------------------------------------------- |
-| `pnpm dev`                     | Runs every package in watch mode plus the Next dev server |
-| `pnpm build`                   | Builds the packages, then a standalone Next build         |
-| `pnpm lint`                    | ESLint across the workspace, including the boundary rules |
-| `pnpm typecheck`               | `tsc --noEmit` per package                                |
-| `pnpm test`                    | Vitest per package                                        |
-| `pnpm format` / `format:check` | Prettier                                                  |
-| `pnpm db:start` / `db:stop`    | Local Supabase stack                                      |
+| Command                            | What it does                                              |
+| ---------------------------------- | --------------------------------------------------------- |
+| `pnpm dev`                         | Runs every package in watch mode plus the Next dev server |
+| `pnpm build`                       | Builds the packages, then a standalone Next build         |
+| `pnpm lint`                        | ESLint across the workspace, including the boundary rules |
+| `pnpm typecheck`                   | `tsc --noEmit` per package                                |
+| `pnpm test`                        | Vitest per package                                        |
+| `pnpm format` / `format:check`     | Prettier                                                  |
+| `pnpm db:start` / `db:stop`        | Local Supabase stack                                      |
+| `--filter @occasion/db db:reset`   | Drop, migrate and seed the database                       |
+| `--filter @occasion/db db:migrate` | Apply pending migrations only                             |
 
 ## Layout
 
 ```
 apps/web/          Next.js App Router — UI, server actions, route handlers
 packages/core/     domain logic; framework-free, env-free
-packages/db/       Drizzle schema, migrations, seed
+packages/db/       Drizzle schema, migrations, seed (see its README)
 packages/ui/       glass design system
 packages/config/   tsconfig / eslint / tailwind / prettier presets
 design/            exported design canvas — read-only reference
@@ -126,6 +129,22 @@ future caller constructing its own context can get past it.
 - Nothing in the domain calls `Date.now()` or `new Date()`. Time comes from
   `ctx.clock`, so the seeded demo states are computable and the admin override
   can move them.
+
+## The database
+
+Row-level security is on for every table with no policies, so the default is
+deny; the application connects as `app_rw`, which is exempt, and authorization
+lives in the service layer. `anon` and `authenticated` have no grants at all.
+`packages/db/README.md` covers the roles, the fallback when a managed Postgres
+will not grant `BYPASSRLS`, and the money and time conventions.
+
+The seed is deterministic and anchor-relative: every id comes from a stable
+name, and every instant is an offset from `seed_meta.anchor_at`. That is what
+keeps the demo's four clock states — "now", "+48h", "event−14d", "event+72h" —
+meaningful however long after seeding you look at them.
+
+Tests that need a database read `TEST_DATABASE_URL` and skip when it is unset,
+so `pnpm test` passes without Postgres. CI always sets it.
 
 ## Prototype parity
 

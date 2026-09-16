@@ -1,8 +1,18 @@
 /**
  * Drizzle schema barrel.
  *
- * The tables, enums and relations for identity, vendors, catalog, ordering,
- * payments, jobs, email, disputes, moderation and audit land here. This module
- * exists from the start so the client and the build pipeline are real.
+ * Grouped by concern rather than by table count, so the shape of the domain is
+ * readable from the import list alone.
  */
-export {};
+export * from "./common.js";
+export * from "./enums.js";
+export * from "./identity.js";
+export * from "./reference.js";
+export * from "./catalog.js";
+export * from "./planning.js";
+export * from "./ordering.js";
+export * from "./quotes.js";
+export * from "./payments.js";
+export * from "./automation.js";
+export * from "./comms.js";
+export * from "./trust.js";

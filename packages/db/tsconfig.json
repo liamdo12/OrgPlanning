@@ -1,9 +1,15 @@
 {
   "extends": "@occasion/config/tsconfig/node-library.json",
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "eslint.config.mjs"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "eslint.config.mjs"
+  ]
 }
