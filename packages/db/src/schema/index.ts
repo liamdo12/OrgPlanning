@@ -7,6 +7,7 @@
 export * from "./common.js";
 export * from "./enums.js";
 export * from "./identity.js";
+export * from "./auth.js";
 export * from "./reference.js";
 export * from "./catalog.js";
 export * from "./planning.js";

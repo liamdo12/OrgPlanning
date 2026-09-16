@@ -1,6 +1,9 @@
 -- Roles, row-level security, and the constraints Drizzle cannot express.
 --
--- This migration is hand-written and must run after 0000_init.sql.
+-- NAMING: generated migrations keep drizzle-kit's `NNNN_name.sql`; hand-written
+-- ones use `NNNN_zz_manual_name.sql`, where NNNN is the generated migration they
+-- must run after. `zz` sorts them last within that number without ever
+-- colliding with a name the generator would choose.
 
 -- ---------------------------------------------------------------------------
 -- Extensions

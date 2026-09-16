@@ -12,6 +12,22 @@
 export type AuthUser = {
   id: string;
   email: string;
+  /**
+   * When the token was issued.
+   *
+   * Compared against the account's revocation cutoff on every request, which
+   * is what makes suspending an account or revoking a role take effect now
+   * rather than whenever the token would have expired.
+   */
+  issuedAt: Date | null;
+  /**
+   * Whether the provider has proven control of the address.
+   *
+   * Load-bearing: binding a provider subject to an existing account matches on
+   * email, so an unproven address would let anyone claim a seeded account by
+   * registering with its address.
+   */
+  emailVerified: boolean;
 };
 
 /**

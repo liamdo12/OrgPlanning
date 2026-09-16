@@ -32,4 +32,10 @@ export default [
       ...restrictedImports(CORE_FORBIDDEN_IMPORTS).rules,
     },
   },
+  {
+    // `test/` needs TEST_DATABASE_URL so that `src/` never has to read the
+    // environment at all.
+    files: ["test/**/*.ts"],
+    rules: { "no-process-env": "off" },
+  },
 ];

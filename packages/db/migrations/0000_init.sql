@@ -114,6 +114,32 @@ CREATE TABLE "app"."vendors" (
 	CONSTRAINT "vendors_stripe_account_id_unique" UNIQUE("stripe_account_id")
 );
 --> statement-breakpoint
+CREATE TABLE "app"."admin_invites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"email" text NOT NULL,
+	"token" text NOT NULL,
+	"invited_by_user_id" uuid NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"accepted_at" timestamp with time zone,
+	"accepted_user_id" uuid,
+	"revoked_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "admin_invites_token_unique" UNIQUE("token")
+);
+--> statement-breakpoint
+CREATE TABLE "app"."auth_attempts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"scope" text NOT NULL,
+	"subject" text NOT NULL,
+	"window_started_at" timestamp with time zone NOT NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"blocked_until" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "auth_attempts_scope_subject_window_key" UNIQUE("scope","subject","window_started_at")
+);
+--> statement-breakpoint
 CREATE TABLE "app"."categories" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"slug" text NOT NULL,
@@ -628,6 +654,8 @@ ALTER TABLE "app"."user_roles" ADD CONSTRAINT "user_roles_user_id_users_id_fk" F
 ALTER TABLE "app"."user_roles" ADD CONSTRAINT "user_roles_granted_by_users_id_fk" FOREIGN KEY ("granted_by") REFERENCES "app"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."vendor_members" ADD CONSTRAINT "vendor_members_vendor_id_vendors_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "app"."vendors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."vendor_members" ADD CONSTRAINT "vendor_members_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "app"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app"."admin_invites" ADD CONSTRAINT "admin_invites_invited_by_user_id_users_id_fk" FOREIGN KEY ("invited_by_user_id") REFERENCES "app"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "app"."admin_invites" ADD CONSTRAINT "admin_invites_accepted_user_id_users_id_fk" FOREIGN KEY ("accepted_user_id") REFERENCES "app"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."blackout_dates" ADD CONSTRAINT "blackout_dates_vendor_id_vendors_id_fk" FOREIGN KEY ("vendor_id") REFERENCES "app"."vendors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."capacity_blocks" ADD CONSTRAINT "capacity_blocks_service_id_services_id_fk" FOREIGN KEY ("service_id") REFERENCES "app"."services"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app"."daily_capacity" ADD CONSTRAINT "daily_capacity_service_id_services_id_fk" FOREIGN KEY ("service_id") REFERENCES "app"."services"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -695,6 +723,9 @@ CREATE INDEX "user_roles_granted_by_idx" ON "app"."user_roles" USING btree ("gra
 CREATE INDEX "users_status_idx" ON "app"."users" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "vendor_members_user_idx" ON "app"."vendor_members" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "vendors_status_idx" ON "app"."vendors" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "admin_invites_email_idx" ON "app"."admin_invites" USING btree ("email");--> statement-breakpoint
+CREATE INDEX "admin_invites_invited_by_idx" ON "app"."admin_invites" USING btree ("invited_by_user_id");--> statement-breakpoint
+CREATE INDEX "admin_invites_accepted_user_idx" ON "app"."admin_invites" USING btree ("accepted_user_id");--> statement-breakpoint
 CREATE INDEX "blackout_dates_vendor_idx" ON "app"."blackout_dates" USING btree ("vendor_id");--> statement-breakpoint
 CREATE INDEX "capacity_blocks_service_idx" ON "app"."capacity_blocks" USING btree ("service_id");--> statement-breakpoint
 CREATE INDEX "capacity_blocks_order_idx" ON "app"."capacity_blocks" USING btree ("order_id");--> statement-breakpoint

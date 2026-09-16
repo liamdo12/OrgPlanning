@@ -26,8 +26,11 @@ export default [
     },
   },
   {
-    // The single sanctioned reader of raw environment variables.
-    files: ["src/lib/env.ts", "*.config.{ts,mjs,js}", "instrumentation.ts"],
+    // The sanctioned readers of raw environment variables. `env.ts` is the
+    // only validator; `proxy.ts` runs in the middleware runtime, which carries
+    // a truncated environment that the full schema would reject, and the rest
+    // are build-time config.
+    files: ["src/lib/env.ts", "proxy.ts", "*.config.{ts,mjs,js}", "instrumentation.ts"],
     rules: { "no-process-env": "off" },
   },
 ];

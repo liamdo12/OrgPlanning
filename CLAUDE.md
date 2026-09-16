@@ -68,6 +68,31 @@ still demo the clock; a production tier must refuse the same build's override.
 and `createCoreContext()`, and the returned config is frozen so it cannot be
 re-enabled afterwards.
 
+**Authorization has two layers.** Every admin **server action and route
+handler** calls `requireAdminActor()` from `apps/web/src/lib/auth-guard.ts` as
+its first statement. A layout is NOT a security boundary — Next.js does not run
+it for server actions or route handlers, and does not re-run it on client-side
+navigation — so `(admin)/layout.tsx` is a UX redirect only.
+
+Every function that accepts an entity id takes the actor as its first argument
+and calls a policy from `packages/core/src/identity/policies.ts` before
+returning data — a role check alone lets one vendor read another's order.
+Policies throw `NotFoundError`, not `ForbiddenError`, so a refusal does not
+confirm the row exists, and each one also refuses an account that is not
+active.
+
+**Authority is held, never active.** `actor.roles` decides; `actor.activeRole`
+is presentation and audit provenance only. Never gate on `activeRole`.
+
+**Revocation is a timestamp.** Suspension, role grant and role revoke all move
+`users.sessions_valid_after`; `getActor` rejects tokens issued before it, and
+rejects a token with no issue time at all rather than skipping the check. If you
+add a way to change what someone may do, move that column too.
+
+**The provider subject is not our primary key.** `getActor` resolves
+`auth_provider_sub` → `users.id`, binding the two on first sign-in only when the
+provider reports a verified address. Never query `users.id` with a token `sub`.
+
 **Money.** `bigint` cents, CAD. Commission on the pre-tax subtotal; HST follows
 the vendor as supplier, so an HST-registered vendor's tax reaches them. Rates
 are integer basis points. Never a float. The split is implemented in

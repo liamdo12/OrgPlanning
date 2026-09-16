@@ -72,9 +72,11 @@ supabase/          local stack config
   `process` global, or import the `node:process` module. Config is injected
   through `CoreContext`.
 - `apps/web` validates raw environment variables in one file, `src/lib/env.ts`.
-  Two files are exempt from the rule because they legitimately need the raw
-  value: `instrumentation.ts` (reads `NEXT_RUNTIME` to skip the Edge runtime)
-  and the build configs. Nothing else in the app may touch `process.env`.
+  Three others are exempt because they legitimately need the raw value:
+  `instrumentation.ts` (reads `NEXT_RUNTIME` to skip the Edge runtime),
+  `proxy.ts` (it needs two variables before the app boots and must not fail a
+  request when configuration is incomplete), and the build configs. Nothing else in the app may
+  touch `process.env`.
 - `apps/web` may not import `@occasion/core/testing`, which ships fakes.
 
 `packages/core`'s own test suite asserts that _its_ rules actually fire — a
@@ -145,6 +147,39 @@ meaningful however long after seeding you look at them.
 
 Tests that need a database read `TEST_DATABASE_URL` and skip when it is unset,
 so `pnpm test` passes without Postgres. CI always sets it.
+
+## Authorization
+
+Two layers, and both are required:
+
+1. **Role gate** — `requireAdmin(actor)` / `requireRole(actor, role)`. May this
+   kind of actor use this entry point at all?
+2. **Object policy** — `assertCanReadOrder(actor, order)` and friends in
+   `packages/core/src/identity/policies.ts`. Is this actor a party to _this_
+   row?
+
+A role check alone lets any vendor read any other vendor's order by id, which
+is why every domain function taking an entity id takes the actor first and
+calls a policy before returning anything. Policies answer `NotFoundError`
+rather than `ForbiddenError` — "you may not see order X" confirms that order X
+exists.
+
+Authority is **held, never active**: an admin browsing as a customer is still
+an admin, and selecting a different role chip grants nothing. The active role
+is presentation, and is recorded on every audit row.
+
+Roles and account status are re-read from the database on every request that
+asks for an actor — that is the rule for all new code, and today the admin gate
+and the auth actions are the only callers, because no other route exists yet.
+`users.sessions_valid_after` is moved forward by suspension, role grant and role
+revocation, and a token issued before it (or carrying no issue time) is
+rejected, so a revocation takes effect on the next request rather than whenever
+the token would have expired.
+
+The gate for server actions and route handlers is `requireAdminActor()` in
+`apps/web/src/lib/auth-guard.ts`. `(admin)/layout.tsx` redirects for the sake of
+the person browsing and is **not** the boundary: Next.js does not run a layout
+for a server action.
 
 ## Prototype parity
 

@@ -2,7 +2,7 @@
   "name": "occasion",
   "private": true,
   "version": "0.0.0",
-  "description": "Occasion — Toronto event-services marketplace (monorepo, admin view first)",
+  "description": "Occasion \u2014 Toronto event-services marketplace (monorepo, admin view first)",
   "packageManager": "pnpm@10.30.1",
   "engines": {
     "node": ">=22.14.0",
@@ -13,7 +13,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "turbo run test",
+    "test": "turbo run test --concurrency=1",
     "e2e": "turbo run e2e",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,yaml,yml}\"",
