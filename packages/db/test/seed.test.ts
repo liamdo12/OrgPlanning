@@ -18,6 +18,16 @@ const url = testDatabaseUrl();
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
+/** The calendar date of an instant in the zone events are scheduled in. */
+const EVENT_TIMEZONE = "America/Toronto";
+const localDate = (at: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: EVENT_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+
 describe.skipIf(!url)("seed", () => {
   const dbUrl = url as string;
   let sql: postgres.Sql;
@@ -183,7 +193,12 @@ describe.skipIf(!url)("seed", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       const eventAt = new Date(`${row.event_date}T00:00:00Z`).getTime();
-      const dueAt = new Date(`${row.run_after.toISOString().slice(0, 10)}T00:00:00Z`).getTime();
+      // Both sides have to be read as calendar days in the same zone.
+      // `event_date` is the event's date in Toronto, so taking the UTC date of
+      // the instant the job runs compares two different calendars — and after
+      // 20:00 Toronto the UTC date has already rolled over, which turns a
+      // correct fourteen-day lead into thirteen.
+      const dueAt = new Date(`${localDate(row.run_after)}T00:00:00Z`).getTime();
       expect((eventAt - dueAt) / DAY, `${row.reference} balance lead time`).toBe(14);
     }
   });
