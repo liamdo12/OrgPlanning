@@ -32,7 +32,7 @@ export const DAYS = {
  * Rules that place every scheduled instant and every amount.
  *
  * Derived from `PLATFORM_SETTINGS` rather than restated, so the numbers the
- * seed computes with and the numbers it writes into `app.platform_settings`
+ * seed computes with and the numbers it writes into `app.planning_org_platform_settings`
  * cannot drift apart — the settings row is what a service reads at runtime.
  */
 function setting(key: string): number {

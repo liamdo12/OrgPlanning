@@ -46,7 +46,7 @@ describe.skipIf(!url)("seed", () => {
   it("seeds the six admin vendors, two of them pending and one blocked", async () => {
     const rows = await sql<{ status: string; count: string }[]>`
       select status::text, count(*)::text as count
-      from app.vendors
+      from app.planning_org_vendors
       where slug in ('bloom-and-co', 'kimchi-kart', 'lens-studio',
                      'terrace-rentals', 'the-bloor-quartet', 'studio-halo')
       group by status
@@ -59,7 +59,7 @@ describe.skipIf(!url)("seed", () => {
   it("seeds six accounts across all four user statuses, including Bea Varga", async () => {
     const rows = await sql<{ status: string; count: string }[]>`
       select status::text, count(*)::text as count
-      from app.users where email <> 'admin@occasion.test'
+      from app.planning_org_users where email <> 'admin@occasion.test'
       group by status
     `;
 
@@ -67,14 +67,14 @@ describe.skipIf(!url)("seed", () => {
     expect(byStatus).toEqual({ active: 3, pending: 1, unverified: 1, suspended: 1 });
 
     const [bea] = await sql<{ status: string }[]>`
-      select status::text from app.users where full_name = 'Bea Varga'
+      select status::text from app.planning_org_users where full_name = 'Bea Varga'
     `;
     expect(bea?.status).toBe("suspended");
   });
 
   it("seeds every order the admin screen and the ops screen refer to", async () => {
     const rows = await sql<{ reference: string }[]>`
-      select reference from app.orders order by reference
+      select reference from app.planning_org_orders order by reference
     `;
 
     expect(rows.map((row) => row.reference)).toEqual([
@@ -100,7 +100,7 @@ describe.skipIf(!url)("seed", () => {
     >`
       select subtotal::text, tax::text, total::text,
              deposit_amount::text, balance_amount::text
-      from app.orders where reference = 'TO-4192'
+      from app.planning_org_orders where reference = 'TO-4192'
     `;
 
     // Lines 1172–1178: C$290.00 + C$37.70 = C$327.70; deposit C$65.54,
@@ -117,7 +117,7 @@ describe.skipIf(!url)("seed", () => {
   it("charges no tax for a vendor that is not HST-registered", async () => {
     const [order] = await sql<{ subtotal: string; tax: string; total: string }[]>`
       select subtotal::text, tax::text, total::text
-      from app.orders where reference = 'TO-4181'
+      from app.planning_org_orders where reference = 'TO-4181'
     `;
 
     expect(order?.tax).toBe("0");
@@ -126,14 +126,14 @@ describe.skipIf(!url)("seed", () => {
 
   it("reconciles every order: subtotal + tax equals total", async () => {
     const rows = await sql<{ reference: string }[]>`
-      select reference from app.orders where subtotal + tax <> total
+      select reference from app.planning_org_orders where subtotal + tax <> total
     `;
     expect(rows).toEqual([]);
   });
 
   it("reconciles every order: deposit + balance equals total", async () => {
     const rows = await sql<{ reference: string }[]>`
-      select reference from app.orders where deposit_amount + balance_amount <> total
+      select reference from app.planning_org_orders where deposit_amount + balance_amount <> total
     `;
     expect(rows).toEqual([]);
   });
@@ -141,7 +141,7 @@ describe.skipIf(!url)("seed", () => {
   it("keeps the platform's commission off the vendor's tax", async () => {
     // Commission is 10% of the pre-tax subtotal, never of the total.
     const rows = await sql<{ reference: string }[]>`
-      select reference from app.orders
+      select reference from app.planning_org_orders
       where commission <> round(subtotal * 0.10) or commission_tax <> round(commission * 0.13)
     `;
     expect(rows).toEqual([]);
@@ -153,8 +153,8 @@ describe.skipIf(!url)("seed", () => {
     const rows = await sql<{ reference: string; gap: string }[]>`
       select o.reference,
              (o.total - (coalesce(sum(t.amount), 0) + o.commission + o.commission_tax))::text as gap
-      from app.orders o
-      left join app.transfers t on t.order_id = o.id and t.state <> 'reversed'
+      from app.planning_org_orders o
+      left join app.planning_org_transfers t on t.order_id = o.id and t.state <> 'reversed'
       where o.state in ('fulfilled', 'completed')
       group by o.id, o.reference, o.total, o.commission, o.commission_tax
       having (o.total - (coalesce(sum(t.amount), 0) + o.commission + o.commission_tax)) <> 0
@@ -165,14 +165,14 @@ describe.skipIf(!url)("seed", () => {
 
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
-      select count(*)::text as count from app.quote_requests where state = 'open'
+      select count(*)::text as count from app.planning_org_quote_requests where state = 'open'
     `;
     expect(Number(row?.count ?? "0")).toBeGreaterThan(0);
   });
 
   it("schedules exactly one cooling-window transfer at the 48 hour mark", async () => {
     const rows = await sql<{ run_after: Date }[]>`
-      select run_after from app.jobs where type = 'cooling_window_transfer'
+      select run_after from app.planning_org_jobs where type = 'cooling_window_transfer'
     `;
 
     expect(rows).toHaveLength(1);
@@ -184,9 +184,9 @@ describe.skipIf(!url)("seed", () => {
   it("schedules the balance charges fourteen days before the event", async () => {
     const rows = await sql<{ reference: string; run_after: Date; event_date: string }[]>`
       select o.reference, j.run_after, e.event_date::text
-      from app.jobs j
-      join app.orders o on o.id = (j.payload ->> 'orderId')::uuid
-      join app.events e on e.id = o.event_id
+      from app.planning_org_jobs j
+      join app.planning_org_orders o on o.id = (j.payload ->> 'orderId')::uuid
+      join app.planning_org_events e on e.id = o.event_id
       where j.type = 'charge_balance'
     `;
 
@@ -208,7 +208,7 @@ describe.skipIf(!url)("seed", () => {
     const result = await resetDatabase(dbUrl, past);
 
     const [row] = await sql<{ run_after: Date }[]>`
-      select run_after from app.jobs where type = 'cooling_window_transfer'
+      select run_after from app.planning_org_jobs where type = 'cooling_window_transfer'
     `;
 
     const offsetHours = ((row as { run_after: Date }).run_after.getTime() - past.getTime()) / HOUR;
@@ -225,30 +225,30 @@ describe.skipIf(!url)("seed", () => {
     // reseed with their references NULLed — a detached message, an audit row
     // with no actor, and a deleted user's address still sitting in email_sends.
     const [user] = await sql<{ id: string; email: string }[]>`
-      select id, email from app.users where full_name = 'Sarah Mensah'
+      select id, email from app.planning_org_users where full_name = 'Sarah Mensah'
     `;
     const [order] = await sql<{ id: string }[]>`
-      select id from app.orders where reference = 'TO-4192'
+      select id from app.planning_org_orders where reference = 'TO-4192'
     `;
 
-    await sql`insert into app.threads (order_id, subject) values (${order?.id as string}, 'Test')`;
+    await sql`insert into app.planning_org_threads (order_id, subject) values (${order?.id as string}, 'Test')`;
     const [thread] = await sql<{ id: string }[]>`
-      select id from app.threads where subject = 'Test'
+      select id from app.planning_org_threads where subject = 'Test'
     `;
     await sql`
-      insert into app.thread_participants (thread_id, user_id)
+      insert into app.planning_org_thread_participants (thread_id, user_id)
       values (${thread?.id as string}, ${user?.id as string})
     `;
     await sql`
-      insert into app.messages (thread_id, sender_user_id, body)
+      insert into app.planning_org_messages (thread_id, sender_user_id, body)
       values (${thread?.id as string}, ${user?.id as string}, 'private message body')
     `;
     await sql`
-      insert into app.audit_log (actor_user_id, action, entity_type)
+      insert into app.planning_org_audit_log (actor_user_id, action, entity_type)
       values (${user?.id as string}, 'vendor.approve', 'vendor')
     `;
     await sql`
-      insert into app.email_sends (to_email, subject, idempotency_key, recipient_user_id)
+      insert into app.planning_org_email_sends (to_email, subject, idempotency_key, recipient_user_id)
       values (${user?.email as string}, 'Hello', 'test-key-1', ${user?.id as string})
     `;
 
@@ -256,32 +256,32 @@ describe.skipIf(!url)("seed", () => {
 
     for (const table of ["threads", "thread_participants", "messages", "audit_log"]) {
       const [row] = await sql.unsafe<{ count: string }[]>(
-        `select count(*)::text as count from app.${table}`,
+        `select count(*)::text as count from app.planning_org_${table}`,
       );
       expect(Number(row?.count ?? "0"), `${table} should be empty after a reseed`).toBe(0);
     }
 
     const leftovers = await sql<{ to_email: string }[]>`
-      select to_email from app.email_sends
+      select to_email from app.planning_org_email_sends
     `;
     expect(leftovers).toEqual([]);
 
     // And the demo data is actually back.
     const [orders] = await sql<{ count: string }[]>`
-      select count(*)::text as count from app.orders
+      select count(*)::text as count from app.planning_org_orders
     `;
     expect(Number(orders?.count ?? "0")).toBe(7);
   }, 60_000);
 
   it("produces the same ids on every reseed", async () => {
     const before = await sql<{ id: string }[]>`
-      select id from app.orders order by reference
+      select id from app.planning_org_orders order by reference
     `;
 
     await resetDatabase(dbUrl, anchorAt);
 
     const after = await sql<{ id: string }[]>`
-      select id from app.orders order by reference
+      select id from app.planning_org_orders order by reference
     `;
 
     expect(after).toEqual(before);

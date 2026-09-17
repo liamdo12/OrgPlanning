@@ -10,14 +10,14 @@ import {
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
-import { app, currency, money, timestamps, tstzrange } from "./common.js";
+import { app, currency, money, timestamps, tstzrange, TABLE_PREFIX } from "./common.js";
 import { bookingMode, priceUnit } from "./enums.js";
 import { categories, neighbourhoods } from "./reference.js";
 import { users, vendors } from "./identity.js";
 
 /** What a vendor sells. Source: the services list, lines 1950–1961. */
 export const services = app.table(
-  "services",
+  `${TABLE_PREFIX}services`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     vendorId: uuid("vendor_id")
@@ -54,7 +54,7 @@ export const services = app.table(
 
 /** Named tiers within a service, e.g. Bloom & Co's "Classic" bouquet. */
 export const servicePackages = app.table(
-  "service_packages",
+  `${TABLE_PREFIX}service_packages`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serviceId: uuid("service_id")
@@ -74,7 +74,7 @@ export const servicePackages = app.table(
 );
 
 export const serviceMedia = app.table(
-  "service_media",
+  `${TABLE_PREFIX}service_media`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serviceId: uuid("service_id")
@@ -90,7 +90,7 @@ export const serviceMedia = app.table(
 
 /** Where a service will travel. */
 export const serviceAreas = app.table(
-  "service_areas",
+  `${TABLE_PREFIX}service_areas`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serviceId: uuid("service_id")
@@ -109,7 +109,7 @@ export const serviceAreas = app.table(
 );
 
 export const savedServices = app.table(
-  "saved_services",
+  `${TABLE_PREFIX}saved_services`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -129,7 +129,7 @@ export const savedServices = app.table(
 
 /** Whole days a vendor will not take work. */
 export const blackoutDates = app.table(
-  "blackout_dates",
+  `${TABLE_PREFIX}blackout_dates`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     vendorId: uuid("vendor_id")
@@ -154,7 +154,7 @@ export const blackoutDates = app.table(
  * check first.
  */
 export const capacityBlocks = app.table(
-  "capacity_blocks",
+  `${TABLE_PREFIX}capacity_blocks`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serviceId: uuid("service_id")
@@ -184,7 +184,7 @@ export const capacityBlocks = app.table(
 
 /** Per-day headroom for services sold by volume rather than by slot. */
 export const dailyCapacity = app.table(
-  "daily_capacity",
+  `${TABLE_PREFIX}daily_capacity`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     serviceId: uuid("service_id")

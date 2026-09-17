@@ -1,7 +1,7 @@
 import { index, integer, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { check } from "drizzle-orm/pg-core";
-import { app, currency, money, timestamps } from "./common.js";
+import { app, currency, money, timestamps, TABLE_PREFIX } from "./common.js";
 import { disputeState, moderationState } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { orders } from "./ordering.js";
@@ -14,7 +14,7 @@ import { services } from "./catalog.js";
  * is a rating that can be inflated at will.
  */
 export const reviews = app.table(
-  "reviews",
+  `${TABLE_PREFIX}reviews`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
@@ -54,7 +54,7 @@ export const reviews = app.table(
  * same time, so the dispute is its own record with its own lifecycle.
  */
 export const disputes = app.table(
-  "disputes",
+  `${TABLE_PREFIX}disputes`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")

@@ -138,6 +138,12 @@ are integer basis points. Never a float. The split is implemented in
 over the seeded orders. The canonical version belongs with the ordering
 service; delete the seed copy rather than let the two drift once it exists.
 
+**Tables are `app.planning_org_*`.** The prefix comes from `TABLE_PREFIX` in
+`packages/db/src/schema/common.ts` — `app.table(\`${TABLE_PREFIX}orders\`, …)`—
+so a new table picks it up by construction rather than by being remembered.`app.__migrations` is deliberately unprefixed: it is the migration runner's own
+bookkeeping, and renaming it would leave the runner unable to find the history
+it wrote.
+
 **The database denies by default.** RLS is on for every table with no policies;
 `app_rw` is exempt and the service layer is the authorization boundary. Never
 add a policy to "fix" a query returning nothing — check the role first.

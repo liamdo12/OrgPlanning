@@ -23,7 +23,9 @@ describe.skipIf(!url)("database constraints", () => {
   });
 
   async function firstServiceId(): Promise<string> {
-    const [row] = await sql<{ id: string }[]>`select id from app.services order by id limit 1`;
+    const [row] = await sql<
+      { id: string }[]
+    >`select id from app.planning_org_services order by id limit 1`;
     return row?.id as string;
   }
 
@@ -31,14 +33,14 @@ describe.skipIf(!url)("database constraints", () => {
     const serviceId = await firstServiceId();
 
     await sql`
-      insert into app.capacity_blocks (service_id, during, active)
+      insert into app.planning_org_capacity_blocks (service_id, during, active)
       values (${serviceId}, tstzrange('2027-03-20 17:00+00', '2027-03-20 21:00+00'), true)
     `;
 
     // Starts inside the first block: this is the double booking.
     await expect(
       sql`
-        insert into app.capacity_blocks (service_id, during, active)
+        insert into app.planning_org_capacity_blocks (service_id, during, active)
         values (${serviceId}, tstzrange('2027-03-20 19:00+00', '2027-03-20 23:00+00'), true)
       `,
     ).rejects.toThrow(/capacity_blocks_no_overlap|conflicting key value/i);
@@ -49,7 +51,7 @@ describe.skipIf(!url)("database constraints", () => {
 
     await expect(
       sql`
-        insert into app.capacity_blocks (service_id, during, active)
+        insert into app.planning_org_capacity_blocks (service_id, during, active)
         values (${serviceId}, tstzrange('2027-03-20 21:00+00', '2027-03-21 01:00+00'), true)
       `,
     ).resolves.toBeDefined();
@@ -59,13 +61,13 @@ describe.skipIf(!url)("database constraints", () => {
     const serviceId = await firstServiceId();
 
     await sql`
-      insert into app.capacity_blocks (service_id, during, active)
+      insert into app.planning_org_capacity_blocks (service_id, during, active)
       values (${serviceId}, tstzrange('2027-06-01 10:00+00', '2027-06-01 14:00+00'), false)
     `;
 
     await expect(
       sql`
-        insert into app.capacity_blocks (service_id, during, active)
+        insert into app.planning_org_capacity_blocks (service_id, during, active)
         values (${serviceId}, tstzrange('2027-06-01 12:00+00', '2027-06-01 16:00+00'), true)
       `,
     ).resolves.toBeDefined();
@@ -73,12 +75,12 @@ describe.skipIf(!url)("database constraints", () => {
 
   it("refuses a second transfer of the same kind for one order", async () => {
     const [order] = await sql<{ id: string; vendor_id: string }[]>`
-      select id, vendor_id from app.orders where reference = 'TO-4192'
+      select id, vendor_id from app.planning_org_orders where reference = 'TO-4192'
     `;
 
     await expect(
       sql`
-        insert into app.transfers (order_id, vendor_id, kind, amount)
+        insert into app.planning_org_transfers (order_id, vendor_id, kind, amount)
         values (${order?.id as string}, ${order?.vendor_id as string}, 'deposit_share', 100)
         , (${order?.id as string}, ${order?.vendor_id as string}, 'deposit_share', 100)
       `,
@@ -88,7 +90,7 @@ describe.skipIf(!url)("database constraints", () => {
   it("refuses a second queued job with the same type and dedupe key", async () => {
     await expect(
       sql`
-        insert into app.jobs (type, dedupe_key, run_after, payload)
+        insert into app.planning_org_jobs (type, dedupe_key, run_after, payload)
         values ('charge_balance', 'TO-4192:balance', now(), '{}'::jsonb)
       `,
     ).rejects.toThrow(/jobs_type_dedupe_key/i);
@@ -96,17 +98,17 @@ describe.skipIf(!url)("database constraints", () => {
 
   it("refuses a second review for the same order", async () => {
     const [order] = await sql<{ id: string; user_id: string; vendor_id: string }[]>`
-      select id, user_id, vendor_id from app.orders where reference = 'TO-4165'
+      select id, user_id, vendor_id from app.planning_org_orders where reference = 'TO-4165'
     `;
 
     await sql`
-      insert into app.reviews (order_id, author_user_id, vendor_id, rating)
+      insert into app.planning_org_reviews (order_id, author_user_id, vendor_id, rating)
       values (${order?.id as string}, ${order?.user_id as string}, ${order?.vendor_id as string}, 5)
     `;
 
     await expect(
       sql`
-        insert into app.reviews (order_id, author_user_id, vendor_id, rating)
+        insert into app.planning_org_reviews (order_id, author_user_id, vendor_id, rating)
         values (${order?.id as string}, ${order?.user_id as string}, ${order?.vendor_id as string}, 1)
       `,
     ).rejects.toThrow(/reviews_order_key/i);
@@ -117,7 +119,7 @@ describe.skipIf(!url)("database constraints", () => {
 
     await expect(
       sql`
-        insert into app.daily_capacity (service_id, day, total, remaining)
+        insert into app.planning_org_daily_capacity (service_id, day, total, remaining)
         values (${serviceId}, '2027-03-20', 10, -1)
       `,
     ).rejects.toThrow(/daily_capacity_remaining_non_negative/i);
@@ -125,13 +127,13 @@ describe.skipIf(!url)("database constraints", () => {
 
   it("refuses a duplicate provider event id", async () => {
     await sql`
-      insert into app.stripe_events (event_id, type, payload)
+      insert into app.planning_org_stripe_events (event_id, type, payload)
       values ('evt_test_duplicate', 'payment_intent.succeeded', '{}'::jsonb)
     `;
 
     await expect(
       sql`
-        insert into app.stripe_events (event_id, type, payload)
+        insert into app.planning_org_stripe_events (event_id, type, payload)
         values ('evt_test_duplicate', 'payment_intent.succeeded', '{}'::jsonb)
       `,
     ).rejects.toThrow(/stripe_events_event_id_unique|duplicate key/i);

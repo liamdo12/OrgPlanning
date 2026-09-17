@@ -1,5 +1,5 @@
 import { index, integer, jsonb, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { app, currency, isDemo, money, timestamps } from "./common.js";
+import { app, currency, isDemo, money, timestamps, TABLE_PREFIX } from "./common.js";
 import { orderState } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { events } from "./planning.js";
@@ -8,7 +8,7 @@ import { policyTemplates } from "./reference.js";
 
 /** A cart in progress. Becomes an order when the deposit succeeds. */
 export const checkouts = app.table(
-  "checkouts",
+  `${TABLE_PREFIX}checkouts`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -40,7 +40,7 @@ export const checkouts = app.table(
  * balance C$262.16.
  */
 export const orders = app.table(
-  "orders",
+  `${TABLE_PREFIX}orders`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     /** Human reference shown to customers and admins, e.g. "TO-4192". */
@@ -96,7 +96,7 @@ export const orders = app.table(
 );
 
 export const orderItems = app.table(
-  "order_items",
+  `${TABLE_PREFIX}order_items`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")

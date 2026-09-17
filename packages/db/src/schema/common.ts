@@ -7,6 +7,19 @@ import { bigint, boolean, char, customType, pgSchema, timestamp } from "drizzle-
  */
 export const app = pgSchema("app");
 
+/**
+ * Every table name starts with this.
+ *
+ * The `app` schema already keeps these apart from the auth provider's tables,
+ * so the prefix is not what isolates them — it is there so a table is
+ * recognisably ours at a glance in a client that lists every schema flat, and
+ * in a query plan or a log line where the schema is not shown.
+ *
+ * One constant rather than 44 spellings: a prefix that has to be typed out each
+ * time is a prefix that will eventually be typed wrong once.
+ */
+export const TABLE_PREFIX = "planning_org_";
+
 /** Timestamps every table carries. */
 export const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

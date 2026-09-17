@@ -4,6 +4,13 @@ import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 
 /**
+ * `app.__migrations` deliberately carries no `planning_org_` prefix: it is this
+ * runner's own bookkeeping rather than an application table, and renaming it
+ * would leave the runner unable to find the history it just wrote — it would
+ * replay every migration against a populated database.
+ */
+
+/**
  * Applies every `.sql` file in `migrations/` in filename order, once.
  *
  * Deliberately not Drizzle's own migrator: some of what this schema needs —

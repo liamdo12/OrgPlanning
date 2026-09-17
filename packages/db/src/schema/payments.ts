@@ -1,5 +1,5 @@
 import { index, integer, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, currency, money, timestamps } from "./common.js";
+import { app, currency, money, timestamps, TABLE_PREFIX } from "./common.js";
 import { paymentKind, paymentState, refundState, transferKind, transferState } from "./enums.js";
 import { orders } from "./ordering.js";
 import { users, vendors } from "./identity.js";
@@ -13,7 +13,7 @@ import { users, vendors } from "./identity.js";
  * moment an order needs a second attempt.
  */
 export const payments = app.table(
-  "payments",
+  `${TABLE_PREFIX}payments`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
@@ -47,7 +47,7 @@ export const payments = app.table(
  * stop money leaving, not merely hide the vendor from search.
  */
 export const transfers = app.table(
-  "transfers",
+  `${TABLE_PREFIX}transfers`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
@@ -82,7 +82,7 @@ export const transfers = app.table(
  * writes, and a real state in between that someone has to clear.
  */
 export const refunds = app.table(
-  "refunds",
+  `${TABLE_PREFIX}refunds`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
@@ -118,7 +118,7 @@ export const refunds = app.table(
  * number.
  */
 export const paymentLinks = app.table(
-  "payment_links",
+  `${TABLE_PREFIX}payment_links`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     orderId: uuid("order_id")
@@ -144,7 +144,7 @@ export const paymentLinks = app.table(
  * object they describe, so the payload is kept whole for replay.
  */
 export const stripeEvents = app.table(
-  "stripe_events",
+  `${TABLE_PREFIX}stripe_events`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     eventId: text("event_id").notNull().unique(),

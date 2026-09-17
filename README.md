@@ -33,8 +33,8 @@ DATABASE_URL=$ADMIN_DB_URL pnpm --filter @occasion/db db:reset   # schema + demo
 docker exec supabase_db_occasion psql -U supabase_admin -d postgres \
   -c "ALTER ROLE app_rw LOGIN PASSWORD 'local-dev-only';"
 
-# The seed writes app.users rows; it cannot create logins at the auth provider,
-# which lives outside the database. This gives every seeded account one — the
+# The seed writes app.planning_org_users rows; it cannot create logins at the auth
+# provider, which lives outside the database. It gives every seeded account one — the
 # administrator included — so you can actually sign in. It reads
 # apps/web/.env.local, runs against built output, and touches demo rows only.
 pnpm --filter @occasion/db build
@@ -156,6 +156,12 @@ future caller constructing its own context can get past it.
   can move them.
 
 ## The database
+
+Every table lives in the `app` schema and is named `planning_org_*`. The schema
+is what isolates them from the auth provider's own tables; the prefix is so a
+table is recognisably ours in a client that lists every schema flat, and in a
+log line where the schema is not shown. The one exception is `app.__migrations`,
+the migration runner's own bookkeeping.
 
 Row-level security is on for every table with no policies, so the default is
 deny; the application connects as `app_rw`, which is exempt, and authorization

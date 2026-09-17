@@ -1,6 +1,6 @@
 import { relations } from "drizzle-orm";
 import { index, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, isDemo, timestamps } from "./common.js";
+import { app, isDemo, timestamps, TABLE_PREFIX } from "./common.js";
 import { consentBasis, consentChannel, userRoleName, userStatus, vendorStatus } from "./enums.js";
 
 /**
@@ -11,7 +11,7 @@ import { consentBasis, consentChannel, userRoleName, userStatus, vendorStatus } 
  * here is the identity the rest of the schema points at.
  */
 export const users = app.table(
-  "users",
+  `${TABLE_PREFIX}users`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     authProviderSub: text("auth_provider_sub").unique(),
@@ -54,7 +54,7 @@ export const users = app.table(
  * ever treated as a cache.
  */
 export const userRoles = app.table(
-  "user_roles",
+  `${TABLE_PREFIX}user_roles`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -80,7 +80,7 @@ export const userRoles = app.table(
  * than being withheld by the platform.
  */
 export const vendors = app.table(
-  "vendors",
+  `${TABLE_PREFIX}vendors`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     slug: text("slug").notNull().unique(),
@@ -108,7 +108,7 @@ export const vendors = app.table(
 
 /** Staff attached to a vendor. */
 export const vendorMembers = app.table(
-  "vendor_members",
+  `${TABLE_PREFIX}vendor_members`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     vendorId: uuid("vendor_id")
@@ -133,7 +133,7 @@ export const vendorMembers = app.table(
  * the user id alone once a person can hold more than one role.
  */
 export const auditLog = app.table(
-  "audit_log",
+  `${TABLE_PREFIX}audit_log`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -161,7 +161,7 @@ export const auditLog = app.table(
  * than a flag on the account. A broadcast checks it per recipient.
  */
 export const communicationConsents = app.table(
-  "communication_consents",
+  `${TABLE_PREFIX}communication_consents`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")

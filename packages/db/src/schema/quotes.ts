@@ -1,5 +1,5 @@
 import { index, integer, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, currency, money, timestamps } from "./common.js";
+import { app, currency, money, timestamps, TABLE_PREFIX } from "./common.js";
 import { quoteOfferState, quoteRequestState } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { events } from "./planning.js";
@@ -12,7 +12,7 @@ import { categories } from "./reference.js";
  * event hub, line 2398: "3 quotes in · best C$1,850 · closes Mar 13".
  */
 export const quoteRequests = app.table(
-  "quote_requests",
+  `${TABLE_PREFIX}quote_requests`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -45,7 +45,7 @@ export const quoteRequests = app.table(
 
 /** Which vendors were asked. */
 export const quoteRequestInvites = app.table(
-  "quote_request_invites",
+  `${TABLE_PREFIX}quote_request_invites`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     quoteRequestId: uuid("quote_request_id")
@@ -67,7 +67,7 @@ export const quoteRequestInvites = app.table(
 
 /** A vendor's priced answer. */
 export const quoteOffers = app.table(
-  "quote_offers",
+  `${TABLE_PREFIX}quote_offers`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     quoteRequestId: uuid("quote_request_id")

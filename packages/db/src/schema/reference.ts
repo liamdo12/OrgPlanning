@@ -1,9 +1,9 @@
 import { integer, jsonb, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { app, timestamps } from "./common.js";
+import { app, timestamps, TABLE_PREFIX } from "./common.js";
 import { placeKind, policyTier } from "./enums.js";
 
 /** Service categories. Source: categories(), lines 1967–1973. */
-export const categories = app.table("categories", {
+export const categories = app.table(`${TABLE_PREFIX}categories`, {
   id: uuid("id").primaryKey().defaultRandom(),
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
@@ -21,7 +21,7 @@ export const categories = app.table("categories", {
  * of scope for this milestone, and these columns convert to `geography` later
  * without any application code changing.
  */
-export const neighbourhoods = app.table("neighbourhoods", {
+export const neighbourhoods = app.table(`${TABLE_PREFIX}neighbourhoods`, {
   id: uuid("id").primaryKey().defaultRandom(),
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
@@ -41,7 +41,7 @@ export const neighbourhoods = app.table("neighbourhoods", {
  * Cancellation policy families a vendor can attach to a service.
  * Source: the policy selector, line 1889 (`Moderate` is the seeded default).
  */
-export const policyTemplates = app.table("policy_templates", {
+export const policyTemplates = app.table(`${TABLE_PREFIX}policy_templates`, {
   id: uuid("id").primaryKey().defaultRandom(),
   tier: policyTier("tier").notNull().unique(),
   name: text("name").notNull(),
@@ -59,7 +59,7 @@ export const policyTemplates = app.table("policy_templates", {
  * Rates live here rather than in code so an admin screen can show what is
  * actually in force; the value is jsonb so a setting can grow a shape.
  */
-export const platformSettings = app.table("platform_settings", {
+export const platformSettings = app.table(`${TABLE_PREFIX}platform_settings`, {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
   description: text("description"),
@@ -74,7 +74,7 @@ export const platformSettings = app.table("platform_settings", {
  * months still produces "deposit paid 2 days ago, event in 186 days" rather
  * than a pile of dates in the past.
  */
-export const seedMeta = app.table("seed_meta", {
+export const seedMeta = app.table(`${TABLE_PREFIX}seed_meta`, {
   id: uuid("id").primaryKey().defaultRandom(),
   anchorAt: timestamp("anchor_at", { withTimezone: true }).notNull(),
   seededAt: timestamp("seeded_at", { withTimezone: true }).notNull().defaultNow(),

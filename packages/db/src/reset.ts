@@ -48,81 +48,81 @@ export async function reset(options: {
  */
 const DEMO_DELETES = [
   // Communications, which hang off orders, quote requests and users.
-  `delete from app.messages where thread_id in (
-     select id from app.threads where order_id in (select id from app.orders where is_demo)
-        or vendor_id in (select id from app.vendors where is_demo)
-        or quote_request_id in (select id from app.quote_requests
-                                where user_id in (select id from app.users where is_demo)))`,
-  `delete from app.thread_participants where user_id in (select id from app.users where is_demo)`,
-  `delete from app.threads where order_id in (select id from app.orders where is_demo)
-     or vendor_id in (select id from app.vendors where is_demo)
-     or quote_request_id in (select id from app.quote_requests
-                             where user_id in (select id from app.users where is_demo))`,
-  `delete from app.notifications where user_id in (select id from app.users where is_demo)`,
-  `delete from app.email_sends where recipient_user_id in (select id from app.users where is_demo)
-     or to_email in (select email from app.users where is_demo)`,
+  `delete from app.planning_org_messages where thread_id in (
+     select id from app.planning_org_threads where order_id in (select id from app.planning_org_orders where is_demo)
+        or vendor_id in (select id from app.planning_org_vendors where is_demo)
+        or quote_request_id in (select id from app.planning_org_quote_requests
+                                where user_id in (select id from app.planning_org_users where is_demo)))`,
+  `delete from app.planning_org_thread_participants where user_id in (select id from app.planning_org_users where is_demo)`,
+  `delete from app.planning_org_threads where order_id in (select id from app.planning_org_orders where is_demo)
+     or vendor_id in (select id from app.planning_org_vendors where is_demo)
+     or quote_request_id in (select id from app.planning_org_quote_requests
+                             where user_id in (select id from app.planning_org_users where is_demo))`,
+  `delete from app.planning_org_notifications where user_id in (select id from app.planning_org_users where is_demo)`,
+  `delete from app.planning_org_email_sends where recipient_user_id in (select id from app.planning_org_users where is_demo)
+     or to_email in (select email from app.planning_org_users where is_demo)`,
 
   // Trust.
-  `delete from app.reviews where order_id in (select id from app.orders where is_demo)`,
-  `delete from app.disputes where order_id in (select id from app.orders where is_demo)`,
+  `delete from app.planning_org_reviews where order_id in (select id from app.planning_org_orders where is_demo)`,
+  `delete from app.planning_org_disputes where order_id in (select id from app.planning_org_orders where is_demo)`,
 
   // Automation.
-  `delete from app.job_runs where job_id in (select id from app.jobs where is_demo)`,
-  `delete from app.jobs where is_demo`,
+  `delete from app.planning_org_job_runs where job_id in (select id from app.planning_org_jobs where is_demo)`,
+  `delete from app.planning_org_jobs where is_demo`,
 
   // Quotes.
-  `delete from app.quote_offers where quote_request_id in (
-     select id from app.quote_requests where user_id in (select id from app.users where is_demo))`,
-  `delete from app.quote_request_invites where quote_request_id in (
-     select id from app.quote_requests where user_id in (select id from app.users where is_demo))`,
-  `delete from app.quote_requests where user_id in (select id from app.users where is_demo)`,
+  `delete from app.planning_org_quote_offers where quote_request_id in (
+     select id from app.planning_org_quote_requests where user_id in (select id from app.planning_org_users where is_demo))`,
+  `delete from app.planning_org_quote_request_invites where quote_request_id in (
+     select id from app.planning_org_quote_requests where user_id in (select id from app.planning_org_users where is_demo))`,
+  `delete from app.planning_org_quote_requests where user_id in (select id from app.planning_org_users where is_demo)`,
 
   // Money.
-  `delete from app.payment_links where order_id in (select id from app.orders where is_demo)`,
-  `delete from app.refunds where order_id in (select id from app.orders where is_demo)`,
-  `delete from app.transfers where order_id in (select id from app.orders where is_demo)`,
-  `delete from app.payments where order_id in (select id from app.orders where is_demo)`,
-  `delete from app.order_items where order_id in (select id from app.orders where is_demo)`,
+  `delete from app.planning_org_payment_links where order_id in (select id from app.planning_org_orders where is_demo)`,
+  `delete from app.planning_org_refunds where order_id in (select id from app.planning_org_orders where is_demo)`,
+  `delete from app.planning_org_transfers where order_id in (select id from app.planning_org_orders where is_demo)`,
+  `delete from app.planning_org_payments where order_id in (select id from app.planning_org_orders where is_demo)`,
+  `delete from app.planning_org_order_items where order_id in (select id from app.planning_org_orders where is_demo)`,
 
   // Capacity, which points at demo orders and demo vendors' services.
-  `delete from app.capacity_blocks where order_id in (select id from app.orders where is_demo)
-     or service_id in (select id from app.services
-                       where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.daily_capacity where service_id in (
-     select id from app.services where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.blackout_dates where vendor_id in (select id from app.vendors where is_demo)`,
+  `delete from app.planning_org_capacity_blocks where order_id in (select id from app.planning_org_orders where is_demo)
+     or service_id in (select id from app.planning_org_services
+                       where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_daily_capacity where service_id in (
+     select id from app.planning_org_services where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_blackout_dates where vendor_id in (select id from app.planning_org_vendors where is_demo)`,
 
-  `delete from app.orders where is_demo`,
-  `delete from app.checkouts where user_id in (select id from app.users where is_demo)`,
+  `delete from app.planning_org_orders where is_demo`,
+  `delete from app.planning_org_checkouts where user_id in (select id from app.planning_org_users where is_demo)`,
 
   // Planning.
-  `delete from app.event_items where event_id in (select id from app.events where is_demo)`,
-  `delete from app.events where is_demo`,
+  `delete from app.planning_org_event_items where event_id in (select id from app.planning_org_events where is_demo)`,
+  `delete from app.planning_org_events where is_demo`,
 
   // Catalogue.
-  `delete from app.saved_services where user_id in (select id from app.users where is_demo)
-     or service_id in (select id from app.services
-                       where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.service_media where service_id in (
-     select id from app.services where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.service_areas where service_id in (
-     select id from app.services where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.service_packages where service_id in (
-     select id from app.services where vendor_id in (select id from app.vendors where is_demo))`,
-  `delete from app.services where vendor_id in (select id from app.vendors where is_demo)`,
+  `delete from app.planning_org_saved_services where user_id in (select id from app.planning_org_users where is_demo)
+     or service_id in (select id from app.planning_org_services
+                       where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_service_media where service_id in (
+     select id from app.planning_org_services where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_service_areas where service_id in (
+     select id from app.planning_org_services where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_service_packages where service_id in (
+     select id from app.planning_org_services where vendor_id in (select id from app.planning_org_vendors where is_demo))`,
+  `delete from app.planning_org_services where vendor_id in (select id from app.planning_org_vendors where is_demo)`,
 
   // Identity. The audit log goes last, and by actor, so a reseed cannot leave
   // an entry behind with its actor NULLed — a laundered accountability record
   // is worse than no record.
-  `delete from app.audit_log where actor_user_id in (select id from app.users where is_demo)`,
-  `delete from app.vendor_members where vendor_id in (select id from app.vendors where is_demo)`,
-  `delete from app.vendors where is_demo`,
-  `delete from app.communication_consents where user_id in (select id from app.users where is_demo)`,
-  `delete from app.user_roles where user_id in (select id from app.users where is_demo)`,
-  `delete from app.users where is_demo`,
+  `delete from app.planning_org_audit_log where actor_user_id in (select id from app.planning_org_users where is_demo)`,
+  `delete from app.planning_org_vendor_members where vendor_id in (select id from app.planning_org_vendors where is_demo)`,
+  `delete from app.planning_org_vendors where is_demo`,
+  `delete from app.planning_org_communication_consents where user_id in (select id from app.planning_org_users where is_demo)`,
+  `delete from app.planning_org_user_roles where user_id in (select id from app.planning_org_users where is_demo)`,
+  `delete from app.planning_org_users where is_demo`,
 
   // Written by the seed itself, and by nothing else.
-  `delete from app.seed_meta`,
+  `delete from app.planning_org_seed_meta`,
 ];
 
 /**

@@ -1,5 +1,5 @@
 import { index, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, timestamps } from "./common.js";
+import { app, timestamps, TABLE_PREFIX } from "./common.js";
 import { emailAudience, emailSendState } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { orders } from "./ordering.js";
@@ -7,7 +7,7 @@ import { quoteRequests } from "./quotes.js";
 
 /** A conversation, optionally anchored to an order or a quote request. */
 export const threads = app.table(
-  "threads",
+  `${TABLE_PREFIX}threads`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     subject: text("subject"),
@@ -27,7 +27,7 @@ export const threads = app.table(
 );
 
 export const threadParticipants = app.table(
-  "thread_participants",
+  `${TABLE_PREFIX}thread_participants`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     threadId: uuid("thread_id")
@@ -46,7 +46,7 @@ export const threadParticipants = app.table(
 );
 
 export const messages = app.table(
-  "messages",
+  `${TABLE_PREFIX}messages`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     threadId: uuid("thread_id")
@@ -64,7 +64,7 @@ export const messages = app.table(
 );
 
 export const notifications = app.table(
-  "notifications",
+  `${TABLE_PREFIX}notifications`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
@@ -88,7 +88,7 @@ export const notifications = app.table(
  * per-recipient secret into a message going to every account — so the permitted
  * fields are data on the template, not a convention in the rendering code.
  */
-export const emailTemplates = app.table("email_templates", {
+export const emailTemplates = app.table(`${TABLE_PREFIX}email_templates`, {
   id: uuid("id").primaryKey().defaultRandom(),
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
@@ -105,7 +105,7 @@ export const emailTemplates = app.table("email_templates", {
 
 /** One delivery. Also the ingress for provider delivery statistics. */
 export const emailSends = app.table(
-  "email_sends",
+  `${TABLE_PREFIX}email_sends`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     templateId: uuid("template_id").references(() => emailTemplates.id, {

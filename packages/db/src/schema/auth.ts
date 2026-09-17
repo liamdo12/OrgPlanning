@@ -1,5 +1,5 @@
 import { index, integer, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, timestamps } from "./common.js";
+import { app, timestamps, TABLE_PREFIX } from "./common.js";
 import { users } from "./identity.js";
 
 /**
@@ -16,7 +16,7 @@ import { users } from "./identity.js";
  * attacker walk a list of accounts.
  */
 export const authAttempts = app.table(
-  "auth_attempts",
+  `${TABLE_PREFIX}auth_attempts`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     scope: text("scope").notNull(),
@@ -45,7 +45,7 @@ export const authAttempts = app.table(
  * a new person, and the row records who opened that door.
  */
 export const adminInvites = app.table(
-  "admin_invites",
+  `${TABLE_PREFIX}admin_invites`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email").notNull(),

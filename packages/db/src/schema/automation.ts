@@ -1,5 +1,5 @@
 import { index, integer, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
-import { app, isDemo, timestamps } from "./common.js";
+import { app, isDemo, timestamps, TABLE_PREFIX } from "./common.js";
 import { jobStatus, jobTrigger, jobType } from "./enums.js";
 import { users } from "./identity.js";
 
@@ -12,7 +12,7 @@ import { users } from "./identity.js";
  * the time it was queued.
  */
 export const jobs = app.table(
-  "jobs",
+  `${TABLE_PREFIX}jobs`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     type: jobType("type").notNull(),
@@ -43,7 +43,7 @@ export const jobs = app.table(
  * non-demo row is the signal that the safety filter has failed.
  */
 export const jobRuns = app.table(
-  "job_runs",
+  `${TABLE_PREFIX}job_runs`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     jobId: uuid("job_id")

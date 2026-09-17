@@ -112,7 +112,7 @@ describe.skipIf(!url)("row-level security", () => {
     await asRole(dbUrl, "app_rw", async (sql) => {
       for (const table of ["users", "vendors", "services", "orders", "payments", "jobs"]) {
         const [row] = await sql.unsafe<{ count: string }[]>(
-          `select count(*)::text as count from app.${table}`,
+          `select count(*)::text as count from app.planning_org_${table}`,
         );
         expect(Number(row?.count ?? "0"), `app_rw should see rows in app.${table}`).toBeGreaterThan(
           0,

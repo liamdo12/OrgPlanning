@@ -55,7 +55,7 @@ describe.skipIf(!url)("identity service", () => {
     ctx = database.ctx;
 
     const rows = await sql<{ id: string; email: string }[]>`
-      select id, email from app.users
+      select id, email from app.planning_org_users
     `;
     for (const row of rows) ids[row.email] = row.id;
   }, 120_000);
@@ -130,7 +130,7 @@ describe.skipIf(!url)("identity service", () => {
       expect(bound.kind).toBe("user");
 
       const [row] = await sql<{ sub: string | null }[]>`
-        select auth_provider_sub as sub from app.users where email = 'admin@occasion.test'
+        select auth_provider_sub as sub from app.planning_org_users where email = 'admin@occasion.test'
       `;
       expect(row?.sub).toBe("provider-sub-admin@occasion.test");
     });
@@ -226,7 +226,7 @@ describe.skipIf(!url)("identity service", () => {
       expect((await getActor(ctx)).kind).toBe("user");
 
       const [row] = await sql<{ action: string }[]>`
-        select action from app.audit_log
+        select action from app.planning_org_audit_log
         where actor_user_id = ${ids["ada.okafor@example.ca"] as string}
         order by created_at desc limit 1
       `;
@@ -331,7 +331,7 @@ describe.skipIf(!url)("identity service", () => {
       // Any change to what a person may do moves the cutoff forward, past the
       // instant this token was issued.
       const cutoff = new Date(Date.now() + 1000);
-      await sql`update app.users set sessions_valid_after = ${cutoff} where id = ${target}`;
+      await sql`update app.planning_org_users set sessions_valid_after = ${cutoff} where id = ${target}`;
 
       expect((await getActor(ctx)).kind).toBe("anonymous");
     });
@@ -388,14 +388,14 @@ describe.skipIf(!url)("identity service", () => {
       });
 
       const roles = await sql<{ role: string }[]>`
-        select role::text from app.user_roles where user_id = ${userId}
+        select role::text from app.planning_org_user_roles where user_id = ${userId}
       `;
       expect(roles.map((r) => r.role)).toEqual(["customer"]);
     });
 
     it("creates zero admin rows for a signup carrying role=admin", async () => {
       const before = await sql<{ count: string }[]>`
-        select count(*)::text as count from app.user_roles where role = 'admin'
+        select count(*)::text as count from app.planning_org_user_roles where role = 'admin'
       `;
 
       await expect(
@@ -407,13 +407,13 @@ describe.skipIf(!url)("identity service", () => {
       ).rejects.toThrow(ValidationError);
 
       const after = await sql<{ count: string }[]>`
-        select count(*)::text as count from app.user_roles where role = 'admin'
+        select count(*)::text as count from app.planning_org_user_roles where role = 'admin'
       `;
       expect(after[0]?.count).toBe(before[0]?.count);
 
       // And no orphaned account was left behind either.
       const orphan = await sql<{ id: string }[]>`
-        select id from app.users where email = 'attacker@example.ca'
+        select id from app.planning_org_users where email = 'attacker@example.ca'
       `;
       expect(orphan).toEqual([]);
     });
@@ -438,7 +438,7 @@ describe.skipIf(!url)("identity service", () => {
       });
 
       const [row] = await sql<{ status: string }[]>`
-        select status::text from app.users where id = ${userId}
+        select status::text from app.planning_org_users where id = ${userId}
       `;
       expect(row?.status).toBe("unverified");
 
@@ -480,7 +480,7 @@ describe.skipIf(!url)("identity service", () => {
       const admin = await getActor(ctx);
       const target = ids["jonah.tran@example.ca"] as string;
 
-      await sql`delete from app.audit_log`;
+      await sql`delete from app.planning_org_audit_log`;
       await grantRole(ctx, admin, target, "vendor");
 
       const [entry] = await sql<
@@ -492,7 +492,7 @@ describe.skipIf(!url)("identity service", () => {
           after: { roles: string[] };
         }[]
       >`
-        select action, acting_role::text, actor_user_id, before, after from app.audit_log
+        select action, acting_role::text, actor_user_id, before, after from app.planning_org_audit_log
       `;
 
       expect(entry?.action).toBe("identity.role.grant");
@@ -519,7 +519,7 @@ describe.skipIf(!url)("identity service", () => {
       await acceptAdminInvite(ctx, invite.token, invitee);
 
       const roles = await sql<{ role: string }[]>`
-        select role::text from app.user_roles where user_id = ${invitee}
+        select role::text from app.planning_org_user_roles where user_id = ${invitee}
       `;
       expect(roles.map((r) => r.role).sort()).toEqual(["admin", "customer"]);
     });
@@ -557,7 +557,7 @@ describe.skipIf(!url)("identity service", () => {
       ).rejects.toThrow(/no longer valid/);
 
       const roles = await sql<{ role: string }[]>`
-        select role::text from app.user_roles
+        select role::text from app.planning_org_user_roles
         where user_id = ${ids["sarah@example.ca"] as string} and role = 'admin'
       `;
       expect(roles).toEqual([]);
@@ -588,7 +588,7 @@ describe.skipIf(!url)("identity service", () => {
       const invite = await inviteAdmin(ctx, admin, "hashed@occasion.test");
 
       const rows = await sql<{ token: string }[]>`
-        select token from app.admin_invites where email = 'hashed@occasion.test'
+        select token from app.planning_org_admin_invites where email = 'hashed@occasion.test'
       `;
       // A leak of this table must not be an instant admin grant.
       expect(rows[0]?.token).not.toBe(invite.token);

@@ -1,5 +1,5 @@
 import { date, index, integer, text, time, uuid } from "drizzle-orm/pg-core";
-import { app, currency, isDemo, money, timestamps } from "./common.js";
+import { app, currency, isDemo, money, timestamps, TABLE_PREFIX } from "./common.js";
 import { eventVisibility } from "./enums.js";
 import { users } from "./identity.js";
 import { neighbourhoods } from "./reference.js";
@@ -14,7 +14,7 @@ import { services } from "./catalog.js";
  * timezone rules ever changed.
  */
 export const events = app.table(
-  "events",
+  `${TABLE_PREFIX}events`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     ownerUserId: uuid("owner_user_id")
@@ -50,7 +50,7 @@ export const events = app.table(
  * Source: the event hub list, lines 2397–2402.
  */
 export const eventItems = app.table(
-  "event_items",
+  `${TABLE_PREFIX}event_items`,
   {
     id: uuid("id").primaryKey().defaultRandom(),
     eventId: uuid("event_id")

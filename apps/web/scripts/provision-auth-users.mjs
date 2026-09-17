@@ -5,7 +5,7 @@ import { users } from "@occasion/db/schema";
 /**
  * Gives the seeded accounts provider logins.
  *
- * The seed writes the `app.users` rows — that is what every screen reads — but
+ * The seed writes the `app.planning_org_users` rows — that is what every screen reads — but
  * it cannot create accounts at the auth provider, which lives outside the
  * database. Without this step the seeded administrator exists and nobody can
  * sign in as them.
