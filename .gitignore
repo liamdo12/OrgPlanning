@@ -26,3 +26,12 @@ supabase/.temp/
 
 # test fixtures written and removed by packages/core/src/boundaries.test.ts
 packages/core/src/boundary-fixture-*/
+
+# local-only working material — deliberately not published
+# Removed from history on 2026-09-16; keep it that way.
+.claude/
+plans/
+design/
+docs/
+business-proposal.md
+Planning Org App - Fall 2026.pdf
