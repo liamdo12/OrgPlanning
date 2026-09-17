@@ -14,6 +14,22 @@ const booleanish = z
   .union([z.literal("true"), z.literal("false")])
   .transform((value) => value === "true");
 
+/**
+ * A value that has to be filled in, not copied.
+ *
+ * `.env.example` ships `replace-me` for the keys only the running stack can
+ * supply. Left as they are, the string is long enough to satisfy `min(1)` and
+ * reaches the provider, which answers "invalid JWT: token contains an invalid
+ * number of segments" — true, unhelpful, and several steps from the cause.
+ */
+const configured = () =>
+  z
+    .string()
+    .min(1)
+    .refine((value) => value !== "replace-me", {
+      message: "still the .env.example placeholder; `pnpm supabase status` prints the real value",
+    });
+
 const envSchema = z
   .object({
     /**
@@ -27,8 +43,8 @@ const envSchema = z
     DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
 
     SUPABASE_URL: z.url(),
-    SUPABASE_ANON_KEY: z.string().min(1),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+    SUPABASE_ANON_KEY: configured(),
+    SUPABASE_SERVICE_ROLE_KEY: configured(),
 
     /** Test mode only for this milestone; enforced below. */
     STRIPE_SECRET_KEY: z.string().min(1),

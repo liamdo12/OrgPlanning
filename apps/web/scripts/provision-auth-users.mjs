@@ -35,6 +35,14 @@ function required(name) {
     console.error(`Missing ${name}.`);
     process.exit(1);
   }
+  // The template's placeholder is long enough to look like a value and reaches
+  // the provider, which rejects it as a malformed token — seven times, once per
+  // account, with no hint that the key was never filled in.
+  if (value === "replace-me") {
+    console.error(`${name} is still the .env.example placeholder.`);
+    console.error("`pnpm supabase status` prints the real one.");
+    process.exit(1);
+  }
   return value;
 }
 
