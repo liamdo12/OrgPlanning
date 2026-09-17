@@ -27,19 +27,24 @@ export {
 
 export {
   ANONYMOUS,
+  ROLE_NAMES,
   SELF_ASSIGNABLE_ROLES,
   belongsToVendor,
   hasRole,
   isAdmin,
   isAuthenticated,
   isUsable,
+  parseRoleName,
+  selectActiveRole,
   type Actor,
   type RoleName,
   type UserStatus,
 } from "./identity/actor.js";
 
 export {
+  clearSecondFactor,
   endVendorStaffSessions,
+  findUserIdByEmail,
   getActor,
   grantRole,
   markEmailVerified,
@@ -49,6 +54,7 @@ export {
   requireRole,
   requireUser,
   revokeRole,
+  setSecondFactorEnrolled,
   signUp,
   suspendUser,
   type SignUpInput,
@@ -73,6 +79,7 @@ export { safeRedirectPath } from "./identity/safe-redirect.js";
 export {
   LOGIN_RULE,
   PASSWORD_RESET_RULE,
+  SECOND_FACTOR_RULE,
   clearAttempts,
   consumeAttempt,
   type RateLimitRule,

@@ -42,6 +42,15 @@ const envSchema = z
     /** Shared secret the cron caller presents to the jobs tick endpoint. */
     JOBS_TICK_SECRET: z.string().min(16),
 
+    /**
+     * Whether Google sign-in is configured at the provider.
+     *
+     * The button is rendered only when this is true. A provider button that is
+     * visible but unconfigured fails at the redirect, after the person has
+     * already committed to it.
+     */
+    AUTH_GOOGLE_ENABLED: booleanish,
+
     /** Whether an admin may set a clock override at all. */
     ALLOW_CLOCK_OVERRIDE: booleanish,
     /** Whether the demo data may be torn down and reseeded. */

@@ -24,6 +24,7 @@ export function createAuth(): AuthPort {
         sub?: string;
         email?: string;
         iat?: number;
+        aal?: string;
         email_verified?: boolean;
         user_metadata?: { email_verified?: boolean };
       };
@@ -42,6 +43,10 @@ export function createAuth(): AuthPort {
         // let anyone claim a seeded account by registering with its email.
         emailVerified:
           claims.email_verified === true || claims.user_metadata?.email_verified === true,
+        // From the verified token, not from the session object: the session
+        // lists enrolled factors but reaches us in a browser-held cookie, so it
+        // can claim there are none. This claim is signed.
+        secondFactorVerified: claims.aal === "aal2",
       };
     },
   };

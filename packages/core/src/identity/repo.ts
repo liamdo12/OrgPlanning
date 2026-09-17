@@ -20,9 +20,13 @@ import type { RoleName, UserStatus } from "./actor.js";
 export type IdentityRow = {
   userId: string;
   email: string;
+  /** The auth provider's subject, once bound. Null until the first sign-in. */
+  authProviderSub: string | null;
   status: UserStatus;
   sessionsValidAfter: Date;
   emailVerifiedAt: Date | null;
+  /** Set while a second factor is enrolled; the requirement lives here. */
+  mfaEnrolledAt: Date | null;
   roles: RoleName[];
   vendorIds: string[];
 };
@@ -48,9 +52,11 @@ export async function loadIdentity(
     .select({
       userId: users.id,
       email: users.email,
+      authProviderSub: users.authProviderSub,
       status: users.status,
       sessionsValidAfter: users.sessionsValidAfter,
       emailVerifiedAt: users.emailVerifiedAt,
+      mfaEnrolledAt: users.mfaEnrolledAt,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -171,6 +177,10 @@ export async function adoptUnclaimedUser(
         authProviderSub: input.authProviderSub,
         status: input.status,
         emailVerifiedAt: input.emailVerifiedAt,
+        // Nothing can be enrolled on a row nobody has ever signed in as, but
+        // the requirement and the row are set in the same place so they cannot
+        // drift apart.
+        mfaEnrolledAt: null,
         sessionsValidAfter: input.now,
         updatedAt: input.now,
       })
@@ -191,6 +201,25 @@ export async function markEmailVerified(
     .update(users)
     .set({ emailVerifiedAt: now, status: "active", updatedAt: now })
     .where(and(eq(users.id, userId), eq(users.status, "unverified")));
+}
+
+/**
+ * Records whether a second factor is enrolled.
+ *
+ * The provider owns the factor itself; this column owns the *requirement*, so
+ * that a session which has not cleared the challenge is refused by the same
+ * per-request read that already refuses a revoked role.
+ */
+export async function setMfaEnrolledAt(
+  ctx: CoreContext,
+  userId: string,
+  enrolledAt: Date | null,
+  now: Date,
+): Promise<void> {
+  await ctx.db
+    .update(users)
+    .set({ mfaEnrolledAt: enrolledAt, updatedAt: now })
+    .where(eq(users.id, userId));
 }
 
 export type CreateUserInput = {

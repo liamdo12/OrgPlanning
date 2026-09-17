@@ -8,6 +8,13 @@
       "when": 1789580846870,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789609484312,
+      "tag": "0001_add_mfa_enrolment",
+      "breakpoints": true
     }
   ]
 }

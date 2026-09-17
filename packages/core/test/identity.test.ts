@@ -1,16 +1,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type postgres from "postgres";
-import { ForbiddenError, UnauthenticatedError, ValidationError } from "../src/errors.js";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthenticatedError,
+  ValidationError,
+} from "../src/errors.js";
 import { RateLimitedError } from "../src/errors.js";
 import {
   getActor,
   grantRole,
   reinstateUser,
   requireAdmin,
+  clearSecondFactor,
   revokeRole,
+  setSecondFactorEnrolled,
   signUp,
   suspendUser,
 } from "../src/identity/service.js";
+import { selectActiveRole } from "../src/identity/actor.js";
 import { acceptAdminInvite, inviteAdmin } from "../src/identity/invites.js";
 import { consumeAttempt, LOGIN_RULE } from "../src/identity/rate-limit.js";
 import type { CoreContext } from "../src/context.js";
@@ -69,8 +77,20 @@ describe.skipIf(!url)("identity service", () => {
   }
 
   /** Signs the given seeded person in, with a token issued now. */
-  function signInAs(email: string, issuedAt: Date = new Date()): void {
-    database.setUser({ id: providerSub(email), email, issuedAt, emailVerified: true });
+  function signInAs(email: string, issuedAt: Date = new Date(), secondFactorVerified = true): void {
+    database.setUser({
+      id: providerSub(email),
+      email,
+      issuedAt,
+      emailVerified: true,
+      secondFactorVerified,
+    });
+  }
+
+  /** The seeded administrator, signed in. */
+  async function adminActor() {
+    signInAs("admin@occasion.test");
+    return getActor(ctx);
   }
 
   function signOut(): void {
@@ -100,6 +120,7 @@ describe.skipIf(!url)("identity service", () => {
         email: "admin@occasion.test",
         issuedAt: new Date(),
         emailVerified: true,
+        secondFactorVerified: true,
       });
 
       // The application id is not a provider subject, and by now the seeded row
@@ -120,6 +141,7 @@ describe.skipIf(!url)("identity service", () => {
         email: "nobody@example.ca",
         issuedAt: new Date(),
         emailVerified: true,
+        secondFactorVerified: true,
       });
 
       expect((await getActor(ctx)).kind).toBe("anonymous");
@@ -133,6 +155,7 @@ describe.skipIf(!url)("identity service", () => {
         email: "rosa@bloomandco.ca",
         issuedAt: new Date(),
         emailVerified: false,
+        secondFactorVerified: true,
       });
 
       expect((await getActor(ctx)).kind).toBe("anonymous");
@@ -144,6 +167,7 @@ describe.skipIf(!url)("identity service", () => {
         email: "sarah@example.ca",
         issuedAt: null,
         emailVerified: true,
+        secondFactorVerified: true,
       });
 
       expect((await getActor(ctx)).kind).toBe("anonymous");
@@ -166,6 +190,132 @@ describe.skipIf(!url)("identity service", () => {
       expect(asCustomer.activeRole).toBe("admin");
       // And the authority is unchanged either way.
       expect(() => requireAdmin(asCustomer)).not.toThrow();
+    });
+  });
+
+  describe("second factor", () => {
+    it("refuses a session that has not cleared an enrolled factor", async () => {
+      signInAs("ada.okafor@example.ca");
+      const actor = await getActor(ctx);
+      await setSecondFactorEnrolled(ctx, actor, true);
+
+      // Same account, same valid token, but the challenge was never answered.
+      signInAs("ada.okafor@example.ca", new Date(), false);
+      expect((await getActor(ctx)).kind).toBe("anonymous");
+
+      signInAs("ada.okafor@example.ca", new Date(), true);
+      expect((await getActor(ctx)).kind).toBe("user");
+    });
+
+    it("lets a person without a factor sign in unchallenged", async () => {
+      // MFA is offered, not required: an account that never enrolled is not
+      // held to a challenge it cannot answer.
+      signInAs("sarah@example.ca", new Date(), false);
+      expect((await getActor(ctx)).kind).toBe("user");
+    });
+
+    it("stops requiring a factor once the last one is removed", async () => {
+      signInAs("ada.okafor@example.ca");
+      const actor = await getActor(ctx);
+      // Set here rather than inherited from the test above, so this one still
+      // means something when it is the only one that runs.
+      await setSecondFactorEnrolled(ctx, actor, true);
+      await setSecondFactorEnrolled(ctx, actor, false);
+
+      signInAs("ada.okafor@example.ca", new Date(), false);
+      expect((await getActor(ctx)).kind).toBe("user");
+
+      const [row] = await sql<{ action: string }[]>`
+        select action from app.audit_log
+        where actor_user_id = ${ids["ada.okafor@example.ca"] as string}
+        order by created_at desc limit 1
+      `;
+      expect(row?.action).toBe("identity.mfa.remove");
+    });
+  });
+
+  describe("clearing a lost second factor", () => {
+    it("will not let a suspended account enrol one", async () => {
+      // A provider session outlives our opinion of an account, so the domain
+      // has to refuse this rather than trust that the page was never shown.
+      signInAs("bea@terracerentals.ca");
+      const actor = await getActor(ctx);
+
+      await expect(setSecondFactorEnrolled(ctx, actor, true)).rejects.toThrow(ForbiddenError);
+    });
+
+    it("is an administrator's job, and ends the account's sessions", async () => {
+      signInAs("rosa@bloomandco.ca");
+      const owner = await getActor(ctx);
+      await setSecondFactorEnrolled(ctx, owner, true);
+
+      // Locked out: the authenticator is gone, so no session reaches the domain.
+      signInAs("rosa@bloomandco.ca", new Date(), false);
+      expect((await getActor(ctx)).kind).toBe("anonymous");
+
+      const admin = await adminActor();
+      const { authProviderSub } = await clearSecondFactor(
+        ctx,
+        admin,
+        ids["rosa@bloomandco.ca"] as string,
+      );
+      // Returned so the caller can delete the provider's own factor; without
+      // that the provider would keep asking for a code.
+      expect(authProviderSub).toBe("provider-sub-rosa@bloomandco.ca");
+
+      // The clear ends existing sessions, so only a token issued after it works.
+      signInAs("rosa@bloomandco.ca", new Date(Date.now() - 60_000), false);
+      expect((await getActor(ctx)).kind).toBe("anonymous");
+
+      signInAs("rosa@bloomandco.ca", new Date(Date.now() + 1000), false);
+      expect((await getActor(ctx)).kind).toBe("user");
+    });
+
+    it("refuses anyone who is not an administrator", async () => {
+      signInAs("sarah@example.ca");
+      const actor = await getActor(ctx);
+
+      await expect(
+        clearSecondFactor(ctx, actor, ids["ada.okafor@example.ca"] as string),
+      ).rejects.toThrow(ForbiddenError);
+    });
+
+    it("refuses an administrator clearing their own", async () => {
+      const admin = await adminActor();
+
+      await expect(
+        clearSecondFactor(ctx, admin, ids["admin@occasion.test"] as string),
+      ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe("role switching", () => {
+    it("records the chosen role without changing what is permitted", async () => {
+      const target = ids["sarah@example.ca"] as string;
+      await grantRole(ctx, await adminActor(), target, "vendor");
+
+      try {
+        signInAs("sarah@example.ca");
+        const actor = await getActor(ctx, { activeRole: "vendor" });
+        if (actor.kind !== "user") throw new Error("expected a user");
+
+        expect(actor.activeRole).toBe("vendor");
+        expect(selectActiveRole(actor, "customer")).toBe("customer");
+        // Selecting a role never confers it.
+        expect(() => selectActiveRole(actor, "admin")).toThrow(ForbiddenError);
+        expect(() => requireAdmin(actor)).toThrow(ForbiddenError);
+      } finally {
+        // In a finally block because a failed assertion would otherwise leave
+        // this person a vendor for every test that follows.
+        await revokeRole(ctx, await adminActor(), target, "vendor");
+      }
+    });
+
+    it("refuses a value that is not a role at all", async () => {
+      signInAs("sarah@example.ca");
+      const actor = await getActor(ctx);
+      expect(() => selectActiveRole(actor, "superuser")).toThrow(ForbiddenError);
+      expect(() => selectActiveRole(actor, undefined)).toThrow(ForbiddenError);
     });
   });
 
@@ -297,6 +447,7 @@ describe.skipIf(!url)("identity service", () => {
         email: "unverified@example.ca",
         issuedAt: new Date(),
         emailVerified: true,
+        secondFactorVerified: true,
       });
       const actor = await getActor(ctx);
       if (actor.kind !== "user") throw new Error("expected a user");

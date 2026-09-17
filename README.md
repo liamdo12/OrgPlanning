@@ -23,6 +23,14 @@ cp .env.example .env.local     # then fill in the values
 
 pnpm db:start                  # local Supabase; prints the keys for .env.local
 pnpm --filter @occasion/db db:reset   # schema + demo data
+
+# The seed writes app.users rows; it cannot create logins at the auth provider,
+# which lives outside the database. This gives every seeded account one — the
+# administrator included — so you can actually sign in. It runs against built
+# output, hence the build first, and it touches demo rows only.
+pnpm --filter @occasion/db build
+SEED_USER_PASSWORD='choose-a-throwaway' pnpm --filter @occasion/web auth:provision
+
 pnpm dev                       # http://localhost:3000
 ```
 
@@ -35,17 +43,18 @@ strict environment mode and filters anything a task has not declared.
 
 ## Commands
 
-| Command                            | What it does                                              |
-| ---------------------------------- | --------------------------------------------------------- |
-| `pnpm dev`                         | Runs every package in watch mode plus the Next dev server |
-| `pnpm build`                       | Builds the packages, then a standalone Next build         |
-| `pnpm lint`                        | ESLint across the workspace, including the boundary rules |
-| `pnpm typecheck`                   | `tsc --noEmit` per package                                |
-| `pnpm test`                        | Vitest per package                                        |
-| `pnpm format` / `format:check`     | Prettier                                                  |
-| `pnpm db:start` / `db:stop`        | Local Supabase stack                                      |
-| `--filter @occasion/db db:reset`   | Drop, migrate and seed the database                       |
-| `--filter @occasion/db db:migrate` | Apply pending migrations only                             |
+| Command                                 | What it does                                              |
+| --------------------------------------- | --------------------------------------------------------- |
+| `pnpm dev`                              | Runs every package in watch mode plus the Next dev server |
+| `pnpm build`                            | Builds the packages, then a standalone Next build         |
+| `pnpm lint`                             | ESLint across the workspace, including the boundary rules |
+| `pnpm typecheck`                        | `tsc --noEmit` per package                                |
+| `pnpm test`                             | Vitest per package                                        |
+| `pnpm format` / `format:check`          | Prettier                                                  |
+| `pnpm db:start` / `db:stop`             | Local Supabase stack                                      |
+| `--filter @occasion/db db:reset`        | Drop, migrate and seed the database                       |
+| `--filter @occasion/db db:migrate`      | Apply pending migrations only                             |
+| `--filter @occasion/web auth:provision` | Creates provider logins for the seeded accounts           |
 
 ## Layout
 
@@ -180,6 +189,30 @@ The gate for server actions and route handlers is `requireAdminActor()` in
 `apps/web/src/lib/auth-guard.ts`. `(admin)/layout.tsx` redirects for the sake of
 the person browsing and is **not** the boundary: Next.js does not run a layout
 for a server action.
+
+## Signing in
+
+Email and password, or Google where a deployment has configured it —
+`AUTH_GOOGLE_ENABLED` hides the button otherwise, because a provider button that
+is visible but unconfigured only fails after the person has committed to it. A
+Google sign-in with no account here lands on `/welcome`, which asks the one
+question the provider cannot answer: which of the two self-assignable roles they
+came for.
+
+Two-step verification is **offered, not required**. Nothing refuses an
+administrator who has not enrolled — an accepted risk with compensating controls
+recorded in the plan. Once someone does enrol, though, every later session has to
+clear the challenge: verifying enrolment sets `users.mfa_enrolled_at`, and
+`getActor` refuses a session that has not reached the second factor. The
+requirement is read from that column rather than from the provider's session
+object, because the session object arrives in a cookie the browser controls — a
+stolen password plus an edited cookie must not be able to answer it away. Losing
+an authenticator is therefore a lockout, and an administrator clears it from
+`/admin`, which deletes the provider's factor as well as the flag.
+
+The active role is a cookie. It decides what is shown and what an audit row
+records; it is validated against the roles actually held and consulted by no
+gate.
 
 ## Prototype parity
 

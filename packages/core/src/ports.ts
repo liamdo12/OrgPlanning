@@ -28,6 +28,15 @@ export type AuthUser = {
    * registering with its address.
    */
   emailVerified: boolean;
+  /**
+   * Whether this session has cleared a second factor.
+   *
+   * Whether one is *required* is not asked of the provider: its session object
+   * lists the factors a person enrolled, and that object reaches the server in
+   * a cookie the browser controls. The requirement is read from our own row, so
+   * a stolen password plus an edited cookie cannot answer it away.
+   */
+  secondFactorVerified: boolean;
 };
 
 /**

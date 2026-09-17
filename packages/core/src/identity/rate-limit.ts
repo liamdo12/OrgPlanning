@@ -29,6 +29,20 @@ export const LOGIN_RULE: RateLimitRule = {
   blockMs: 15 * 60 * 1000,
 };
 
+/**
+ * Second-factor codes.
+ *
+ * A six-digit code is 10^6 possibilities and each one is valid for about a
+ * minute, so an unbounded endpoint is guessable in an afternoon. Tighter than
+ * the login limit because nobody mistypes it ten times.
+ */
+export const SECOND_FACTOR_RULE: RateLimitRule = {
+  scope: "second_factor",
+  limit: 6,
+  windowMs: 15 * 60 * 1000,
+  blockMs: 15 * 60 * 1000,
+};
+
 export const PASSWORD_RESET_RULE: RateLimitRule = {
   scope: "password_reset",
   limit: 5,

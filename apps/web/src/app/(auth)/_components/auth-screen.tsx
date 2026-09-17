@@ -2,7 +2,13 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
-import { signInAction, signUpAction, type AuthActionState } from "../actions";
+import {
+  signInAction,
+  signInWithGoogleAction,
+  signUpAction,
+  type AuthActionState,
+} from "../actions";
+import { RoleChoice } from "./role-choice";
 
 /**
  * The shared sign-in and sign-up screen.
@@ -11,9 +17,10 @@ import { signInAction, signUpAction, type AuthActionState } from "../actions";
  * headline, blurb and three trust bullets, and a right column with the tabs and
  * the email form. Role chips appear on signup only.
  *
- * The prototype also shows Google and Apple buttons. Neither is built yet, so
- * neither is rendered — a button that looks real and does nothing is worse than
- * its absence. Recorded in docs/design-gaps.md.
+ * The Google button appears only where Google sign-in is actually configured.
+ * The prototype also shows an Apple button; that provider is not built, and a
+ * button that looks real and does nothing is worse than its absence. Recorded
+ * in docs/design-gaps.md.
  *
  * Styling is deliberately plain Tailwind against the placeholder tokens — the
  * glass design system replaces it, and inventing glass values here would
@@ -26,12 +33,6 @@ const TRUST_POINTS = [
   "Messages and offers stay on the platform, so nothing gets lost.",
   "One page per event, shared with everyone you book.",
 ];
-
-/** Source: `authRoles`, line 2253. The only two roles a person may choose. */
-const ROLE_CHOICES = [
-  { value: "customer", label: "Plan an event" },
-  { value: "vendor", label: "Offer services" },
-] as const;
 
 const COPY = {
   login: {
@@ -50,9 +51,24 @@ const COPY = {
 
 const INITIAL: AuthActionState = {};
 
-export function AuthScreen({ mode, next }: { mode: "login" | "signup"; next: string }) {
+export function AuthScreen({
+  mode,
+  next,
+  googleEnabled,
+  notice,
+}: {
+  mode: "login" | "signup";
+  next: string;
+  googleEnabled: boolean;
+  /** Why the person was sent back here, when something sent them. */
+  notice?: string | undefined;
+}) {
   const action = mode === "login" ? signInAction : signUpAction;
   const [state, formAction, pending] = useActionState(action, INITIAL);
+  const [googleState, googleAction, googlePending] = useActionState(
+    signInWithGoogleAction,
+    INITIAL,
+  );
   const copy = COPY[mode];
 
   return (
@@ -74,6 +90,12 @@ export function AuthScreen({ mode, next }: { mode: "login" | "signup"; next: str
       </section>
 
       <section className="rounded-3xl border border-black/10 bg-white/60 p-6 backdrop-blur md:p-8">
+        {notice ? (
+          <p role="status" className="mb-4 rounded-2xl bg-black/5 px-4 py-3 text-sm">
+            {notice}
+          </p>
+        ) : null}
+
         <nav className="mb-6 flex gap-1 rounded-full bg-black/5 p-1 text-sm" aria-label="Account">
           <Link
             href="/login"
@@ -95,34 +117,31 @@ export function AuthScreen({ mode, next }: { mode: "login" | "signup"; next: str
           </Link>
         </nav>
 
+        {googleEnabled ? (
+          <>
+            <form action={googleAction}>
+              <input type="hidden" name="next" value={next} />
+              <button
+                type="submit"
+                disabled={googlePending}
+                className="mb-4 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm font-semibold disabled:opacity-60"
+              >
+                {googlePending ? "Working…" : "Continue with Google"}
+              </button>
+            </form>
+            {googleState.error ? (
+              <p role="alert" className="mb-4 text-sm text-red-700">
+                {googleState.error}
+              </p>
+            ) : null}
+            <p className="mb-4 text-center text-xs uppercase tracking-wide opacity-50">or</p>
+          </>
+        ) : null}
+
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="next" value={next} />
 
-          {mode === "signup" ? (
-            <fieldset>
-              <legend className="mb-2 text-sm font-medium">How will you use Occasion?</legend>
-              <div className="flex gap-2">
-                {ROLE_CHOICES.map((choice, index) => (
-                  <label
-                    key={choice.value}
-                    className="flex-1 cursor-pointer rounded-full border border-black/10 px-4 py-2 text-center text-sm has-checked:border-black/40 has-checked:font-semibold"
-                  >
-                    <input
-                      type="radio"
-                      name="role"
-                      value={choice.value}
-                      defaultChecked={index === 0}
-                      className="sr-only"
-                    />
-                    {choice.label}
-                  </label>
-                ))}
-              </div>
-              {state.fieldErrors?.["role"] ? (
-                <p className="mt-2 text-sm text-red-700">Choose one to continue.</p>
-              ) : null}
-            </fieldset>
-          ) : null}
+          {mode === "signup" ? <RoleChoice error={state.fieldErrors?.["role"]} /> : null}
 
           {mode === "signup" ? (
             <Field

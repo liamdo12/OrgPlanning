@@ -2,7 +2,9 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import {
+  ForbiddenError,
   LOGIN_RULE,
   PASSWORD_RESET_RULE,
   RateLimitedError,
@@ -13,11 +15,14 @@ import {
   parseSelfAssignableRole,
   requireUser,
   safeRedirectPath,
+  selectActiveRole,
   signUp,
 } from "@occasion/core";
 import { createRequestContext } from "../../lib/core";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
+import { clearActiveRole, writeActiveRole } from "../../lib/active-role";
 import { getEnv } from "../../lib/env";
+import { readString } from "../../lib/form-values";
 
 /**
  * The auth server actions.
@@ -40,11 +45,6 @@ export type AuthActionState = {
 };
 
 const GENERIC_CREDENTIALS_ERROR = "That email and password do not match.";
-
-function readString(form: FormData, key: string): string {
-  const value = form.get(key);
-  return typeof value === "string" ? value : "";
-}
 
 /**
  * The client address, for rate limiting.
@@ -95,6 +95,20 @@ export async function signInAction(
     return { error: GENERIC_CREDENTIALS_ERROR };
   }
 
+  // Cleared on a correct password rather than on a completed sign-in: the
+  // branches below either hand off to the challenge or end the session, and
+  // both leave the counters behind. Someone who already has the password
+  // gains nothing from the reset.
+  await clearAttempts(ctx, LOGIN_RULE, `email:${email}`);
+  await clearAttempts(ctx, LOGIN_RULE, `ip:${address}`);
+
+  // A password is one factor. If this person enrolled a second one, the session
+  // is not finished yet — and until it is, `getActor` reports them as anonymous,
+  // so the status check below would sign them out instead of challenging them.
+  if (await secondFactorOutstanding(supabase)) {
+    redirect(`/mfa/challenge?next=${encodeURIComponent(next)}`);
+  }
+
   // The provider knows nothing about account status, so a suspended or
   // unverified person would otherwise sign in successfully and only discover
   // it on an admin route. End the session here instead.
@@ -107,9 +121,146 @@ export async function signInAction(
     };
   }
 
-  await clearAttempts(ctx, LOGIN_RULE, `email:${email}`);
-  await clearAttempts(ctx, LOGIN_RULE, `ip:${address}`);
   redirect(next);
+}
+
+/**
+ * Whether the provider is still waiting for a second factor.
+ *
+ * Only ever used to decide *where to send the browser*. Whether a factor is
+ * required is answered in the domain, from our own row, because this one comes
+ * out of the session object and the session object comes out of a cookie.
+ */
+async function secondFactorOutstanding(
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<boolean> {
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error || !data) return false;
+  return data.nextLevel === "aal2" && data.nextLevel !== data.currentLevel;
+}
+
+/**
+ * Hands the browser to Google.
+ *
+ * `next` survives the round trip as a query parameter on the callback and is
+ * re-validated there; nothing is trusted on the way back.
+ */
+export async function signInWithGoogleAction(
+  _previous: AuthActionState,
+  form: FormData,
+): Promise<AuthActionState> {
+  const env = getEnv();
+
+  if (!env.AUTH_GOOGLE_ENABLED) {
+    return { error: "Google sign-in is not available." };
+  }
+
+  const next = safeRedirectPath(readString(form, "next"), "/");
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${env.APP_URL}/auth-callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) {
+    return { error: "Could not start Google sign-in. Try again." };
+  }
+
+  redirect(data.url);
+}
+
+/**
+ * Finishes an account that arrived through a provider rather than the form.
+ *
+ * Google tells us who someone is, not what they came here to do, so the role
+ * chips have to be asked for once. The role goes through the same closed enum
+ * as the signup form — a provider sign-in is not a way around it.
+ */
+export async function completeProfileAction(
+  _previous: AuthActionState,
+  form: FormData,
+): Promise<AuthActionState> {
+  const ctx = createRequestContext();
+  const next = safeRedirectPath(readString(form, "next"), "/");
+  const supabase = await createSupabaseServerClient();
+
+  const { data, error } = await supabase.auth.getClaims();
+  if (error || !data?.claims) {
+    redirect("/login");
+  }
+
+  const claims = data.claims as {
+    sub?: string;
+    email?: string;
+    email_verified?: boolean;
+    user_metadata?: { email_verified?: boolean; full_name?: string };
+  };
+
+  const email = (claims.email ?? "").trim().toLowerCase();
+  const verified = claims.email_verified === true || claims.user_metadata?.email_verified === true;
+
+  if (!claims.sub || !email) {
+    return { error: "That sign-in did not include an email address." };
+  }
+
+  // The same rule as elsewhere: an address nobody has proven must not be able
+  // to attach itself to an account that already exists under it.
+  if (!verified) {
+    return { error: "Confirm your email address with your provider, then try again." };
+  }
+
+  try {
+    const role = parseSelfAssignableRole(readString(form, "role"));
+
+    await signUp(ctx, {
+      email,
+      fullName: readString(form, "fullName"),
+      role,
+      authProviderSub: claims.sub,
+      emailVerified: true,
+    });
+  } catch (caught) {
+    if (caught instanceof ValidationError) {
+      // An account under this address already exists, so this is not a first
+      // sign-in at all — the domain refused the session for some other reason
+      // (suspended, or issued before a revocation). There is nothing to finish
+      // here, and leaving them on this page is a dead end, so end the session
+      // and let the login screen say what it says.
+      if (caught.issues?.["email"] === "taken") {
+        await supabase.auth.signOut();
+        redirect("/login?error=session");
+      }
+
+      return { error: caught.message, fieldErrors: caught.issues };
+    }
+    throw caught;
+  }
+
+  redirect(next);
+}
+
+/**
+ * Remembers which of their roles a person is looking through.
+ *
+ * A preference, not a permission: `selectActiveRole` refuses a role they do not
+ * hold, and every gate reads the roles themselves, so the worst a forged value
+ * achieves is being ignored.
+ */
+export async function switchRoleAction(form: FormData): Promise<void> {
+  const ctx = createRequestContext();
+  const actor = await getActor(ctx);
+
+  try {
+    await writeActiveRole(selectActiveRole(actor, readString(form, "role")));
+  } catch (error) {
+    if (!(error instanceof ForbiddenError)) throw error;
+    return;
+  }
+
+  revalidatePath("/", "layout");
 }
 
 export async function signUpAction(
@@ -207,5 +358,8 @@ export async function requestPasswordResetAction(
 export async function signOutAction(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
+  // The next person at this browser starts from their own default rather than
+  // inheriting a role chip from whoever signed out.
+  await clearActiveRole();
   redirect("/login");
 }

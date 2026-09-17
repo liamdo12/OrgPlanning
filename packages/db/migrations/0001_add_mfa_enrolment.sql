@@ -1,0 +1,1 @@
+ALTER TABLE "app"."users" ADD COLUMN "mfa_enrolled_at" timestamp with time zone;

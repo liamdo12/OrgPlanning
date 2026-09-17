@@ -6,7 +6,12 @@
  * expires, so the claim is treated as a cache and the row is the authority.
  */
 
+import { ForbiddenError } from "../errors.js";
+
 export type RoleName = "customer" | "vendor" | "admin";
+
+/** Every role this system knows. Order is the fallback order for `activeRole`. */
+export const ROLE_NAMES: readonly RoleName[] = ["admin", "vendor", "customer"];
 
 export type UserStatus = "active" | "pending" | "unverified" | "suspended";
 
@@ -60,4 +65,27 @@ export function isUsable(actor: Actor): actor is Extract<Actor, { kind: "user" }
 
 export function belongsToVendor(actor: Actor, vendorId: string): boolean {
   return isAuthenticated(actor) && actor.vendorIds.includes(vendorId);
+}
+
+/** Narrows an arbitrary value — a cookie, a form field — to a known role. */
+export function parseRoleName(value: unknown): RoleName | undefined {
+  return ROLE_NAMES.find((role) => role === value);
+}
+
+/**
+ * Resolves the role a person asked to look through.
+ *
+ * Switching roles changes what is shown and what an audit row records; it never
+ * changes what is permitted. Refusing a role the actor does not hold is
+ * therefore not an authorization check — `requireAdmin` still runs regardless —
+ * it stops the audit trail from being able to name a role the person never had.
+ */
+export function selectActiveRole(actor: Actor, requested: unknown): RoleName {
+  const role = parseRoleName(requested);
+
+  if (!role || !hasRole(actor, role)) {
+    throw new ForbiddenError("Not one of your roles.");
+  }
+
+  return role;
 }

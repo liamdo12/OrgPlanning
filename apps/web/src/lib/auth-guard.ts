@@ -8,7 +8,11 @@ import {
   requireAdmin,
   type Actor,
 } from "@occasion/core";
+
+/** A signed-in, usable account — what the gate returns once it has passed. */
+type AdminActor = Extract<Actor, { kind: "user" }>;
 import { createRequestContext } from "./core";
+import { readActiveRole } from "./active-role";
 
 /**
  * The authorization entry point for every server surface.
@@ -31,14 +35,14 @@ import { createRequestContext } from "./core";
 
 export const currentActor = cache(async (): Promise<Actor> => {
   const ctx = createRequestContext();
-  return getActor(ctx);
+  // The requested role only labels the answer: `getActor` drops it unless the
+  // person holds it, and no gate consults it.
+  return getActor(ctx, { activeRole: await readActiveRole() });
 });
 
 /** Throws unless the caller is a usable account holding the admin role. */
-export async function requireAdminActor(): Promise<Actor> {
-  const actor = await currentActor();
-  requireAdmin(actor);
-  return actor;
+export async function requireAdminActor(): Promise<AdminActor> {
+  return requireAdmin(await currentActor());
 }
 
 /**

@@ -1,8 +1,9 @@
 import type { CoreContext } from "../context.js";
-import { ForbiddenError, UnauthenticatedError, ValidationError } from "../errors.js";
+import { ForbiddenError, NotFoundError, UnauthenticatedError, ValidationError } from "../errors.js";
 import { record } from "../audit/service.js";
 import {
   ANONYMOUS,
+  ROLE_NAMES,
   SELF_ASSIGNABLE_ROLES,
   isAdmin,
   isAuthenticated,
@@ -10,6 +11,7 @@ import {
   type RoleName,
   type UserStatus,
 } from "./actor.js";
+import { assertCanActOnUser } from "./policies.js";
 import * as repo from "./repo.js";
 
 /**
@@ -65,6 +67,16 @@ export async function getActor(
     return ANONYMOUS;
   }
 
+  // A second factor is optional to set up. Once set up it is not optional to
+  // use: a session that has not cleared the challenge is refused here, so an
+  // abandoned challenge cannot be walked around by navigating elsewhere.
+  //
+  // The requirement is this column rather than the provider's factor list,
+  // because that list arrives inside a browser-held session object.
+  if (identity.mfaEnrolledAt && !authUser.secondFactorVerified) {
+    return ANONYMOUS;
+  }
+
   const roles = identity.roles;
   const requested = options.activeRole;
 
@@ -77,7 +89,10 @@ export async function getActor(
     // A requested active role is honoured only if it is actually held. This is
     // presentation, not authority: selecting "customer" does not disarm an
     // admin, and selecting "admin" does not arm anyone else.
-    activeRole: requested && roles.includes(requested) ? requested : (roles[0] ?? "customer"),
+    activeRole:
+      requested && roles.includes(requested)
+        ? requested
+        : (ROLE_NAMES.find((role) => roles.includes(role)) ?? "customer"),
     vendorIds: identity.vendorIds,
   };
 }
@@ -113,10 +128,12 @@ export function requireRole(actor: Actor, role: RoleName): Extract<Actor, { kind
 /**
  * The gate on every admin entry point.
  *
- * Multi-factor authentication is NOT implemented and is not enforced here. The
- * decision to make it optional rather than a gate is recorded in the plan's
- * validation log along with the compensating controls. If that is revisited,
- * this function is where the gate goes.
+ * Multi-factor authentication is available and is not required here. Anyone who
+ * enrols a factor must clear it on every session — `getActor` sees to that —
+ * but an administrator without one still passes. The decision to make it
+ * optional rather than a gate is recorded in the plan's validation log along
+ * with the compensating controls; if it is revisited, one `user.mfaEnrolled`
+ * check in this function is the whole change.
  */
 export function requireAdmin(actor: Actor): Extract<Actor, { kind: "user" }> {
   return requireRole(actor, "admin");
@@ -193,6 +210,93 @@ export async function signUp(ctx: CoreContext, input: SignUpInput): Promise<stri
  */
 export async function markEmailVerified(ctx: CoreContext, userId: string): Promise<void> {
   await repo.markEmailVerified(ctx, userId, ctx.clock.now());
+}
+
+/**
+ * Records that a second factor was enrolled, or that the last one was removed.
+ *
+ * Enrolling is the account holder's own choice — nothing here requires an
+ * administrator to have one, which is the accepted risk recorded in the plan's
+ * validation log. What this column buys is the other half: once a factor
+ * exists, every later session has to clear the challenge.
+ *
+ * Call it only after the provider has actually verified the factor. Setting it
+ * first would lock the person out of the very session they are enrolling from.
+ */
+export async function setSecondFactorEnrolled(
+  ctx: CoreContext,
+  actor: Actor,
+  enrolled: boolean,
+): Promise<void> {
+  const user = requireUser(actor);
+  const now = ctx.clock.now();
+
+  await repo.setMfaEnrolledAt(ctx, user.userId, enrolled ? now : null, now);
+
+  await record(ctx, actor, {
+    action: enrolled ? "identity.mfa.enrol" : "identity.mfa.remove",
+    entityType: "user",
+    entityId: user.userId,
+    before: { secondFactor: !enrolled },
+    after: { secondFactor: enrolled },
+  });
+}
+
+/**
+ * Removes the second-factor requirement from someone else's account.
+ *
+ * The way back in for a person who has lost their authenticator. Without it,
+ * enrolling a factor and then losing the phone would be permanent — the account
+ * holder cannot turn the factor off, because an unanswered challenge makes them
+ * anonymous, which is the whole point of the requirement.
+ *
+ * Clearing the flag alone is not enough: the provider still believes a factor
+ * is enrolled and would send them back to a challenge they cannot answer, so
+ * the caller deletes the provider's factor too. That is why the subject is
+ * returned.
+ */
+export async function clearSecondFactor(
+  ctx: CoreContext,
+  actor: Actor,
+  targetUserId: string,
+): Promise<{ authProviderSub: string | null }> {
+  requireAdmin(actor);
+  const now = ctx.clock.now();
+
+  const target = await repo.loadIdentity(ctx, targetUserId);
+  if (!target) {
+    throw new NotFoundError("No such account.");
+  }
+
+  // Refuses an administrator doing this to themselves — self-service lives at
+  // /mfa, where the challenge has already been answered.
+  assertCanActOnUser(actor, { id: target.userId });
+
+  await repo.setMfaEnrolledAt(ctx, targetUserId, null, now);
+  // Whoever is holding a session for this account loses it: if the factor was
+  // removed because the account may be compromised, leaving live sessions alone
+  // would make the removal pointless.
+  await repo.bumpSessionsValidAfter(ctx, targetUserId, now);
+
+  await record(ctx, actor, {
+    action: "identity.mfa.clear",
+    entityType: "user",
+    entityId: targetUserId,
+    before: { secondFactor: target.mfaEnrolledAt !== null },
+    after: { secondFactor: false },
+  });
+
+  return { authProviderSub: target.authProviderSub };
+}
+
+/** Finds an account by address. Administrators only — it answers whether one exists. */
+export async function findUserIdByEmail(
+  ctx: CoreContext,
+  actor: Actor,
+  email: string,
+): Promise<string | undefined> {
+  requireAdmin(actor);
+  return repo.findUserIdByEmail(ctx, email.trim().toLowerCase());
 }
 
 /**

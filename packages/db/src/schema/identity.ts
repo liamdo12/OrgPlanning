@@ -28,6 +28,17 @@ export const users = app.table(
     sessionsValidAfter: timestamp("sessions_valid_after", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /**
+     * When this person last had a verified second factor.
+     *
+     * Mirrored from the auth provider rather than read back from the session:
+     * the provider's session object lists enrolled factors, but it arrives in a
+     * cookie the browser controls, so a stolen password plus an edited cookie
+     * would walk straight past the challenge. This column is the authority, and
+     * `getActor` refuses a session that has not reached the second factor while
+     * it is set.
+     */
+    mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     isDemo,
     ...timestamps,

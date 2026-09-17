@@ -26,6 +26,10 @@ pnpm typecheck
 pnpm test
 pnpm db:start         # local Supabase (API 54321, db 54322, Studio 54323, mail 54324)
 
+# Seeded accounts have no provider login until this runs — the seed writes rows,
+# not auth accounts. Without it nobody can sign in, the administrator included.
+SEED_USER_PASSWORD='…' pnpm --filter @occasion/web auth:provision
+
 pnpm --filter @occasion/db db:reset     # drop, migrate, seed
 pnpm --filter @occasion/db db:migrate   # apply pending migrations
 TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres \
@@ -40,13 +44,13 @@ so a variable exported in your shell does not reach the task.
 
 ## Layout
 
-| Package           | Rule                                                                                                                                                     |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts` and build configs are exempt from `no-process-env`. |
-| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                 |
-| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                       |
-| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                        |
-| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                         |
+| Package           | Rule                                                                                                                                                                                   |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts`, `proxy.ts`, the build configs and `scripts/**` are exempt from `no-process-env`. |
+| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                                               |
+| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                                                     |
+| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                                                      |
+| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                                                       |
 
 ESLint enforces these over `src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}` — the glob is
 wide on purpose, since a rule that stops applying to `.tsx` would not survive
@@ -82,12 +86,34 @@ confirm the row exists, and each one also refuses an account that is not
 active.
 
 **Authority is held, never active.** `actor.roles` decides; `actor.activeRole`
-is presentation and audit provenance only. Never gate on `activeRole`.
+is presentation and audit provenance only. Never gate on `activeRole`. The role
+switcher writes an `httpOnly` cookie that `getActor` honours only when the role
+is actually held — forging it changes a label, not a permission.
+
+**MFA is offered, not required — but enforced once enrolled.** Nothing refuses
+an administrator who has not set up a second factor (the accepted risk, with its
+compensating controls, is in the plan's validation log). Verifying an enrolment
+sets `users.mfa_enrolled_at`, and from then on `getActor` refuses a session that
+has not cleared the challenge. That column is the requirement, never the
+provider's session object — the session lists enrolled factors but arrives in a
+cookie the browser controls, so a stolen password plus an edited cookie could
+answer it away. An administrator clears a lost factor from `/admin`, which
+deletes the provider's factor as well as the flag; clearing only one of the two
+leaves the person bouncing off a challenge they cannot answer.
 
 **Revocation is a timestamp.** Suspension, role grant and role revoke all move
 `users.sessions_valid_after`; `getActor` rejects tokens issued before it, and
 rejects a token with no issue time at all rather than skipping the check. If you
 add a way to change what someone may do, move that column too.
+
+**Binding a provider subject depends on the provider confirming addresses.**
+`getActor` attaches a subject to an existing row only when the token says the
+address is verified, and for an email signup that claim rides in
+`user_metadata`, which is writable by its own account. What stops that being a
+way to claim someone else's row is that the `email` claim itself cannot be
+changed without confirming the new mailbox — so a deployment with provider-side
+confirmation turned off loses the guarantee. It is on in `supabase/config.toml`;
+leave it on.
 
 **The provider subject is not our primary key.** `getActor` resolves
 `auth_provider_sub` → `users.id`, binding the two on first sign-in only when the
