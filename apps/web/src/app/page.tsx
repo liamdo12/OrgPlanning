@@ -1,3 +1,4 @@
+import { AppBackground, GlassPanel, PageHeader } from "@occasion/ui";
 import { createRequestContext } from "../lib/core";
 
 /**
@@ -30,24 +31,30 @@ export default function Home() {
   ];
 
   return (
-    <main className="mx-auto max-w-xl p-10 font-sans">
-      <h1 className="text-2xl font-semibold">Occasion</h1>
-      {showDiagnostics ? (
-        <>
-          <p className="mt-2 text-sm opacity-70">
-            Monorepo foundation. The values below come from a core context built the same way every
-            server action builds one.
-          </p>
-          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            {rows.map(([label, value]) => (
-              <div key={label} className="contents">
-                <dt className="opacity-70">{label}</dt>
-                <dd className="font-mono">{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
-      ) : null}
-    </main>
+    <AppBackground>
+      <main className="mx-auto max-w-xl px-4 py-16">
+        <PageHeader
+          title="Occasion"
+          blurb={
+            showDiagnostics
+              ? "Monorepo foundation. The values below come from a core context built the same way every server action builds one."
+              : undefined
+          }
+        />
+
+        {showDiagnostics ? (
+          <GlassPanel className="p-6">
+            <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-2 text-row">
+              {rows.map(([label, value]) => (
+                <div key={label} className="contents">
+                  <dt className="text-body">{label}</dt>
+                  <dd className="m-0 font-mono">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </GlassPanel>
+        ) : null}
+      </main>
+    </AppBackground>
   );
 }

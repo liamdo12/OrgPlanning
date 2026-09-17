@@ -1,7 +1,8 @@
 "use client";
 
-import { switchRoleAction } from "../../(auth)/actions";
 import type { RoleName } from "@occasion/core";
+import { switchRoleAction } from "../../(auth)/actions";
+import { themeFor } from "../../../lib/role-theme";
 
 /**
  * Switches which role a person is looking through.
@@ -15,17 +16,20 @@ export function RoleSwitcher({ roles, active }: { roles: readonly RoleName[]; ac
   if (roles.length < 2) return null;
 
   return (
-    <form action={switchRoleAction} className="flex items-center gap-1 text-xs">
-      <span className="opacity-60">Viewing as</span>
+    <form action={switchRoleAction} className="flex items-center gap-1 text-badge">
+      <span className="text-body">Viewing as</span>
       {roles.map((role) => (
         <button
           key={role}
           type="submit"
           name="role"
           value={role}
+          // Each chip carries its own theme, so the selected one is tinted in
+          // the colour of the role it selects rather than the one in force.
+          data-role={themeFor(role)}
           aria-pressed={role === active}
-          className={`rounded-full px-3 py-1 capitalize ${
-            role === active ? "bg-black/10 font-semibold" : "opacity-70"
+          className={`rounded-pill px-3 py-1 capitalize ${
+            role === active ? "bg-role-tint font-bold text-ink" : "text-body"
           }`}
         >
           {role}

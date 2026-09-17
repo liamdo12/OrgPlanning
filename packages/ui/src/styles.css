@@ -1,11 +1,13 @@
 /*
  * The design system's stylesheet. `apps/web` imports this one file.
  *
- * It carries the glass tokens, primitives and admin patterns extracted from
- * the prototype. For now it only proves the Tailwind v4 pipeline resolves
- * across package boundaries.
+ * Order matters: the preset defines the tokens, the base layer styles the page
+ * and the role themes that override them, and the component layer dresses the
+ * primitives.
  */
 @import "@occasion/config/tailwind/preset.css";
+@import "./styles/base.css";
+@import "./styles/components.css";
 
 /*
  * Tailwind v4 scans the importing project's sources by default. This registers

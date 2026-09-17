@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GlassPanel, PageHeader } from "@occasion/ui";
 import { requireAdminActor } from "../../../lib/auth-guard";
 import { ClearSecondFactorForm } from "../_components/clear-second-factor-form";
 
@@ -18,13 +19,13 @@ export default async function AdminHomePage() {
   const actor = await requireAdminActor();
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-12">
-      <h1 className="text-2xl font-semibold">Admin</h1>
-      <p className="mt-3 text-sm opacity-70">
-        Signed in as {actor.email}, holding {actor.roles.join(", ")}, viewing as {actor.activeRole}.
-      </p>
+    <main className="mx-auto max-w-5xl px-4 py-12">
+      <PageHeader
+        title="Admin"
+        blurb={`Signed in as ${actor.email}, holding ${actor.roles.join(", ")}, viewing as ${actor.activeRole}.`}
+      />
 
-      <ul className="mt-8 space-y-2 text-sm">
+      <ul className="m-0 grid list-none gap-2 p-0 text-row">
         <li>
           <Link href="/admin/vendors" className="underline underline-offset-4">
             Vendors
@@ -32,14 +33,14 @@ export default async function AdminHomePage() {
         </li>
       </ul>
 
-      <section className="mt-12 border-t border-black/10 pt-6">
-        <h2 className="text-sm font-semibold">Account recovery</h2>
-        <p className="mt-1 text-sm opacity-70">
+      <GlassPanel as="section" className="mt-10 p-6">
+        <h2 className="m-0 text-[17px] font-bold">Account recovery</h2>
+        <p className="mt-1 mb-0 max-w-[66ch] text-row text-body">
           Clears two-step verification for someone who has lost their authenticator, and ends their
           sessions. Confirm who they are first.
         </p>
         <ClearSecondFactorForm />
-      </section>
+      </GlassPanel>
     </main>
   );
 }

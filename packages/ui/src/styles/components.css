@@ -1,0 +1,439 @@
+/*
+ * The primitives' surfaces.
+ *
+ * Classes rather than utilities on every element, for two reasons: the glass
+ * recipe is six declarations that must stay identical wherever it appears, and
+ * `prefers-reduced-transparency` has to be able to replace it in one place.
+ * Components carry layout; this file carries appearance.
+ *
+ * All of it sits in `@layer components`, below Tailwind's `utilities` layer.
+ * That ordering is what lets a caller pass `className="rounded-card"` and have
+ * it win — unlayered CSS beats layered CSS whatever the specificity, so a rule
+ * outside a layer would silently override every utility a caller passes.
+ *
+ * Citations are line numbers in `design/Event Marketplace Glass.dc.html`,
+ * produced by grep.
+ */
+
+@layer components {
+  /* --- glass ------------------------------------------------------------ */
+
+  /*
+   * The recipe, line 227. 67 lines in the prototype declare this blur, each
+   * pairing `backdrop-filter` with `-webkit-backdrop-filter`; 63 of them carry
+   * the 0.52 fill.
+   *
+   * `.oc-button--secondary` is in this selector list rather than restating the
+   * six declarations: a second copy is what let the reduced-transparency
+   * fallback miss it.
+   */
+  .oc-glass,
+  .oc-button--secondary {
+    background: var(--color-glass);
+    backdrop-filter: blur(22px) saturate(170%);
+    -webkit-backdrop-filter: blur(22px) saturate(170%);
+    box-shadow: var(--shadow-glass);
+    border: 1px solid var(--color-glass-edge);
+  }
+
+  /* Sticky chrome is blurrier and lighter than a panel. Line 217. */
+  .oc-chrome {
+    background: var(--color-chrome);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+  }
+
+  /* An overlay blurs harder still, and sits far off the page. Line 258. */
+  .oc-overlay-surface {
+    background: var(--color-overlay);
+    backdrop-filter: blur(34px) saturate(180%);
+    -webkit-backdrop-filter: blur(34px) saturate(180%);
+    box-shadow: var(--shadow-overlay);
+    border: 1px solid rgb(255 255 255 / 0.9);
+    border-radius: var(--radius-overlay);
+  }
+
+  /* --- buttons ---------------------------------------------------------- */
+
+  .oc-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border: 0;
+    cursor: pointer;
+    font-weight: 700;
+    white-space: nowrap;
+    text-decoration: none;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .oc-button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* Solid role fill. Line 566. */
+  .oc-button--primary {
+    background: var(--color-role);
+    color: var(--color-surface);
+  }
+
+  .oc-button--primary:hover:not(:disabled) {
+    background: var(--color-role-hover);
+  }
+
+  /* Glass with a role-coloured edge on hover. Line 515. */
+  .oc-button--secondary {
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .oc-button--secondary:hover:not(:disabled) {
+    border-color: var(--color-role);
+  }
+
+  /* A faint fill with a soft edge, for repeated row actions. Line 1402. */
+  .oc-button--ghost {
+    background: var(--color-glass-wash);
+    border: 1px solid var(--color-glass-edge-soft);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .oc-button--ghost:hover:not(:disabled) {
+    border-color: var(--color-role);
+  }
+
+  /*
+   * Destructive actions. The prototype styles "Suspend" as glass with a warm
+   * border and warm text (shape at line 1686, colours at line 2629) rather
+   * than a red fill — so a destructive button is never the loudest thing on a
+   * screen full of them.
+   */
+  .oc-button--danger {
+    background: var(--color-glass);
+    border: 1px solid #ebcdbe;
+    color: #8a3d1e;
+  }
+
+  .oc-button--danger:hover:not(:disabled) {
+    border-color: var(--color-status-danger-fg);
+    color: var(--color-status-danger-fg);
+  }
+
+  /* Sizes: large from line 566, medium from line 1663, small from line 1686. */
+  .oc-button--lg {
+    border-radius: var(--radius-button);
+    padding: 15px;
+    font-size: 15.5px;
+    width: 100%;
+  }
+
+  .oc-button--md {
+    border-radius: var(--radius-pill);
+    padding: 11px 19px;
+    font-size: 13.5px;
+  }
+
+  .oc-button--sm {
+    border-radius: var(--radius-pill);
+    padding: 9px 14px;
+    font-size: 13px;
+  }
+
+  /* --- pills and chips -------------------------------------------------- */
+
+  /* Filter chips, line 1669. The selected state is a role fill, line 2626. */
+  .oc-chip {
+    border-radius: var(--radius-pill);
+    padding: 8px 15px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--color-chip);
+    color: var(--color-ink);
+    border: 1px solid var(--color-glass-edge-soft);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .oc-chip:hover {
+    border-color: var(--color-role);
+  }
+
+  .oc-chip[aria-pressed="true"],
+  .oc-chip[data-active="true"] {
+    background: var(--color-role);
+    color: var(--color-surface);
+    border-color: var(--color-role);
+  }
+
+  /* A label, not a control. Line 625. */
+  .oc-pill {
+    display: inline-block;
+    border-radius: var(--radius-pill);
+    padding: 4px 11px;
+    font-size: var(--text-badge);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  /* --- status badges ---------------------------------------------------- */
+
+  /* Line 1807: the badge in a table cell. */
+  .oc-badge {
+    display: inline-block;
+    border-radius: var(--radius-pill);
+    padding: 4px 10px;
+    font-size: var(--text-badge);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .oc-badge--success {
+    background: var(--color-status-success-bg);
+    color: var(--color-status-success-fg);
+  }
+
+  .oc-badge--warn {
+    background: var(--color-status-warn-bg);
+    color: var(--color-status-warn-fg);
+  }
+
+  .oc-badge--danger {
+    background: var(--color-status-danger-bg);
+    color: var(--color-status-danger-fg);
+  }
+
+  .oc-badge--neutral {
+    background: var(--color-status-neutral-bg);
+    color: var(--color-status-neutral-fg);
+  }
+
+  /* --- section navigation ----------------------------------------------- */
+
+  /*
+   * The desktop section links, line 455: no fill, a 2px underline in the role
+   * colour when current, and body-coloured text otherwise.
+   */
+  .oc-section-link {
+    background: none;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    padding: 10px 12px 11px;
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--color-body);
+    white-space: nowrap;
+    transition:
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .oc-section-link:hover {
+    color: var(--color-ink);
+  }
+
+  .oc-section-link[aria-current="page"] {
+    border-bottom-color: var(--color-role);
+    color: var(--color-ink);
+  }
+
+  /* --- avatar ------------------------------------------------------------ */
+
+  /* Line 1676. White initials on a solid tone. */
+  .oc-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-pill);
+    color: #ffffff;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex: none;
+  }
+
+  /* --- fields ------------------------------------------------------------ */
+
+  /* Line 263. */
+  .oc-input {
+    width: 100%;
+    background: var(--color-field);
+    border: 1px solid var(--color-glass-edge-soft);
+    border-radius: var(--radius-card);
+    padding: 13px;
+    font-size: var(--text-control);
+    color: var(--color-ink);
+  }
+
+  .oc-input::placeholder {
+    color: var(--color-body);
+  }
+
+  .oc-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Marks a field that failed validation, alongside the message. */
+  .oc-input[aria-invalid="true"] {
+    border-color: var(--color-status-danger-fg);
+  }
+
+  .oc-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  .oc-hint {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--color-body);
+  }
+
+  .oc-error {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--color-status-danger-fg);
+  }
+
+  /* Line 351: the prototype tints native controls rather than rebuilding them. */
+  .oc-check {
+    accent-color: var(--color-role);
+    width: 17px;
+    height: 17px;
+  }
+
+  /*
+   * A switch is a checkbox the prototype never had; built from one so it keeps
+   * the native control's keyboard behaviour and announces as a checkbox.
+   */
+  .oc-switch {
+    appearance: none;
+    position: relative;
+    width: 40px;
+    height: 23px;
+    border-radius: var(--radius-pill);
+    background: var(--color-status-neutral-bg);
+    border: 1px solid var(--color-glass-edge-soft);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    flex: none;
+  }
+
+  .oc-switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 17px;
+    height: 17px;
+    border-radius: var(--radius-pill);
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgb(31 42 36 / 0.25);
+    transition: transform 0.15s ease;
+  }
+
+  .oc-switch:checked {
+    background: var(--color-role);
+    border-color: var(--color-role);
+  }
+
+  .oc-switch:checked::after {
+    transform: translateX(17px);
+  }
+
+  .oc-switch:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* --- table -------------------------------------------------------------- */
+
+  /*
+   * Header row, line 1798. The prototype's `#5C6B62` here falls to 3.2:1 over
+   * the strongest ambient gradient, so the heading takes the body colour.
+   */
+  .oc-table-head {
+    background: var(--color-glass-wash);
+    font-size: var(--text-badge);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-body);
+  }
+
+  /* Body row, line 1802. */
+  .oc-table-row {
+    border-bottom: 1px solid var(--color-hairline);
+    font-size: var(--text-row);
+  }
+
+  .oc-table-row:last-child {
+    border-bottom: 0;
+  }
+
+  /*
+   * Rows stay flat on purpose: the blur is expensive, and a long admin table
+   * that blurs per row janks on a mid-range phone. Glass goes on the container.
+   */
+  .oc-table-row--link {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .oc-table-row--link:hover {
+    background: var(--color-glass-wash);
+  }
+
+  /* --- overlays ----------------------------------------------------------- */
+
+  .oc-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgb(31 42 36 / 0.28);
+    display: grid;
+  }
+
+  /* --- skeleton ----------------------------------------------------------- */
+
+  .oc-skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--color-glass-wash) 25%,
+      rgb(255 255 255 / 0.55) 50%,
+      var(--color-glass-wash) 75%
+    );
+    background-size: 200% 100%;
+    animation: oc-shimmer 1.4s linear infinite;
+    border-radius: var(--radius-card);
+  }
+
+  /* The shimmer is decoration; under reduced motion it becomes a flat block. */
+  @media (prefers-reduced-motion: reduce) {
+    .oc-skeleton {
+      animation: none;
+      background: var(--color-glass-wash);
+    }
+  }
+}
+
+@keyframes oc-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}

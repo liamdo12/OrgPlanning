@@ -1,0 +1,195 @@
+/*
+ * The page itself: reset, role themes, ambient background, focus, preferences.
+ *
+ * Transcribed from the prototype's own base stylesheet, lines 194–211, cited
+ * line by line. The additions are the focus ring and the two preference
+ * queries, which the prototype does not answer at all.
+ *
+ * Everything here is inside `@layer base`. Unlayered CSS beats layered CSS
+ * whatever the specificity, so a rule outside a layer would silently win over
+ * every Tailwind utility — and a `className` passed to a component would stop
+ * doing anything.
+ */
+
+@layer base {
+  /* --- reset ----------------------------------------------------------- */
+
+  /* Line 195. */
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /* Line 196. */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-paper);
+  }
+
+  /* Lines 205 and 215. */
+  body {
+    -webkit-font-smoothing: antialiased;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.5;
+  }
+
+  /*
+   * Lines 206–207, with one change. The prototype's link colour is the role's
+   * lighter shade, which reaches only 3.7:1 for a vendor over the strongest
+   * ambient gradient. Links take the darker shade the prototype uses on hover,
+   * which clears AA everywhere; hover then says so with the underline, which
+   * is the prototype's own affordance.
+   */
+  a {
+    color: var(--color-role-hover);
+    text-decoration: none;
+  }
+
+  a:hover {
+    text-decoration: underline;
+  }
+
+  /* Line 208. */
+  input,
+  button,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Lines 209–210. */
+  ::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar);
+    border-radius: 8px;
+  }
+
+  /* --- role themes ------------------------------------------------------ */
+
+  /*
+   * A role theme rewrites three variables and nothing else. Lines 1993–1997.
+   *
+   * Set `data-role` on any element and everything inside it re-themes, so an
+   * administrator previewing a customer surface gets the customer palette
+   * without a second stylesheet or a second set of components.
+   */
+
+  [data-role="vendor"] {
+    --color-role: #c2374b;
+    --color-role-hover: #a02637;
+    --color-role-tint: #fdf0f2;
+  }
+
+  [data-role="admin"] {
+    --color-role: #1f4d3a;
+    --color-role-hover: #163527;
+    --color-role-tint: #f3f7f3;
+  }
+
+  [data-role="customer"] {
+    --color-role: #3e6b34;
+    --color-role-hover: #2e5127;
+    --color-role-tint: #f2f7ec;
+  }
+
+  /* --- focus ------------------------------------------------------------ */
+
+  /*
+   * The prototype has no focus styling at all, which makes it unusable from a
+   * keyboard. A ring in the role colour is legible on glass.
+   *
+   * No `border-radius` here: browsers already follow the element's own radius
+   * when drawing an outline, and setting `inherit` reshapes any control whose
+   * radius comes from a utility class the moment it takes focus.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-role);
+    outline-offset: 2px;
+  }
+
+  /* --- ambient background ----------------------------------------------- */
+
+  /*
+   * Four fixed radial gradients behind everything, lines 197–204. Rendered by
+   * a component rather than `body::before` so a page can leave it out, and so
+   * the one element that paints it is visible in the tree.
+   */
+  .oc-ambient {
+    position: fixed;
+    inset: -20vh -10vw;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(46vw 42vh at 10% 6%, rgb(62 107 52 / 0.46), transparent 64%),
+      radial-gradient(40vw 38vh at 92% 2%, rgb(194 55 75 / 0.32), transparent 62%),
+      radial-gradient(54vw 50vh at 78% 78%, rgb(62 107 52 / 0.28), transparent 66%),
+      radial-gradient(44vw 40vh at 18% 96%, rgb(214 191 168 / 0.52), transparent 62%);
+  }
+
+  /* Everything that is not the background. Line 215. */
+  .oc-app {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    background: transparent;
+  }
+
+  /* --- preferences ------------------------------------------------------ */
+
+  /*
+   * Reduced transparency: every blurred fill becomes opaque, and the gradients
+   * go. The blur is the whole visual language here, so the fallback carries the
+   * same hierarchy — panels lighter than the page, chrome lighter than panels —
+   * rather than flattening to one colour.
+   */
+  @media (prefers-reduced-transparency: reduce) {
+    :root {
+      --color-glass: #f8f6f1;
+      --color-chrome: #faf7f2;
+      --color-overlay: #fcfbf8;
+      --color-glass-edge: rgb(31 42 36 / 0.12);
+      --color-glass-edge-soft: rgb(31 42 36 / 0.1);
+      --color-glass-wash: #efebe3;
+      --color-field: #ffffff;
+      --color-chip: #ffffff;
+      --color-status-neutral-bg: #eeeae2;
+    }
+
+    .oc-ambient {
+      display: none;
+    }
+
+    /* Every surface that declares a blur has to be listed here. */
+    .oc-glass,
+    .oc-chrome,
+    .oc-overlay-surface {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /*
+   * Reduced motion: no entrance animation, no transitions. Everything still
+   * arrives, it just arrives already in place.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

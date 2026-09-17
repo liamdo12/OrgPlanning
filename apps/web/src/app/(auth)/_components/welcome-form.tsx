@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Button, Input } from "@occasion/ui";
 import { completeProfileAction, type AuthActionState } from "../actions";
 import { RoleChoice } from "./role-choice";
 
@@ -27,43 +28,34 @@ export function WelcomeForm({
   const [state, action, pending] = useActionState(completeProfileAction, INITIAL);
 
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="grid gap-4">
       <input type="hidden" name="next" value={next} />
 
-      <p className="text-sm opacity-70">
-        Signed in as <span className="font-medium opacity-100">{email}</span>
+      <p className="text-row text-body">
+        Signed in as <span className="font-semibold text-ink">{email}</span>
       </p>
 
       <RoleChoice error={state.fieldErrors?.["role"]} />
 
-      <div>
-        <label htmlFor="welcome-name" className="mb-1 block text-sm font-medium">
-          Your name
-        </label>
-        <input
-          id="welcome-name"
-          name="fullName"
-          type="text"
-          autoComplete="name"
-          defaultValue={suggestedName}
-          required
-          className="w-full rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm"
-        />
-      </div>
+      <Input
+        id="welcome-name"
+        name="fullName"
+        label="Your name"
+        type="text"
+        autoComplete="name"
+        defaultValue={suggestedName}
+        required
+      />
 
       {state.error ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="oc-error">
           {state.error}
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-      >
+      <Button type="submit" intent="primary" size="lg" disabled={pending}>
         {pending ? "Working…" : "Finish setting up"}
-      </button>
+      </Button>
     </form>
   );
 }

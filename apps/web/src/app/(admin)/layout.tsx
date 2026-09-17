@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { isAdminRequest, requireAdminActor } from "../../lib/auth-guard";
 import { signOutAction } from "../(auth)/actions";
+import { AppBackground, GlassChrome } from "@occasion/ui";
 import { RoleSwitcher } from "./_components/role-switcher";
 
 /** Rendered per request: nothing it shows exists at build time. */
@@ -32,30 +33,35 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const actor = await requireAdminActor();
 
   return (
-    <div className="min-h-screen">
-      <header className="flex flex-wrap items-center gap-4 border-b border-black/10 px-4 py-3">
-        <Link href="/admin" className="text-sm font-semibold">
+    // The admin theme, applied once at the top: every surface below reads the
+    // same three variables. Line 1995.
+    <AppBackground role="admin">
+      <GlassChrome
+        as="header"
+        className="sticky top-0 z-40 flex flex-wrap items-center gap-4 border-b border-hairline px-4 py-3"
+      >
+        <Link href="/admin" className="font-display text-[19px] text-ink">
           Occasion admin
         </Link>
-        <nav className="flex gap-4 text-sm opacity-70">
+        <nav className="flex gap-4 text-row text-body">
           <Link href="/admin/vendors">Vendors</Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-4">
           <RoleSwitcher roles={actor.roles} active={actor.activeRole} />
-          <span className="text-xs opacity-60">{actor.email}</span>
-          <Link href="/mfa" className="text-xs underline underline-offset-4 opacity-70">
+          <span className="text-badge text-body">{actor.email}</span>
+          <Link href="/mfa" className="text-badge underline underline-offset-4">
             Security
           </Link>
           <form action={signOutAction}>
-            <button type="submit" className="text-xs underline underline-offset-4 opacity-70">
+            <button type="submit" className="text-badge text-body underline underline-offset-4">
               Sign out
             </button>
           </form>
         </div>
-      </header>
+      </GlassChrome>
 
       {children}
-    </div>
+    </AppBackground>
   );
 }

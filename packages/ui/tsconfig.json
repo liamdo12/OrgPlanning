@@ -2,9 +2,13 @@
   "extends": "@occasion/config/tsconfig/react-library.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
-    // Presentation only: no ambient Node globals leak into components.
-    "types": []
+    "rootDir": ".",
+    // The tests read the stylesheets from disk, so this program needs Node's
+    // types. Components still must not use them: `tsconfig.build.json`
+    // compiles `src` alone with `types: []`, so an ambient Node global in a
+    // component fails the build.
+    "types": ["node"],
+    "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "test/**/*.ts", "eslint.config.mjs"]
 }

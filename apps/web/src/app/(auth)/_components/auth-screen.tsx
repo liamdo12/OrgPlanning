@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import Link from "next/link";
+import { Button, GlassPanel, Input } from "@occasion/ui";
 import {
   signInAction,
   signInWithGoogleAction,
@@ -13,18 +14,15 @@ import { RoleChoice } from "./role-choice";
 /**
  * The shared sign-in and sign-up screen.
  *
- * Layout follows the prototype's `login` route: a left column carrying the
- * headline, blurb and three trust bullets, and a right column with the tabs and
- * the email form. Role chips appear on signup only.
+ * Layout follows the prototype's `login` route, lines 488–570: a left column
+ * carrying the headline, blurb and three trust bullets, and a glass panel on
+ * the right with the tab pair, the provider buttons, a divider and the email
+ * form. Role chips appear on signup only.
  *
  * The Google button appears only where Google sign-in is actually configured.
- * The prototype also shows an Apple button; that provider is not built, and a
- * button that looks real and does nothing is worse than its absence. Recorded
- * in docs/design-gaps.md.
- *
- * Styling is deliberately plain Tailwind against the placeholder tokens — the
- * glass design system replaces it, and inventing glass values here would
- * create a second source of truth for them.
+ * The prototype also shows an Apple button (line 519); that provider is not
+ * built, and a button that looks real and does nothing is worse than its
+ * absence. Recorded in docs/design-gaps.md.
  */
 
 /** Source: the prototype's `authPoints`, lines 2244–2248. */
@@ -72,169 +70,187 @@ export function AuthScreen({
   const copy = COPY[mode];
 
   return (
-    <main className="mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-4 py-12 md:grid-cols-2 md:gap-16">
+    <main className="mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-4 py-12 desk:grid-cols-2 desk:gap-16">
       <section>
-        <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">{copy.title}</h1>
-        <p className="mt-3 max-w-md text-sm opacity-70">{copy.blurb}</p>
+        <h1 className="m-0 font-display text-[clamp(30px,5vw,46px)] font-normal">{copy.title}</h1>
+        <p className="mt-4 mb-[22px] max-w-[40ch] text-[15.5px] text-pretty text-body">
+          {copy.blurb}
+        </p>
 
-        <ul className="mt-8 space-y-3">
+        {/* Line 497: an 11px grid capped at 34 characters. */}
+        <ul className="m-0 grid max-w-[34ch] list-none gap-[11px] p-0">
           {TRUST_POINTS.map((point) => (
-            <li key={point} className="flex gap-3 text-sm">
-              <span aria-hidden="true" className="opacity-60">
+            <li key={point} className="flex items-start gap-[10px] text-[14px] text-body">
+              {/* Line 500: a 19px tinted circle, not a bare tick. */}
+              <span
+                aria-hidden="true"
+                className="mt-px grid h-[19px] w-[19px] flex-none place-items-center rounded-pill bg-[#E9F0E2] text-[12px] font-bold text-[#2E5127]"
+              >
                 ✓
               </span>
-              <span className="max-w-sm">{point}</span>
+              {point}
             </li>
           ))}
         </ul>
       </section>
 
-      <section className="rounded-3xl border border-black/10 bg-white/60 p-6 backdrop-blur md:p-8">
+      {/* Line 507: radius 28, padding that shrinks with the viewport. */}
+      <GlassPanel as="section" className="rounded-hero p-[clamp(20px,3.5vw,30px)]">
         {notice ? (
-          <p role="status" className="mb-4 rounded-2xl bg-black/5 px-4 py-3 text-sm">
+          <p role="status" className="mb-4 rounded-card bg-glass-wash px-4 py-3 text-row">
             {notice}
           </p>
         ) : null}
 
-        <nav className="mb-6 flex gap-1 rounded-full bg-black/5 p-1 text-sm" aria-label="Account">
-          <Link
-            href="/login"
-            aria-current={mode === "login" ? "page" : undefined}
-            className={`flex-1 rounded-full px-4 py-2 text-center ${
-              mode === "login" ? "bg-white font-semibold shadow-sm" : "opacity-70"
-            }`}
-          >
+        {/* Line 508: the tab pair, a pill group with a 4px inset. */}
+        <nav
+          className="mb-5 flex gap-1 rounded-pill border border-glass-edge-soft bg-glass-wash p-1"
+          aria-label="Account"
+        >
+          <AuthTab href="/login" current={mode === "login"}>
             Log in
-          </Link>
-          <Link
-            href="/signup"
-            aria-current={mode === "signup" ? "page" : undefined}
-            className={`flex-1 rounded-full px-4 py-2 text-center ${
-              mode === "signup" ? "bg-white font-semibold shadow-sm" : "opacity-70"
-            }`}
-          >
+          </AuthTab>
+          <AuthTab href="/signup" current={mode === "signup"}>
             Sign up
-          </Link>
+          </AuthTab>
         </nav>
 
         {googleEnabled ? (
           <>
-            <form action={googleAction}>
+            <form action={googleAction} className="mb-[18px]">
               <input type="hidden" name="next" value={next} />
-              <button
+              <Button
                 type="submit"
+                intent="secondary"
                 disabled={googlePending}
-                className="mb-4 w-full rounded-2xl border border-black/15 bg-white px-4 py-3 text-sm font-semibold disabled:opacity-60"
+                className="w-full rounded-card px-[13px] py-[13px] text-control font-semibold"
               >
+                <GoogleMark />
                 {googlePending ? "Working…" : "Continue with Google"}
-              </button>
+              </Button>
             </form>
+
             {googleState.error ? (
-              <p role="alert" className="mb-4 text-sm text-red-700">
+              <p role="alert" className="mb-4 text-row text-status-danger-fg">
                 {googleState.error}
               </p>
             ) : null}
-            <p className="mb-4 text-center text-xs uppercase tracking-wide opacity-50">or</p>
+
+            {/* Line 527: a rule either side of the word. */}
+            <div className="mb-[18px] flex items-center gap-3">
+              <span className="h-px flex-1 bg-[#EFE9DF]" />
+              <span className="text-[12px] font-bold tracking-[0.06em] text-body uppercase">
+                or email
+              </span>
+              <span className="h-px flex-1 bg-[#EFE9DF]" />
+            </div>
           </>
         ) : null}
 
-        <form action={formAction} className="space-y-4">
+        <form action={formAction} className="grid gap-4">
           <input type="hidden" name="next" value={next} />
 
           {mode === "signup" ? <RoleChoice error={state.fieldErrors?.["role"]} /> : null}
 
           {mode === "signup" ? (
-            <Field
-              label="Your name"
+            <Input
+              id="field-fullName"
               name="fullName"
+              label="Your name"
               type="text"
               autoComplete="name"
-              error={state.fieldErrors?.["fullName"]}
+              required
+              error={state.fieldErrors?.["fullName"] ? "Check this field." : undefined}
             />
           ) : null}
 
-          <Field
-            label="Email"
+          <Input
+            id="field-email"
             name="email"
+            label="Email"
             type="email"
             autoComplete="email"
-            error={state.fieldErrors?.["email"]}
+            placeholder="sarah@example.ca"
+            required
+            error={state.fieldErrors?.["email"] ? "Check this field." : undefined}
           />
 
-          <Field
-            label="Password"
+          <Input
+            id="field-password"
             name="password"
+            label="Password"
             type="password"
             autoComplete={mode === "login" ? "current-password" : "new-password"}
-            error={state.fieldErrors?.["password"]}
+            required
+            error={state.fieldErrors?.["password"] ? "Check this field." : undefined}
           />
 
           {state.error ? (
             // A single message for both an unknown address and a wrong
             // password: saying which was wrong tells an attacker which
             // addresses have accounts.
-            <p role="alert" className="text-sm text-red-700">
+            <p role="alert" className="text-row text-status-danger-fg">
               {state.error}
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-          >
+          <Button type="submit" intent="primary" size="lg" disabled={pending} className="mt-[6px]">
             {pending ? "Working…" : copy.submit}
-          </button>
+          </Button>
         </form>
 
         {mode === "login" ? (
-          <p className="mt-4 text-center text-sm">
-            <Link href="/reset" className="underline underline-offset-4 opacity-70">
+          <p className="mt-3 mb-0 text-center text-[12.5px]">
+            <Link href="/reset" className="font-semibold">
               Forgotten your password?
             </Link>
           </p>
         ) : null}
-      </section>
+      </GlassPanel>
     </main>
   );
 }
 
-function Field({
-  label,
-  name,
-  type,
-  autoComplete,
-  error,
+/** One half of the tab pair. A link, because each mode has its own URL. */
+function AuthTab({
+  href,
+  current,
+  children,
 }: {
-  label: string;
-  name: string;
-  type: string;
-  autoComplete: string;
-  error?: string | undefined;
+  href: string;
+  current: boolean;
+  children: React.ReactNode;
 }) {
-  const id = `field-${name}`;
-  const errorId = `${id}-error`;
-
   return (
-    <div>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium">
-        {label}
-      </label>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        autoComplete={autoComplete}
-        required
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        className="w-full rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm"
+    <Link
+      href={href}
+      aria-current={current ? "page" : undefined}
+      className={`flex-1 rounded-pill py-[10px] text-center text-row font-bold ${
+        current ? "bg-role text-surface" : "text-ink"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** Source: the provider mark at line 516, transcribed path for path. */
+function GoogleMark() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true" className="flex-none">
+      <path
+        fill="#4285F4"
+        d="M23 12.2c0-.8-.1-1.6-.2-2.3H12v4.4h6.1a5.3 5.3 0 0 1-2.3 3.5v2.9h3.7c2.2-2 3.5-5 3.5-8.5z"
       />
-      {error ? (
-        <p id={errorId} className="mt-1 text-sm text-red-700">
-          Check this field.
-        </p>
-      ) : null}
-    </div>
+      <path
+        fill="#34A853"
+        d="M12 23.5c3.2 0 5.8-1 7.5-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.8 1.1-3 0-5.5-2-6.4-4.7H1.8v3a11.5 11.5 0 0 0 10.2 6.3z"
+      />
+      <path fill="#FBBC05" d="M5.6 14.2a6.9 6.9 0 0 1 0-4.4v-3H1.8a11.5 11.5 0 0 0 0 10.4z" />
+      <path
+        fill="#EA4335"
+        d="M12 5.1c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.5 11.5 0 0 0 1.8 6.8l3.8 3a6.8 6.8 0 0 1 6.4-4.7z"
+      />
+    </svg>
   );
 }

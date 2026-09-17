@@ -71,6 +71,55 @@ function isoDate(value: Date, timeZone: string): string {
 
 const EVENT_TIMEZONE = "America/Toronto";
 
+/** A zone's offset from UTC at a given instant, in milliseconds. */
+function zoneOffsetMs(value: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(value);
+
+  const field = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? "0");
+
+  return (
+    Date.UTC(
+      field("year"),
+      field("month") - 1,
+      field("day"),
+      // `hour12: false` renders midnight as 24 in some engines.
+      field("hour") % 24,
+      field("minute"),
+      field("second"),
+    ) - value.getTime()
+  );
+}
+
+/**
+ * The same wall-clock time, a whole number of calendar days earlier.
+ *
+ * Not `instant - n * 24h`. "Fourteen days before the event" is a date on a
+ * calendar, and across a daylight-saving transition a fixed 336 hours lands on
+ * the day before or the day after the intended one — which is a balance charged
+ * on the wrong date, and only when the event happens to sit on the far side of
+ * a March or November boundary.
+ *
+ * One adjustment, not a loop: a wall-clock time that a transition skips or
+ * repeats would land an hour out. Every instant this is asked about is an
+ * evening event time, nowhere near 02:00, so the case does not arise — but it
+ * is a limit of this function, not a property of the calendar.
+ */
+export function daysBeforeLocal(value: Date, count: number, timeZone: string): Date {
+  const naive = new Date(value.getTime() - days(count));
+  return new Date(
+    naive.getTime() + (zoneOffsetMs(value, timeZone) - zoneOffsetMs(naive, timeZone)),
+  );
+}
+
 export async function seed(options: SeedOptions): Promise<SeedResult> {
   const pool = createDb({ connectionString: options.connectionString, maxConnections: 1 });
   const { anchorAt } = options;
@@ -385,7 +434,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     const eventAt = at(anchorAt, days(eventDayOffset));
     const depositPaidAt = at(anchorAt, hours(order.depositPaidHoursAfterAnchor));
     const coolingEndsAt = at(depositPaidAt, hours(RULES.coolingWindowHours));
-    const balanceDueAt = at(eventAt, days(-RULES.balanceLeadDays));
+    const balanceDueAt = daysBeforeLocal(eventAt, RULES.balanceLeadDays, EVENT_TIMEZONE);
     const autoCompleteAt = at(eventAt, hours(RULES.autoCompleteHours));
     const paidInFull = "paidInFull" in order && order.paidInFull === true;
     const balanceFailed = "balanceFailed" in order && order.balanceFailed === true;

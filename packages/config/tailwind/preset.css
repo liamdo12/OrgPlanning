@@ -1,19 +1,162 @@
 /*
  * Shared Tailwind v4 entry for every surface that renders UI.
  *
- * Tailwind v4 is CSS-first: there is no tailwind.config.js. Design tokens live
- * in `@theme` and become utilities automatically.
+ * Tailwind v4 is CSS-first: there is no tailwind.config.js. Everything in
+ * `@theme` becomes both a CSS custom property and a utility, so `--color-ink`
+ * gives `text-ink`, `bg-ink`, `border-ink` and so on.
  *
- * SCOPE: this ships the plumbing plus enough tokens to prove the pipeline
- * compiles. The glass design system replaces the `@theme` block below with
- * tokens extracted from `design/Event Marketplace Glass.dc.html`, each citing a
- * source line number. Do not hand-pick brand values here.
+ * Every value below is transcribed from `design/Event Marketplace Glass.dc.html`
+ * and cites a line that actually carries it — the citations were produced by
+ * grep, and re-running that grep is how they stay true. Where the prototype
+ * uses a value in many places the citation is the first occurrence. Anything
+ * that is *not* in the prototype is called out as an addition rather than given
+ * a citation; the list of those is in docs/design-gaps.md.
  */
+
 @import "tailwindcss";
 
 @theme {
-  /* Placeholder — superseded by the extracted design tokens. */
-  --color-ink: #1f2421;
-  --color-canvas: #f4f1e9;
-  --color-forest: #1f4d3a;
+  /* --- surfaces -------------------------------------------------------- */
+
+  /** The page itself, behind the ambient gradients. Line 196. */
+  --color-paper: #f2efe7;
+  /** Opaque panels, and the text colour on a role-coloured fill. Line 378. */
+  --color-surface: #f4f1e9;
+  /** Sticky chrome: lighter and blurrier than a panel. Line 217. */
+  --color-chrome: rgb(250 247 242 / 0.55);
+  /** The glass fill, used on 63 surfaces. Line 227. */
+  --color-glass: rgb(255 255 255 / 0.52);
+  /** Overlay surfaces sit on a near-opaque fill. Line 258. */
+  --color-overlay: rgb(252 251 248 / 0.93);
+  /** The panel edge. Line 272. */
+  --color-glass-edge: rgb(255 255 255 / 0.72);
+  /** The lighter edge on pills and inline controls. Line 227. */
+  --color-glass-edge-soft: rgb(255 255 255 / 0.66);
+  /** Table-header wash and other faint fills. Line 310. */
+  --color-glass-wash: rgb(255 255 255 / 0.28);
+  /** Inputs. Line 229. */
+  --color-field: rgb(255 255 255 / 0.34);
+  /** An unselected filter chip. Line 2626. */
+  --color-chip: rgb(255 255 255 / 0.5);
+  /** Hairlines between rows. Line 920. */
+  --color-hairline: rgb(31 42 36 / 0.06);
+  /** Scrollbar thumb. Line 210. */
+  --color-scrollbar: #dcd4c7;
+
+  /* --- text ------------------------------------------------------------ */
+
+  /** Body text. Line 215. */
+  --color-ink: #1f2a24;
+  /**
+   * Secondary text. Line 351.
+   *
+   * Also the only secondary colour used over glass. The prototype's lighter
+   * `#5C6B62` (line 230) falls to 3.2:1 where the ambient gradient is
+   * strongest, so it is not in this token set — see docs/design-gaps.md.
+   */
+  --color-body: #3c4a43;
+
+  /* --- role ------------------------------------------------------------ */
+
+  /*
+   * Customer by default. `[data-role="vendor"]` and `[data-role="admin"]`
+   * rewrite these three, and nothing else, which is what makes a role theme a
+   * variable swap rather than a second stylesheet. Lines 1993–1997.
+   */
+  --color-role: #3e6b34;
+  --color-role-hover: #2e5127;
+  --color-role-tint: #f2f7ec;
+
+  /* --- status ---------------------------------------------------------- */
+
+  /*
+   * Pairs, always used together: a background and the only foreground that is
+   * legible on it. Lines 2629–2634 for success, warning and neutral; line 2309
+   * for danger.
+   */
+  --color-status-success-bg: #e8f0ea;
+  --color-status-success-fg: #1f4d3a;
+  --color-status-warn-bg: #f7e7df;
+  --color-status-warn-fg: #6e3318;
+  --color-status-danger-bg: #fbe4e7;
+  --color-status-danger-fg: #8e2334;
+  --color-status-neutral-bg: rgb(255 255 255 / 0.45);
+  --color-status-neutral-fg: #3c4a43;
+
+  /* --- radii ----------------------------------------------------------- */
+
+  /** Pills, chips and avatars. Line 227. */
+  --radius-pill: 999px;
+  /** Inputs, small cards, secondary buttons. Line 263. */
+  --radius-card: 16px;
+  /** Primary buttons. Line 474. */
+  --radius-button: 18px;
+  /** List rows and mobile table cards. Line 614. */
+  --radius-row: 22px;
+  /** Panels. Line 592. */
+  --radius-panel: 24px;
+  /** Overlays. Line 258. */
+  --radius-overlay: 26px;
+  /** The largest cards, and the auth panel. Line 507. */
+  --radius-hero: 28px;
+
+  /* --- shadows --------------------------------------------------------- */
+
+  /** The glass recipe's shadow pair, inset highlight included. Line 227. */
+  --shadow-glass: 0 10px 30px rgb(31 42 36 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.7);
+  /** Overlays sit much further off the page. Line 258. */
+  --shadow-overlay:
+    0 24px 60px rgb(31 42 36 / 0.26), 0 2px 8px rgb(31 42 36 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+
+  /* --- type ------------------------------------------------------------ */
+
+  /*
+   * Two families, both Google Fonts and both open-licence. The fallback stacks
+   * are the prototype's own — line 221 for the serif, line 215 for the sans —
+   * so a blocked font request degrades the way the prototype does.
+   */
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+
+  /*
+   * Sizes only. The prototype sets a line height exactly once, on the body
+   * (line 215); every other element inherits it. Inventing one per size here
+   * would be four values that no line of the design file supports.
+   */
+  --text-base: 15px;
+  --text-base--line-height: 1.5;
+  /** Table and list rows. Line 242. */
+  --text-row: 13.5px;
+  /** Fields and buttons. Line 263. */
+  --text-control: 14.5px;
+  /** Badges and table headings. Line 252. */
+  --text-badge: 11.5px;
+  /** Bottom-tab labels. Line 230. */
+  --text-tab: 10.5px;
+
+  /* --- layout ---------------------------------------------------------- */
+
+  /*
+   * The prototype has exactly one breakpoint: `S.vw < 860` is mobile and
+   * everything else is desktop (line 1989). Reproducing that as a single
+   * `desk:` variant keeps our layouts switching where the prototype's do.
+   */
+  --breakpoint-desk: 860px;
+
+  /* --- motion ---------------------------------------------------------- */
+
+  /** The prototype's one entrance animation. Keyframes line 211, usage 644. */
+  --animate-rise: rise 0.3s ease both;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }

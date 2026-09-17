@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Button, Input } from "@occasion/ui";
 import { requestPasswordResetAction, type AuthActionState } from "../actions";
 
 const INITIAL: AuthActionState = {};
@@ -13,27 +14,19 @@ export function ResetForm() {
   const [, formAction, pending] = useActionState(requestPasswordResetAction, INITIAL);
 
   return (
-    <form action={formAction} className="mt-6 space-y-4">
-      <div>
-        <label htmlFor="reset-email" className="mb-1 block text-sm font-medium">
-          Email
-        </label>
-        <input
-          id="reset-email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          className="w-full rounded-2xl border border-black/10 bg-white/70 px-4 py-3 text-sm"
-        />
-      </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-      >
+    <form action={formAction} className="mt-6 grid gap-4">
+      <Input
+        id="reset-email"
+        name="email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        placeholder="sarah@example.ca"
+        required
+      />
+      <Button type="submit" intent="primary" size="lg" disabled={pending}>
         {pending ? "Sending…" : "Send the link"}
-      </button>
+      </Button>
     </form>
   );
 }

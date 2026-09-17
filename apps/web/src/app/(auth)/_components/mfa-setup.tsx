@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Button, Input } from "@occasion/ui";
 import { confirmEnrolmentAction, startEnrolmentAction, type EnrolmentState } from "../mfa/actions";
 
 /**
@@ -25,29 +26,25 @@ export function MfaSetup() {
 
   if (!factorId) {
     return (
-      <form action={start} className="space-y-4">
-        <p className="text-sm opacity-70">
+      <form action={start} className="grid justify-items-start gap-4">
+        <p className="text-row text-body">
           Add a second step to signing in. You will need an authenticator app such as 1Password,
           Google Authenticator or Authy.
         </p>
         {error ? (
-          <p role="alert" className="text-sm text-red-700">
+          <p role="alert" className="oc-error">
             {error}
           </p>
         ) : null}
-        <button
-          type="submit"
-          disabled={starting}
-          className="rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-        >
+        <Button type="submit" intent="primary" disabled={starting}>
           {starting ? "Working…" : "Set up two-step verification"}
-        </button>
+        </Button>
       </form>
     );
   }
 
   return (
-    <form action={confirm} className="space-y-4">
+    <form action={confirm} className="grid justify-items-start gap-4">
       <input type="hidden" name="factorId" value={factorId} />
       <input type="hidden" name="secret" value={secret ?? ""} />
 
@@ -58,46 +55,33 @@ export function MfaSetup() {
           alt="Scan this code with your authenticator app"
           width={200}
           height={200}
-          className="rounded-2xl bg-white p-3"
+          className="rounded-card bg-white p-3"
         />
       ) : null}
 
       {secret ? (
-        <p className="text-sm opacity-70">
+        <p className="text-row text-body">
           Cannot scan? Enter this key instead:{" "}
           <code className="break-all font-mono text-xs">{secret}</code>
         </p>
       ) : null}
 
-      <div>
-        <label htmlFor="mfa-code" className="mb-1 block text-sm font-medium">
-          Six-digit code
-        </label>
-        <input
-          id="mfa-code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]*"
-          maxLength={6}
-          required
-          className="w-40 rounded-2xl border border-black/10 bg-white/70 px-4 py-3 font-mono text-sm tracking-widest"
-        />
-      </div>
+      <Input
+        id="mfa-code"
+        name="code"
+        label="Six-digit code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9]*"
+        maxLength={6}
+        required
+        className="max-w-[10rem]"
+        error={error}
+      />
 
-      {error ? (
-        <p role="alert" className="text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={confirming}
-        className="rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-      >
+      <Button type="submit" intent="primary" disabled={confirming}>
         {confirming ? "Checking…" : "Turn on two-step verification"}
-      </button>
+      </Button>
     </form>
   );
 }

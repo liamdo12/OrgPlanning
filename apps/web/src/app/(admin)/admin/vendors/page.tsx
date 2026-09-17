@@ -1,4 +1,5 @@
 import { vendors } from "@occasion/db/schema";
+import { DataTable, EmptyState, PageHeader, StatusBadge, type Column } from "@occasion/ui";
 import { requireAdminActor } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
 
@@ -16,8 +17,56 @@ export const metadata = { title: "Vendors · Occasion admin" };
  * first argument and calls `assertCanReadVendorPrivately`.
  *
  * The query is inline because the vendor service does not exist yet. When it
- * lands, this reads from it and the table below becomes the real screen.
+ * lands, this reads from it and the columns below stay as they are.
  */
+
+type VendorRow = {
+  id: string;
+  name: string;
+  status: string;
+  baseArea: string | null;
+};
+
+/**
+ * `approved` is the only settled state, `blocked` the only bad one, and
+ * `pending` is work waiting for somebody — which is why it is the warm tone
+ * rather than the neutral one.
+ */
+function toneFor(status: string) {
+  if (status === "approved") return "success" as const;
+  if (status === "blocked" || status === "suspended") return "danger" as const;
+  if (status === "pending") return "warn" as const;
+  return "neutral" as const;
+}
+
+const COLUMNS: ReadonlyArray<Column<VendorRow>> = [
+  {
+    key: "name",
+    header: "Business",
+    width: "1.4fr",
+    mobile: "title",
+    render: (row) => <span className="font-bold">{row.name}</span>,
+  },
+  {
+    key: "area",
+    header: "Area",
+    width: "1fr",
+    mobile: "body",
+    render: (row) => <span className="text-body">{row.baseArea ?? "—"}</span>,
+  },
+  {
+    key: "status",
+    header: "Status",
+    width: "0.8fr",
+    mobile: "badge",
+    render: (row) => (
+      <StatusBadge tone={toneFor(row.status)}>
+        <span className="capitalize">{row.status}</span>
+      </StatusBadge>
+    ),
+  },
+];
+
 export default async function AdminVendorsPage() {
   await requireAdminActor();
 
@@ -37,34 +86,24 @@ export default async function AdminVendorsPage() {
   rows.sort((left, right) => left.name.localeCompare(right.name));
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-12">
-      <h1 className="text-2xl font-semibold">Vendors</h1>
-      <p className="mt-3 text-sm opacity-70">{rows.length} businesses.</p>
+    <main className="mx-auto max-w-5xl px-4 py-12">
+      <PageHeader
+        title="Vendors"
+        blurb={`${rows.length} ${rows.length === 1 ? "business" : "businesses"} on the platform.`}
+      />
 
-      <table className="mt-8 w-full text-left text-sm">
-        <thead className="border-b border-black/10 text-xs uppercase tracking-wide opacity-60">
-          <tr>
-            <th scope="col" className="py-2">
-              Name
-            </th>
-            <th scope="col" className="py-2">
-              Area
-            </th>
-            <th scope="col" className="py-2">
-              Status
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="border-b border-black/5">
-              <td className="py-2">{row.name}</td>
-              <td className="py-2 opacity-70">{row.baseArea ?? "—"}</td>
-              <td className="py-2 capitalize opacity-70">{row.status}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataTable
+        caption="Vendors"
+        columns={COLUMNS}
+        rows={rows}
+        rowKey={(row) => row.id}
+        empty={
+          <EmptyState
+            title="No vendors yet"
+            blurb="Businesses appear here once they have signed up, whether or not they have finished onboarding."
+          />
+        }
+      />
     </main>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Button, Input } from "@occasion/ui";
 import { verifyChallengeAction, type ChallengeState } from "../mfa/actions";
 
 /**
@@ -17,40 +18,27 @@ export function MfaChallengeForm({ factorId, next }: { factorId: string; next: s
   const [state, action, pending] = useActionState(verifyChallengeAction, INITIAL);
 
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="grid gap-4">
       <input type="hidden" name="factorId" value={factorId} />
       <input type="hidden" name="next" value={next} />
 
-      <div>
-        <label htmlFor="challenge-code" className="mb-1 block text-sm font-medium">
-          Six-digit code
-        </label>
-        <input
-          id="challenge-code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]*"
-          maxLength={6}
-          required
-          autoFocus
-          className="w-40 rounded-2xl border border-black/10 bg-white/70 px-4 py-3 font-mono text-sm tracking-widest"
-        />
-      </div>
+      <Input
+        id="challenge-code"
+        name="code"
+        label="Six-digit code"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9]*"
+        maxLength={6}
+        required
+        autoFocus
+        className="max-w-[10rem]"
+        error={state.error}
+      />
 
-      {state.error ? (
-        <p role="alert" className="text-sm text-red-700">
-          {state.error}
-        </p>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={pending}
-        className="w-full rounded-2xl bg-[var(--color-forest)] px-4 py-3 text-sm font-semibold text-[var(--color-canvas)] disabled:opacity-60"
-      >
+      <Button type="submit" intent="primary" size="lg" disabled={pending}>
         {pending ? "Checking…" : "Continue"}
-      </button>
+      </Button>
     </form>
   );
 }

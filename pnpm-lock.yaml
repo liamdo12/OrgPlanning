@@ -222,6 +222,9 @@ importers:
       '@occasion/config':
         specifier: workspace:*
         version: link:../config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.3
       '@types/react':
         specifier: 'catalog:'
         version: 19.3.0
