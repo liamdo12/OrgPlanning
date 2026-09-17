@@ -19,7 +19,7 @@ are scoped in Phase 13 and built afterwards.
 ```bash
 corepack enable
 pnpm install
-cp .env.example .env.local     # then fill in the values
+cp .env.example apps/web/.env.local   # then fill in the values
 
 pnpm db:start                  # local Supabase; prints the keys for .env.local
 pnpm --filter @occasion/db db:reset   # schema + demo data
@@ -37,7 +37,8 @@ pnpm dev                       # http://localhost:3000
 Local Supabase ports: API `54321`, database `54322`, Studio `54323`, Inbucket
 (email testing) `54324`.
 
-Configuration goes in `.env.local`, which Next loads itself. Exporting a
+Configuration goes in `apps/web/.env.local` — Next loads env files from the
+directory it runs in, so a copy at the repository root is read by nothing. Exporting a
 variable in your shell will **not** reach the app: Turborepo runs tasks in
 strict environment mode and filters anything a task has not declared.
 
@@ -81,11 +82,12 @@ supabase/          local stack config
   `process` global, or import the `node:process` module. Config is injected
   through `CoreContext`.
 - `apps/web` validates raw environment variables in one file, `src/lib/env.ts`.
-  Three others are exempt because they legitimately need the raw value:
+  The others are exempt because they legitimately need the raw value:
   `instrumentation.ts` (reads `NEXT_RUNTIME` to skip the Edge runtime),
-  `proxy.ts` (it needs two variables before the app boots and must not fail a
-  request when configuration is incomplete), and the build configs. Nothing else in the app may
-  touch `process.env`.
+  `src/proxy.ts` (it needs two variables before the app boots and must not fail
+  a request when configuration is incomplete), and the build configs. Nothing
+  else in the app may touch `process.env`. Operator scripts under `scripts/`
+  are `.mjs`, which the rule's glob never covers.
 - `apps/web` may not import `@occasion/core/testing`, which ships fakes.
 
 `packages/core`'s own test suite asserts that _its_ rules actually fire — a

@@ -30,7 +30,7 @@ export default [
     // only validator; `proxy.ts` runs in the middleware runtime, which carries
     // a truncated environment that the full schema would reject, and the rest
     // are build-time config.
-    files: ["src/lib/env.ts", "proxy.ts", "*.config.{ts,mjs,js}", "instrumentation.ts"],
+    files: ["src/lib/env.ts", "src/proxy.ts", "*.config.{ts,mjs,js}", "instrumentation.ts"],
     rules: { "no-process-env": "off" },
   },
 ];

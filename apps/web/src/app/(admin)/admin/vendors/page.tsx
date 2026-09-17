@@ -1,6 +1,7 @@
 import { vendors } from "@occasion/db/schema";
-import { DataTable, EmptyState, PageHeader, StatusBadge, type Column } from "@occasion/ui";
-import { requireAdminActor } from "../../../../lib/auth-guard";
+import { DataTable, EmptyState, StatusBadge, type Column } from "@occasion/ui";
+import { AdminPage } from "../../_components/admin-page";
+import { requireAdminPage } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
 
 /** Rendered per request: nothing it shows exists at build time. */
@@ -68,7 +69,7 @@ const COLUMNS: ReadonlyArray<Column<VendorRow>> = [
 ];
 
 export default async function AdminVendorsPage() {
-  await requireAdminActor();
+  await requireAdminPage();
 
   const ctx = createRequestContext();
   const rows = await ctx.db
@@ -86,12 +87,10 @@ export default async function AdminVendorsPage() {
   rows.sort((left, right) => left.name.localeCompare(right.name));
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-12">
-      <PageHeader
-        title="Vendors"
-        blurb={`${rows.length} ${rows.length === 1 ? "business" : "businesses"} on the platform.`}
-      />
-
+    <AdminPage
+      title="Vendors"
+      blurb={`${rows.length} ${rows.length === 1 ? "business" : "businesses"} on the platform.`}
+    >
       <DataTable
         caption="Vendors"
         columns={COLUMNS}
@@ -104,6 +103,6 @@ export default async function AdminVendorsPage() {
           />
         }
       />
-    </main>
+    </AdminPage>
   );
 }

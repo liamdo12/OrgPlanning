@@ -101,8 +101,10 @@ export function BottomTabBar({
         );
 
         const props: TabLinkProps = {
+          // `no-underline` because a tab is often a link, and the base layer
+          // underlines a hovered one; the prototype's tabs never underline.
           className:
-            "grid min-w-0 flex-1 cursor-pointer justify-items-center gap-[3px] px-[2px] py-[6px]",
+            "grid min-w-0 flex-1 cursor-pointer justify-items-center gap-[3px] px-[2px] py-[6px] no-underline hover:no-underline",
           ...(active ? { "aria-current": "page" as const } : {}),
         };
 

@@ -1,18 +1,22 @@
 import "server-only";
 
 import { cache } from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   ForbiddenError,
   UnauthenticatedError,
   getActor,
   requireAdmin,
+  safeRedirectPath,
   type Actor,
 } from "@occasion/core";
+import { createRequestContext } from "./core";
+import { readActiveRole } from "./active-role";
+import { PATHNAME_HEADER } from "./request-path";
 
 /** A signed-in, usable account — what the gate returns once it has passed. */
 type AdminActor = Extract<Actor, { kind: "user" }>;
-import { createRequestContext } from "./core";
-import { readActiveRole } from "./active-role";
 
 /**
  * The authorization entry point for every server surface.
@@ -46,18 +50,33 @@ export async function requireAdminActor(): Promise<AdminActor> {
 }
 
 /**
- * True when the caller may see admin surfaces.
+ * The gate for a **page**.
  *
- * For deciding what to render. Never for deciding whether to act — an action
- * calls `requireAdminActor()` and lets it throw.
+ * Same decision as `requireAdminActor`, different answer to a refusal: a page
+ * that throws for an anonymous visitor logs an exception and renders the error
+ * boundary, when what should happen is the login screen. Layout redirects do
+ * not spare the page — Next renders both, so the page runs and throws even when
+ * the layout's redirect wins the response.
+ *
+ * Actions and route handlers keep the throwing version. They are being asked to
+ * *do* something, and the honest answer to "do this" from someone who may not
+ * is an error, not a new page.
+ *
+ * Signing in returns to where the person actually was, which is why the proxy
+ * puts the path on the request: a server component cannot otherwise find out
+ * what URL it is rendering.
  */
-export async function isAdminRequest(): Promise<boolean> {
+export async function requireAdminPage(): Promise<AdminActor> {
   try {
-    await requireAdminActor();
-    return true;
+    return await requireAdminActor();
   } catch (error) {
     if (error instanceof UnauthenticatedError || error instanceof ForbiddenError) {
-      return false;
+      // Through the same guard as any other `next`, even though the proxy
+      // overwrites whatever a client sent under this name. A header that
+      // decides where a redirect goes is worth validating whoever set it —
+      // and the proxy does not run for every possible path.
+      const here = safeRedirectPath((await headers()).get(PATHNAME_HEADER), "/admin");
+      redirect(`/login?next=${encodeURIComponent(here)}`);
     }
     throw error;
   }

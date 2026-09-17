@@ -44,13 +44,13 @@ so a variable exported in your shell does not reach the task.
 
 ## Layout
 
-| Package           | Rule                                                                                                                                                                                   |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts`, `proxy.ts`, the build configs and `scripts/**` are exempt from `no-process-env`. |
-| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                                               |
-| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                                                     |
-| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                                                      |
-| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                                                       |
+| Package           | Rule                                                                                                                                                                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts`, `src/proxy.ts` and the build configs are exempt from `no-process-env`; operator scripts are `.mjs`, which the rule's glob never covers. |
+| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                                                                                                      |
+| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                                                                                                            |
+| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                                                                                                             |
+| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                                                                                                              |
 
 ESLint enforces these over `src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}` — the glob is
 wide on purpose, since a rule that stops applying to `.tsx` would not survive
@@ -72,9 +72,21 @@ still demo the clock; a production tier must refuse the same build's override.
 and `createCoreContext()`, and the returned config is frozen so it cannot be
 re-enabled afterwards.
 
+**The proxy lives at `apps/web/src/proxy.ts`.** With a `src/` directory Next
+looks for it there and nowhere else; at the package root it is an ordinary
+module that never runs, which is how session refresh was silently absent for
+two phases. It also puts the request path on a header, because a server
+component has no other way to know what URL it is rendering — that is what lets
+a redirect to the login screen come back to where the person was.
+
 **Authorization has two layers.** Every admin **server action and route
 handler** calls `requireAdminActor()` from `apps/web/src/lib/auth-guard.ts` as
-its first statement. A layout is NOT a security boundary — Next.js does not run
+its first statement; every admin **page** calls `requireAdminPage()` as its
+first statement instead. Same decision, different answer to a refusal: a page
+redirects to the login screen, an action throws. A page that throws logs an
+exception on every anonymous request and renders the error boundary, because
+Next renders the layout and the page in parallel and the layout's redirect does
+not spare the page. A layout is NOT a security boundary — Next.js does not run
 it for server actions or route handlers, and does not re-run it on client-side
 navigation — so `(admin)/layout.tsx` is a UX redirect only.
 

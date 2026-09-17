@@ -55,7 +55,13 @@
 
   /* --- buttons ---------------------------------------------------------- */
 
+  /*
+   * `text-decoration: none` because these classes land on an `<a>` as often as
+   * a `<button>`, and the base layer underlines a hovered link. The prototype's
+   * hover is colour only (line 455).
+   */
   .oc-button {
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -64,11 +70,14 @@
     cursor: pointer;
     font-weight: 700;
     white-space: nowrap;
-    text-decoration: none;
     transition:
       background-color 0.15s ease,
       border-color 0.15s ease,
       color 0.15s ease;
+  }
+
+  .oc-button:hover {
+    text-decoration: none;
   }
 
   .oc-button:disabled {
@@ -149,6 +158,7 @@
 
   /* Filter chips, line 1669. The selected state is a role fill, line 2626. */
   .oc-chip {
+    text-decoration: none;
     border-radius: var(--radius-pill);
     padding: 8px 15px;
     font-size: 13.5px;
@@ -165,6 +175,7 @@
 
   .oc-chip:hover {
     border-color: var(--color-role);
+    text-decoration: none;
   }
 
   .oc-chip[aria-pressed="true"],
@@ -223,6 +234,7 @@
    * colour when current, and body-coloured text otherwise.
    */
   .oc-section-link {
+    text-decoration: none;
     background: none;
     border: 0;
     border-bottom: 2px solid transparent;
@@ -239,6 +251,7 @@
 
   .oc-section-link:hover {
     color: var(--color-ink);
+    text-decoration: none;
   }
 
   .oc-section-link[aria-current="page"] {
