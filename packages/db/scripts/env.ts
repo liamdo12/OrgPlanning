@@ -8,7 +8,22 @@
 export function requireDatabaseUrl(): string {
   const url = process.env["DATABASE_URL"];
   if (!url) {
-    console.error("DATABASE_URL is required. See .env.example at the repo root.");
+    // Deliberately not read from `apps/web/.env.local`. That file carries the
+    // connection the *application* uses — `app_rw`, least privilege, no DDL —
+    // and migrating with it fails on a permission error several steps later.
+    // Schema work wants the superuser, so the two are supplied separately and
+    // this says which one it wants.
+    console.error(
+      [
+        "DATABASE_URL is required, and schema commands want a superuser:",
+        "",
+        "  DATABASE_URL=postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres \\",
+        "    pnpm --filter @occasion/db db:reset",
+        "",
+        "The application's own connection string is `app_rw` and cannot do this.",
+        "See the quickstart in README.md.",
+      ].join("\n"),
+    );
     process.exit(1);
   }
   return url;
