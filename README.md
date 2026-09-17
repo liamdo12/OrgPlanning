@@ -21,18 +21,30 @@ corepack enable
 pnpm install
 cp .env.example apps/web/.env.local   # then fill in the values
 
-pnpm db:start                  # local Supabase; prints the keys for .env.local
-pnpm --filter @occasion/db db:reset   # schema + demo data
+pnpm db:start                  # local Supabase; prints the three SUPABASE_* values
+
+# Migrations need a superuser: they grant BYPASSRLS, and Supabase's `postgres`
+# role is not one. Locally that superuser is `supabase_admin`.
+export ADMIN_DB_URL=postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres
+DATABASE_URL=$ADMIN_DB_URL pnpm --filter @occasion/db db:reset   # schema + demo data
+
+# The application connects as `app_rw`, which the migration creates NOLOGIN so
+# that no password is ever committed. Give it one, once per stack:
+docker exec supabase_db_occasion psql -U supabase_admin -d postgres \
+  -c "ALTER ROLE app_rw LOGIN PASSWORD 'local-dev-only';"
 
 # The seed writes app.users rows; it cannot create logins at the auth provider,
 # which lives outside the database. This gives every seeded account one — the
-# administrator included — so you can actually sign in. It runs against built
-# output, hence the build first, and it touches demo rows only.
+# administrator included — so you can actually sign in. It reads
+# apps/web/.env.local, runs against built output, and touches demo rows only.
 pnpm --filter @occasion/db build
 SEED_USER_PASSWORD='choose-a-throwaway' pnpm --filter @occasion/web auth:provision
 
-pnpm dev                       # http://localhost:3000
+pnpm dev                       # http://localhost:3000, sign in as admin@occasion.test
 ```
+
+The `@occasion/db` scripts take their connection string from the shell, not from
+`apps/web/.env.local` — that file is Next's, and these run outside it.
 
 Local Supabase ports: API `54321`, database `54322`, Studio `54323`, Inbucket
 (email testing) `54324`.
@@ -157,7 +169,9 @@ keeps the demo's four clock states — "now", "+48h", "event−14d", "event+72h"
 meaningful however long after seeding you look at them.
 
 Tests that need a database read `TEST_DATABASE_URL` and skip when it is unset,
-so `pnpm test` passes without Postgres. CI always sets it.
+so `pnpm test` passes without Postgres. CI always sets it. Locally it wants the
+superuser URL, because the suites drop and rebuild the schema — and note that
+running them leaves the database freshly seeded, not as you left it.
 
 ## Authorization
 

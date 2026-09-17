@@ -14,6 +14,21 @@ const nextConfig: NextConfig = {
   agentRules: false,
   reactStrictMode: true,
   typedRoutes: true,
+
+  /**
+   * `/admin` is not a screen; it is the way in.
+   *
+   * At the routing layer rather than in a page, because a page would render the
+   * whole shell and stream it before the redirect reached the browser — a 200
+   * carrying 42KB of markup nobody sees, where a 308 costs nothing. The
+   * destination gates for itself, so this changes nothing about who may enter:
+   * an anonymous visitor lands on the login screen either way, and now returns
+   * to the vendor queue rather than to the door.
+   *
+   * Vendors is the prototype's first admin tab (line 1979) and the queue with
+   * work waiting in it.
+   */
+  redirects: () => [{ source: "/admin", destination: "/admin/vendors", permanent: true }],
 };
 
 export default nextConfig;
