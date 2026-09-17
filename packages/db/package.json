@@ -15,6 +15,10 @@
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
+    },
+    "./provisioning": {
+      "types": "./dist/provisioning.d.ts",
+      "default": "./dist/provisioning.js"
     }
   },
   "files": [
