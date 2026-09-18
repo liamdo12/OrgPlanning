@@ -47,19 +47,40 @@ export {
   endVendorStaffSessions,
   findUserIdByEmail,
   getActor,
-  grantRole,
   markEmailVerified,
   parseSelfAssignableRole,
-  reinstateUser,
   requireAdmin,
   requireRole,
   requireUser,
-  revokeRole,
   setSecondFactorEnrolled,
   signUp,
-  suspendUser,
   type SignUpInput,
 } from "./identity/service.js";
+
+// `grantRole`, `revokeRole`, `suspendUser` and `reinstateUser` are deliberately
+// absent. They are the unguarded originals: no self-action policy, no check
+// that the role is one an administrator may move, and no typed confirmation for
+// an admin grant. `identity/admin-service.ts` is the way in, and keeping the
+// other pair off the barrel is what stops a future screen autocompleting past
+// every rule this phase added.
+
+export {
+  actionFor,
+  approveUser,
+  getUserDetail,
+  grantRoleToUser,
+  listUsersForAdmin,
+  reinstateAccount,
+  resendVerification,
+  revokeRoleFromUser,
+  suspendAccount,
+  type AdminUserList,
+  type AdminUserListItem,
+  type UserAction,
+  type UserDetail,
+} from "./identity/admin-service.js";
+
+export type { UserFilter } from "./identity/admin-repo.js";
 
 export {
   assertCanActOnOrder,

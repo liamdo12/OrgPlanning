@@ -6,7 +6,7 @@ import {
   vendorMembers,
   vendors,
 } from "@occasion/db/schema";
-import type { CoreContext } from "../context.js";
+import type { CoreContext, DbExecutor } from "../context.js";
 import type { RoleName, UserStatus } from "./actor.js";
 
 /**
@@ -45,10 +45,10 @@ export type IdentityRow = {
  * it.
  */
 export async function loadIdentity(
-  ctx: CoreContext,
+  db: DbExecutor,
   userId: string,
 ): Promise<IdentityRow | undefined> {
-  const [row] = await ctx.db
+  const [row] = await db
     .select({
       userId: users.id,
       email: users.email,
@@ -65,8 +65,8 @@ export async function loadIdentity(
   if (!row) return undefined;
 
   const [roleRows, vendorRows] = await Promise.all([
-    ctx.db.select({ role: userRoles.role }).from(userRoles).where(eq(userRoles.userId, userId)),
-    ctx.db
+    db.select({ role: userRoles.role }).from(userRoles).where(eq(userRoles.userId, userId)),
+    db
       .select({ vendorId: vendorMembers.vendorId })
       .from(vendorMembers)
       .where(eq(vendorMembers.userId, userId)),
@@ -274,20 +274,20 @@ export async function createUserWithRole(
 }
 
 export async function insertRole(
-  ctx: CoreContext,
+  db: DbExecutor,
   userId: string,
   role: RoleName,
   grantedBy: string,
   now: Date,
 ): Promise<void> {
-  await ctx.db
+  await db
     .insert(userRoles)
     .values({ userId, role, grantedBy, grantedAt: now })
     .onConflictDoNothing();
 }
 
-export async function deleteRole(ctx: CoreContext, userId: string, role: RoleName): Promise<void> {
-  await ctx.db.delete(userRoles).where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)));
+export async function deleteRole(db: DbExecutor, userId: string, role: RoleName): Promise<void> {
+  await db.delete(userRoles).where(and(eq(userRoles.userId, userId), eq(userRoles.role, role)));
 }
 
 /**
@@ -310,11 +310,11 @@ export async function deleteRole(ctx: CoreContext, userId: string, role: RoleNam
  * to life.
  */
 export async function bumpSessionsValidAfter(
-  ctx: CoreContext,
+  db: DbExecutor,
   userId: string,
   validAfter: Date,
 ): Promise<void> {
-  await ctx.db
+  await db
     .update(users)
     .set({
       // An ISO string rather than the `Date`: a raw `sql` fragment bypasses
@@ -327,12 +327,12 @@ export async function bumpSessionsValidAfter(
 }
 
 export async function setUserStatus(
-  ctx: CoreContext,
+  db: DbExecutor,
   userId: string,
   status: UserStatus,
   now: Date,
 ): Promise<void> {
-  await ctx.db.update(users).set({ status, updatedAt: now }).where(eq(users.id, userId));
+  await db.update(users).set({ status, updatedAt: now }).where(eq(users.id, userId));
 }
 
 /** Vendor organisations whose payouts must stop when the vendor is suspended. */

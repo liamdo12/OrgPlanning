@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ElementType, ReactNode } from "react";
 import { cx } from "../lib/cx";
 
 /**
@@ -44,7 +44,21 @@ export function ListRow({
   );
 }
 
-/** The list those rows sit in. Line 1674: a 10px grid, not a flex column. */
-export function ListStack({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cx("grid gap-[10px]", className)}>{children}</div>;
+/**
+ * The list those rows sit in. Line 1674: a 10px grid, not a flex column.
+ *
+ * `as` for the same reason the glass surfaces have it: a list of accounts is a
+ * `<ul>` of `<li>`s, and wrapping correct markup in a `<div>` to get a gap is
+ * how a list stops announcing itself as one.
+ */
+export function ListStack({
+  as: Tag = "div",
+  children,
+  className,
+}: {
+  as?: ElementType;
+  children: ReactNode;
+  className?: string;
+}) {
+  return <Tag className={cx("grid gap-[10px]", className)}>{children}</Tag>;
 }

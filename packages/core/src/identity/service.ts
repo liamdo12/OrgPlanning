@@ -54,7 +54,7 @@ export async function getActor(
 
   if (!userId) return ANONYMOUS;
 
-  const identity = await repo.loadIdentity(ctx, userId);
+  const identity = await repo.loadIdentity(ctx.db, userId);
   if (!identity) return ANONYMOUS;
 
   // A session issued before the account's cutoff is dead, whatever the token
@@ -263,7 +263,7 @@ export async function clearSecondFactor(
   requireAdmin(actor);
   const now = ctx.clock.now();
 
-  const target = await repo.loadIdentity(ctx, targetUserId);
+  const target = await repo.loadIdentity(ctx.db, targetUserId);
   if (!target) {
     throw new NotFoundError("No such account.");
   }
@@ -276,7 +276,7 @@ export async function clearSecondFactor(
   // Whoever is holding a session for this account loses it: if the factor was
   // removed because the account may be compromised, leaving live sessions alone
   // would make the removal pointless.
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
+  await repo.bumpSessionsValidAfter(ctx.db, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.mfa.clear",
@@ -342,13 +342,13 @@ export async function grantRole(
   const admin = requireAdmin(actor);
   const now = ctx.clock.now();
 
-  const before = await repo.loadIdentity(ctx, targetUserId);
+  const before = await repo.loadIdentity(ctx.db, targetUserId);
   if (!before) {
     throw new ValidationError("No such account.", { userId: "unknown" });
   }
 
-  await repo.insertRole(ctx, targetUserId, role, admin.userId, now);
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
+  await repo.insertRole(ctx.db, targetUserId, role, admin.userId, now);
+  await repo.bumpSessionsValidAfter(ctx.db, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.role.grant",
@@ -367,14 +367,14 @@ export async function revokeRole(
 ): Promise<void> {
   requireAdmin(actor);
 
-  const before = await repo.loadIdentity(ctx, targetUserId);
+  const before = await repo.loadIdentity(ctx.db, targetUserId);
   if (!before) {
     throw new ValidationError("No such account.", { userId: "unknown" });
   }
 
-  await repo.deleteRole(ctx, targetUserId, role);
+  await repo.deleteRole(ctx.db, targetUserId, role);
   // Without this the revoked role keeps working until the token expires.
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
+  await repo.bumpSessionsValidAfter(ctx.db, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.role.revoke",
@@ -414,13 +414,13 @@ async function setStatus(
   requireAdmin(actor);
   const now = ctx.clock.now();
 
-  const before = await repo.loadIdentity(ctx, targetUserId);
+  const before = await repo.loadIdentity(ctx.db, targetUserId);
   if (!before) {
     throw new ValidationError("No such account.", { userId: "unknown" });
   }
 
-  await repo.setUserStatus(ctx, targetUserId, status, now);
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
+  await repo.setUserStatus(ctx.db, targetUserId, status, now);
+  await repo.bumpSessionsValidAfter(ctx.db, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action,
@@ -448,7 +448,7 @@ export async function endVendorStaffSessions(
   const memberIds = await repo.loadVendorMemberIds(ctx, vendorId);
 
   for (const memberId of memberIds) {
-    await repo.bumpSessionsValidAfter(ctx, memberId, cutoff);
+    await repo.bumpSessionsValidAfter(ctx.db, memberId, cutoff);
   }
 
   return memberIds;

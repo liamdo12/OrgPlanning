@@ -91,7 +91,7 @@ export async function acceptAdminInvite(
 ): Promise<void> {
   const now = ctx.clock.now();
 
-  const identity = await repo.loadIdentity(ctx, acceptingUserId);
+  const identity = await repo.loadIdentity(ctx.db, acceptingUserId);
   if (!identity) {
     throw new NotFoundError("No such account.");
   }
@@ -133,8 +133,8 @@ export async function acceptAdminInvite(
     throw new NotFoundError("This invitation has expired.");
   }
 
-  await repo.insertRole(ctx, acceptingUserId, "admin", invite.invitedByUserId, now);
-  await repo.bumpSessionsValidAfter(ctx, acceptingUserId, ctx.clock.realNow());
+  await repo.insertRole(ctx.db, acceptingUserId, "admin", invite.invitedByUserId, now);
+  await repo.bumpSessionsValidAfter(ctx.db, acceptingUserId, ctx.clock.realNow());
 
   await record(
     ctx,
