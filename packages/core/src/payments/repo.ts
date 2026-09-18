@@ -448,8 +448,14 @@ export async function netCaptured(db: DbExecutor, orderId: string): Promise<bigi
 
   const [back] = await db
     .select({
+      // `needs_attention` counts too. That state is written *after* the refund
+      // has settled — it flags that the vendor's share had already been
+      // transferred and somebody has to reverse it — so the customer has their
+      // money whatever the row is called. Counting only `settled` leaves the
+      // order reading as though it still holds the funds, which means a second
+      // full refund can be recorded against it.
       refunded: sql<string>`coalesce(sum(${refunds.amount}) filter (
-        where ${refunds.state} = 'settled'
+        where ${refunds.state} in ('settled', 'needs_attention')
       ), 0)`,
     })
     .from(refunds)

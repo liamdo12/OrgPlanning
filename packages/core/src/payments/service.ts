@@ -8,7 +8,7 @@ import * as ordering from "../ordering/repo.js";
 import { applyTransition } from "../ordering/service.js";
 import { payoutAllowed as orderPayoutAllowed, parseOrderState } from "../ordering/transitions.js";
 import { payoutAllowed as vendorPayoutAllowed, type VendorStatus } from "../vendors/transitions.js";
-import { sliceOrderMoney } from "./money.js";
+import { formatMoney, sliceOrderMoney } from "./money.js";
 import { mintPaymentLinkToken, paymentLinkDigest, paymentLinkState } from "./payment-links.js";
 import * as repo from "./repo.js";
 import {
@@ -890,8 +890,11 @@ export async function recordExternalRefund(
 
   const captured = await repo.netCaptured(ctx.db, orderId);
   if (input.amount <= 0n || input.amount > captured) {
+    // Formatted, because this sentence is read by a person: the raw value is
+    // cents, so an unformatted ceiling reads "(8500)" for C$85.00 — beside a
+    // dialog that has just shown them C$85.00.
     throw new ValidationError(
-      `A refund must be between one cent and what is still captured (${captured}).`,
+      `A refund must be between one cent and what is still captured (${formatMoney(captured, order.currency)}).`,
       { amount: "out_of_range" },
     );
   }
