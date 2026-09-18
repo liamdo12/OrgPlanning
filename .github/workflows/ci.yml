@@ -97,6 +97,7 @@ jobs:
       # placeholders, not credentials; no request in these steps reaches a
       # provider, because the container is only asked to boot and serve a page.
       BASE_ENV: >-
+        -e AUTH_GOOGLE_ENABLED=false
         -e DATABASE_URL=postgresql://u:p@127.0.0.1:5432/postgres
         -e SUPABASE_URL=http://127.0.0.1:54321
         -e SUPABASE_ANON_KEY=ci-anon
@@ -107,8 +108,33 @@ jobs:
         -e APP_URL=http://localhost:3000
         -e JOBS_TICK_SECRET=ci-secret-ci-secret
 
+      # Set per step rather than in BASE_ENV, because each step is testing a
+      # different tier. Named here so the check below knows not to look for them.
+      PER_STEP_KEYS: APP_TIER ALLOW_CLOCK_OVERRIDE ALLOW_DESTRUCTIVE_SEED
+
     steps:
       - uses: actions/checkout@v5
+
+      # `BASE_ENV` is a second copy of `.env.example`'s key set, and has to be:
+      # the example ships placeholder values the schema deliberately refuses, so
+      # only the values can differ. That makes a missing key the way the two
+      # drift — and it is how `AUTH_GOOGLE_ENABLED`, added to the schema and not
+      # here, left every container in this job refusing to boot.
+      - name: Container configuration covers every declared variable
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in $(grep -oE '^[A-Z_][A-Z0-9_]*' .env.example); do
+            case " $PER_STEP_KEYS " in *" $key "*) continue ;; esac
+            case "$BASE_ENV" in
+              *"-e $key="*) ;;
+              *)
+                echo "::error::.env.example declares $key and the CI container never sets it"
+                missing=1
+                ;;
+            esac
+          done
+          exit $missing
 
       - uses: docker/setup-buildx-action@v3
 
