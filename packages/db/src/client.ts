@@ -14,8 +14,15 @@ export type DbOptions = {
   connectionString: string;
   /** Upper bound on pooled connections. */
   maxConnections?: number;
-  /** Emit generated SQL. Local debugging only. */
-  debug?: boolean;
+  /**
+   * Where generated SQL goes.
+   *
+   * `true` prints it. A sink receives every statement, which is how a test
+   * asserts that a list screen issues two queries rather than one per row — the
+   * N+1 a screen grows quietly and that no assertion on its output can catch.
+   * Local debugging and tests only; nothing in a served request sets it.
+   */
+  debug?: boolean | { logQuery: (query: string, params: unknown[]) => void };
 };
 
 export type Db = ReturnType<typeof createDb>["db"];

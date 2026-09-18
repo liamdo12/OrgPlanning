@@ -43,6 +43,13 @@
       "when": 1789702022298,
       "tag": "0005_order_reference_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789760398290,
+      "tag": "0006_order_list_index",
+      "breakpoints": true
     }
   ]
 }

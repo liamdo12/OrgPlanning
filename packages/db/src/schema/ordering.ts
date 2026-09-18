@@ -92,6 +92,21 @@ export const orders = app.table(
     index("orders_state_idx").on(table.state),
     index("orders_balance_due_idx").on(table.balanceDueAt),
     index("orders_policy_template_idx").on(table.policyTemplateId),
+    // The admin list's sort and its keyset cursor. Both columns, both
+    // descending, because a cursor on `(created_at, id)` can only be satisfied
+    // by an index in the same order — with one on `created_at` alone, every
+    // page after the first re-sorts the ties.
+    //
+    // `nullsFirst` is not cosmetic and neither column is nullable: plain
+    // `order by x desc` means `desc nulls first` in Postgres, and an index
+    // built `desc nulls last` cannot satisfy that ordering, so the planner
+    // ignores it and sorts the whole table for every page. Verified with
+    // `explain` at fifty thousand orders — the same query picks an index-only
+    // scan with this and a sequential scan without it.
+    index("orders_created_idx").on(
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst(),
+    ),
   ],
 );
 
