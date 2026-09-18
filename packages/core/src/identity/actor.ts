@@ -17,6 +17,30 @@ export type UserStatus = "active" | "pending" | "unverified" | "suspended";
 
 export type Actor =
   | { kind: "anonymous" }
+  /**
+   * The platform acting on its own schedule.
+   *
+   * The job runner needs a principal: a balance charged fourteen days before an
+   * event was not requested by anybody, and attributing it to whichever
+   * administrator happened to be signed in — or to a designated human account —
+   * would put a name on the audit trail that did not do it.
+   *
+   * It is a skeleton key, and treated as one:
+   *
+   * - it is constructed in exactly one place, `SYSTEM` below, and never
+   *   assembled from a request;
+   * - `getActor` cannot produce it, and the three order policies are the only
+   *   ones that admit it — both pinned in `test/jobs.test.ts`;
+   * - `isAuthenticated` is false for it, so anything that needs a person — a
+   *   checkout, an invite — still refuses it;
+   * - `requireAdmin` refuses it too. It runs the platform's own timers; it is
+   *   not an administrator and must not reach an administrative screen's
+   *   actions.
+   *
+   * What it does pass are the object policies, because the thing it is acting
+   * on behalf of is the platform itself rather than a party to the order.
+   */
+  | { kind: "system" }
   | {
       kind: "user";
       userId: string;
@@ -36,6 +60,18 @@ export type Actor =
     };
 
 export const ANONYMOUS: Actor = { kind: "anonymous" };
+
+/**
+ * The platform's own principal. The only value of its kind.
+ *
+ * Reachable from the job runner and from nothing else: a route handler builds
+ * its actor with `getActor`, which never returns this.
+ */
+export const SYSTEM: Actor = { kind: "system" };
+
+export function isSystem(actor: Actor): actor is Extract<Actor, { kind: "system" }> {
+  return actor.kind === "system";
+}
 
 /** Roles a person may choose for themselves at signup. `admin` is not one. */
 export const SELF_ASSIGNABLE_ROLES: readonly RoleName[] = ["customer", "vendor"];

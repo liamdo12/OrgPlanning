@@ -34,7 +34,6 @@ export function createTestCoreContext(overrides: Partial<CoreContext> = {}): Cor
   const clock: ClockPort = {
     now: () => fixedNow,
     realNow: () => fixedNow,
-    override: () => null,
   };
 
   const stripe: StripePort = createStripeFake();

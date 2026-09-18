@@ -1,5 +1,12 @@
 import { NotFoundError } from "../errors.js";
-import { belongsToVendor, isAdmin, isAuthenticated, isUsable, type Actor } from "./actor.js";
+import {
+  belongsToVendor,
+  isAdmin,
+  isAuthenticated,
+  isSystem,
+  isUsable,
+  type Actor,
+} from "./actor.js";
 
 /**
  * Object-level access. The second authorization layer.
@@ -21,6 +28,13 @@ import { belongsToVendor, isAdmin, isAuthenticated, isUsable, type Actor } from 
  * already checks status, but these are reachable on their own, and the rule
  * this repo documents — "every entity-id function calls a policy" — would
  * otherwise hand a suspended administrator everything.
+ *
+ * The three **order** policies also admit `SYSTEM`, the platform's own
+ * principal, and nothing else does. The job runner charges a balance and pays
+ * out a vendor on a timer, and the party to those orders is the platform rather
+ * than a person — but it has no business approving a vendor or touching an
+ * account, so those policies refuse it exactly as they refuse anyone else, and
+ * `requireAdmin` refuses it too.
  */
 
 /** The parties an order can belong to. */
@@ -31,6 +45,7 @@ export type OrderParties = {
 };
 
 export function assertCanReadOrder(actor: Actor, order: OrderParties): void {
+  if (isSystem(actor)) return;
   if (!isUsable(actor)) throw new NotFoundError("No such order.");
   if (isAdmin(actor)) return;
 
@@ -48,6 +63,7 @@ export function assertCanReadOrder(actor: Actor, order: OrderParties): void {
  * change its state.
  */
 export function assertCanActOnOrder(actor: Actor, order: OrderParties): void {
+  if (isSystem(actor)) return;
   if (!isUsable(actor)) throw new NotFoundError("No such order.");
   if (isAdmin(actor)) return;
 
@@ -66,6 +82,7 @@ export function assertCanActOnOrder(actor: Actor, order: OrderParties): void {
  * whose card it is, so the customer could not pay their own deposit.
  */
 export function assertCanPayOrder(actor: Actor, order: OrderParties): void {
+  if (isSystem(actor)) return;
   if (!isUsable(actor)) throw new NotFoundError("No such order.");
   if (isAdmin(actor)) return;
 

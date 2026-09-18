@@ -102,6 +102,26 @@ Policies throw `NotFoundError`, not `ForbiddenError`, so a refusal does not
 confirm the row exists, and each one also refuses an account that is not
 active.
 
+**The platform has one principal of its own, and it is a skeleton key.**
+`SYSTEM` in `packages/core/src/identity/actor.ts` exists because the job runner
+needs somebody: a balance charged fourteen days before an event was requested by
+nobody, and naming whichever administrator happened to be signed in would put a
+person on the audit trail who did not do it. It passes the **three order
+policies** and nothing else — `requireAdmin` refuses it, the vendor and account
+policies refuse it, `isAuthenticated` is false for it, and `getActor` cannot
+produce it, which `jobs.test.ts` asserts. Widening it is how the second
+authorization layer stops meaning anything; if a new job needs more, give the
+handler a narrower way in instead.
+
+**The clock override is a preview, and the split is the safety property.** The
+cron tick passes `ctx.clock.realNow()` and may touch any row; the admin button
+passes the override and may touch only `is_demo` rows, checked on the order at
+claim time rather than on the job. Neither half is redundant. With the runner
+reading a shifted clock, one jump to `event − 14 days` claims every future
+balance charge, charges those cards, **and consumes their dedupe keys** — so the
+real run on the real date finds nothing to do and reports success. There is no
+error anywhere in that sequence.
+
 **Authority is held, never active.** `actor.roles` decides; `actor.activeRole`
 is presentation and audit provenance only. Never gate on `activeRole`. The role
 switcher writes an `httpOnly` cookie that `getActor` honours only when the role

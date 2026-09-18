@@ -51,32 +51,27 @@ export type AuthPort = {
   getCurrentUser(): Promise<AuthUser | null>;
 };
 
-/** An admin-initiated time shift. */
-export type ClockOverride = {
-  /** The instant the system should pretend it is. */
-  effectiveAt: Date;
-  /** Admin who set the override — recorded on every job run it touches. */
-  actorUserId: string;
-  /** When the override lapses. Overrides are never open-ended. */
-  expiresAt: Date;
-};
-
 /**
  * Time adapter.
  *
- * Nothing in the domain may call `Date.now()` or `new Date()` directly: the
- * seeded demo states are computed from an anchor, and the admin override has to
- * be able to move them. `override` is exposed rather than hidden so the job
- * runner can enforce the rule that matters — under an override, only
- * demo-flagged rows may be touched.
+ * Nothing in the domain may call `Date.now()` or `new Date()` directly. Both
+ * methods answer the real wall clock, and the distinction between them is about
+ * intent rather than value: `realNow` is for a timestamp that must never be
+ * moved, such as a revocation cutoff compared against a token the auth provider
+ * stamped.
+ *
+ * **The admin clock override is deliberately not here.** It was, once, as a
+ * third method — and a port that can shift `now()` shifts it for every caller
+ * of every service in the request, which is the opposite of what the override
+ * is for. It is a stored row instead, read by name where a listing wants a
+ * hypothetical moment, and passed explicitly as `asOf` where a runner wants
+ * one. A shifted clock that nothing implicitly reads cannot leak.
  */
 export type ClockPort = {
-  /** Current time, shifted when an override is in effect. */
+  /** Current time. */
   now(): Date;
-  /** The real wall clock, never shifted. For audit timestamps. */
+  /** The real wall clock. For audit timestamps and revocation cutoffs. */
   realNow(): Date;
-  /** The active override, or null when running on the real clock. */
-  override(): ClockOverride | null;
 };
 
 /** What a charge attempt came back as. */
