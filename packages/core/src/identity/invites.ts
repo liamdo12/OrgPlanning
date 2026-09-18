@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
 import { adminInvites } from "@occasion/db/schema";
 import type { CoreContext } from "../context.js";
@@ -7,6 +6,7 @@ import { record } from "../audit/service.js";
 import type { Actor } from "./actor.js";
 import { requireAdmin } from "./service.js";
 import * as repo from "./repo.js";
+import { hashToken, mintToken } from "../tokens.js";
 
 /**
  * Administrator invitations.
@@ -23,11 +23,6 @@ import * as repo from "./repo.js";
  */
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-/** Tokens are looked up by hash, so the plaintext exists only in the email. */
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
 
 export type AdminInvite = {
   id: string;
@@ -50,7 +45,7 @@ export async function inviteAdmin(
   }
 
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
-  const token = randomBytes(32).toString("base64url");
+  const token = mintToken(32);
 
   const [row] = await ctx.db
     .insert(adminInvites)

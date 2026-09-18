@@ -56,6 +56,24 @@ export function assertCanActOnOrder(actor: Actor, order: OrderParties): void {
   }
 }
 
+/**
+ * Moving money on an order: the customer whose card it is, or an administrator.
+ *
+ * Deliberately a third answer rather than either of the two above. Reading is
+ * too wide — it admits the vendor's staff, and a vendor who can make a charge
+ * happen on somebody else's card is a vendor who can help themselves. Acting is
+ * the wrong set entirely: it admits the vendor and excludes the one person
+ * whose card it is, so the customer could not pay their own deposit.
+ */
+export function assertCanPayOrder(actor: Actor, order: OrderParties): void {
+  if (!isUsable(actor)) throw new NotFoundError("No such order.");
+  if (isAdmin(actor)) return;
+
+  if (order.userId !== actor.userId) {
+    throw new NotFoundError("No such order.");
+  }
+}
+
 export type VendorRef = { id: string };
 
 /** Vendor profiles are public; this guards the private view of one. */

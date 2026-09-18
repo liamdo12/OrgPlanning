@@ -14,6 +14,12 @@ export type {
   ClockPort,
   EmailMessage,
   EmailPort,
+  PaymentIntentStatus,
+  ProviderAccount,
+  ProviderEvent,
+  ProviderPaymentIntent,
+  ProviderRefund,
+  ProviderTransfer,
   StripePort,
 } from "./ports.js";
 
@@ -89,6 +95,7 @@ export {
   assertCanReadEvent,
   assertCanReadOrder,
   assertCanReadUser,
+  assertCanPayOrder,
   assertCanReadVendorPrivately,
   type EventRef,
   type OrderParties,
@@ -146,6 +153,93 @@ export {
   listPublicServices,
   type PublicService,
 } from "./catalog/service.js";
+
+export {
+  ORDER_STATES,
+  canTransition as canTransitionOrder,
+  capacityIn,
+  isTerminal,
+  jobsOnEntering,
+  parseOrderState,
+  payoutAllowed as orderPayoutAllowed,
+  releasesCapacity,
+  type CapacityEffect,
+  type OrderState,
+  type ScheduledJob,
+  type ScheduledJobType,
+} from "./ordering/transitions.js";
+
+export {
+  DEFAULT_TIMEZONE,
+  eventEndInstant,
+  eventStartInstant,
+  shiftCalendarDays,
+} from "./ordering/schedule.js";
+
+export {
+  DEFAULT_ORDERING_POLICY,
+  applyTransition,
+  autoComplete,
+  cancelOrder,
+  createCheckout,
+  getOrder,
+  markFulfilled,
+  raiseIssue,
+  resolveIssue,
+  type CheckoutLine,
+  type CheckoutRequest,
+  type CheckoutResult,
+  type OrderChange,
+  type OrderDetail,
+  type OrderingPolicy,
+} from "./ordering/service.js";
+
+export {
+  allocate,
+  applyBps,
+  computeOrderMoney,
+  sliceOrderMoney,
+  type MoneySlice,
+  type OrderMoney,
+} from "./payments/money.js";
+
+export { buildPaymentPlan, type PaymentPlan, type PaymentPlanKind } from "./payments/plan.js";
+
+export {
+  parsePaymentLinkToken,
+  paymentLinkState,
+  type PaymentLinkState,
+} from "./payments/payment-links.js";
+
+export {
+  UnknownOrderError,
+  applyWebhook,
+  chargeBalance,
+  chargeDeposit,
+  confirmFromWebhook,
+  getOrderMoney,
+  openPaymentLink,
+  startLinkCheckout,
+  recordExternalRefund,
+  refreshConnectStatus,
+  refundWithinCoolingWindow,
+  startConnectOnboarding,
+  transferShare,
+  type BalanceResult,
+  type DepositResult,
+  type LinkCheckout,
+  type PaymentLinkView,
+  type RefundResult,
+  type TransferResult,
+} from "./payments/service.js";
+
+export {
+  listUnprocessedWebhooks,
+  markWebhookFailed,
+  markWebhookProcessed,
+  recordWebhook,
+  vendorIdForStripeAccount,
+} from "./payments/repo.js";
 
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 

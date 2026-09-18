@@ -79,17 +79,245 @@ export type ClockPort = {
   override(): ClockOverride | null;
 };
 
+/** What a charge attempt came back as. */
+export type PaymentIntentStatus =
+  | "requires_payment_method"
+  | "requires_confirmation"
+  | "requires_action"
+  | "processing"
+  | "succeeded"
+  | "canceled";
+
+/** A charge at the provider, as much of it as the domain has any business seeing. */
+export type ProviderPaymentIntent = {
+  id: string;
+  status: PaymentIntentStatus;
+  amount: bigint;
+  currency: string;
+  /** The settled charge, once there is one. Needed to source a transfer. */
+  chargeId: string | null;
+  /** Present while the customer still has to do something — 3DS, mostly. */
+  clientSecret: string | null;
+  /** The saved card this intent may be charged against again. */
+  paymentMethodId: string | null;
+  /** Why it failed, in the provider's words. Never shown raw to a customer. */
+  failureCode: string | null;
+  failureMessage: string | null;
+};
+
+export type ProviderTransfer = {
+  id: string;
+  amount: bigint;
+  /** The connected account the money went to. */
+  destination: string;
+};
+
+export type ProviderRefund = {
+  id: string;
+  amount: bigint;
+  /** `pending`, `succeeded`, `failed` or `canceled` at the provider. */
+  status: string;
+};
+
+/** A vendor's connected account, as the provider currently sees it. */
+export type ProviderAccount = {
+  id: string;
+  /** Whether the account may take money. */
+  chargesEnabled: boolean;
+  /** Whether the platform may pay money out to it. */
+  payoutsEnabled: boolean;
+  /** What onboarding is still waiting for, if anything. */
+  requirementsDue: string[];
+};
+
+/** A verified webhook, with its envelope separated from its payload. */
+export type ProviderEvent = {
+  id: string;
+  type: string;
+  /** The connected account it belongs to, when it is not the platform's. */
+  account: string | null;
+  /** The whole event, kept so an early arrival can be replayed later. */
+  payload: unknown;
+  /** The object the event is about, already unwrapped. */
+  object: Record<string, unknown>;
+};
+
 /**
  * Payments adapter.
  *
  * Idempotency keys are derived from persisted attempt rows by the calling
- * service rather than from order ids, so this port takes a key as an argument
- * rather than inventing one: a per-order key double-charges once the provider's
- * key window expires, and collides on a second partial refund.
+ * service rather than from order ids, so every method that creates money takes
+ * a key as an argument rather than inventing one: a per-order key
+ * double-charges once the provider's key window expires, and collides on a
+ * second partial refund.
+ *
+ * The `find…ByMetadata` pair is the other half of that rule. A key only
+ * deduplicates for as long as the provider remembers it — about a day — so a
+ * retry beyond that window must ask what already exists instead of trusting the
+ * key to refuse a duplicate. Every object this port creates therefore carries
+ * `metadata.order_id` and `metadata.payment_id`, and those are what the lookups
+ * search on.
  */
 export type StripePort = {
   /** Provider identity, so admin screens can label which mode produced a row. */
   mode(): "test" | "live";
+
+  /**
+   * The provider's record of a person, which a saved card hangs off.
+   *
+   * Needed before the deposit rather than at the balance, because a card can
+   * only be re-used off-session if it was saved against a customer at the time
+   * it was first charged.
+   */
+  ensureCustomer(input: {
+    idempotencyKey: string;
+    email: string;
+    name: string;
+    metadata: Record<string, string>;
+  }): Promise<{ id: string }>;
+
+  /**
+   * Charges a card the customer is present for, and saves it for the balance.
+   *
+   * `transferGroup` ties every payment and transfer for one checkout together,
+   * so the provider's own dashboard can show a multi-vendor booking as one
+   * thing even though each order is charged separately.
+   */
+  createPaymentIntent(input: {
+    idempotencyKey: string;
+    amount: bigint;
+    currency: string;
+    customerId: string;
+    transferGroup: string;
+    metadata: Record<string, string>;
+  }): Promise<ProviderPaymentIntent>;
+
+  /**
+   * Charges a saved card with nobody watching.
+   *
+   * The balance, fourteen days before the event. It fails more often than an
+   * on-session charge does — that is what `action_required` and the emailed
+   * payment link exist for — so a decline here is an ordinary answer rather
+   * than an exception.
+   */
+  chargeOffSession(input: {
+    idempotencyKey: string;
+    amount: bigint;
+    currency: string;
+    customerId: string;
+    paymentMethodId: string;
+    transferGroup: string;
+    metadata: Record<string, string>;
+  }): Promise<ProviderPaymentIntent>;
+
+  /**
+   * A provider-hosted page that takes one payment.
+   *
+   * What the emailed payment link leads to. The alternative — creating an
+   * intent here and confirming it in the browser — needs the provider's own
+   * client library and a card form on a page this milestone does not have; an
+   * intent created and never confirmed takes no money at all, however
+   * successful the call that made it looks.
+   *
+   * The metadata is put on the **intent**, not only on the session, because the
+   * intent is what the webhook that matters carries.
+   */
+  createCheckoutSession(input: {
+    idempotencyKey: string;
+    amount: bigint;
+    currency: string;
+    customerId: string;
+    /** What the customer sees they are paying for. */
+    description: string;
+    transferGroup: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+  }): Promise<{ id: string; url: string; paymentIntentId: string | null }>;
+
+  /** Whatever this attempt row already created at the provider, if anything. */
+  findPaymentIntentByMetadata(query: {
+    orderId: string;
+    paymentId: string;
+  }): Promise<ProviderPaymentIntent | null>;
+
+  retrievePaymentIntent(id: string): Promise<ProviderPaymentIntent | null>;
+
+  /**
+   * Moves a vendor's share to their connected account.
+   *
+   * `sourceTransaction` is the charge the money comes from: without it the
+   * transfer draws on the platform's own balance, which in test mode succeeds
+   * and in live mode is the platform paying vendors out of its float.
+   */
+  createTransfer(input: {
+    idempotencyKey: string;
+    amount: bigint;
+    currency: string;
+    destinationAccountId: string;
+    sourceTransaction: string;
+    transferGroup: string;
+    metadata: Record<string, string>;
+  }): Promise<ProviderTransfer>;
+
+  findTransferByMetadata(query: {
+    orderId: string;
+    transferId: string;
+  }): Promise<ProviderTransfer | null>;
+
+  createRefund(input: {
+    idempotencyKey: string;
+    paymentIntentId: string;
+    amount: bigint;
+    metadata: Record<string, string>;
+  }): Promise<ProviderRefund>;
+
+  /**
+   * Whatever this refund attempt already created, if anything.
+   *
+   * Keyed by the charge it refunds rather than by the order, because refunds
+   * have no metadata search: they are listed against their payment intent,
+   * which has no index lag to wait out.
+   */
+  findRefundByMetadata(query: {
+    paymentIntentId: string;
+    refundId: string;
+  }): Promise<ProviderRefund | null>;
+
+  retrieveRefund(id: string): Promise<ProviderRefund | null>;
+
+  /**
+   * Starts Connect Express onboarding for a vendor.
+   *
+   * `email` is optional because this platform frequently does not know one: the
+   * provider collects the business's own address during onboarding, and an
+   * address invented to satisfy a required field is one the provider's
+   * notifications are undeliverable to.
+   */
+  createConnectedAccount(input: {
+    idempotencyKey: string;
+    email?: string | undefined;
+    businessName: string;
+    metadata: Record<string, string>;
+  }): Promise<ProviderAccount>;
+
+  /** A one-time URL the vendor completes their onboarding at. */
+  createAccountLink(input: {
+    accountId: string;
+    refreshUrl: string;
+    returnUrl: string;
+  }): Promise<{ url: string; expiresAt: Date }>;
+
+  retrieveAccount(id: string): Promise<ProviderAccount | null>;
+
+  /**
+   * Verifies a webhook's signature and unwraps it.
+   *
+   * Takes the raw body, not a parsed object: the signature covers the exact
+   * bytes, and anything that has been through `JSON.parse` and back cannot be
+   * checked against it.
+   */
+  parseWebhook(rawBody: string, signature: string): ProviderEvent;
 };
 
 /** A message queued for delivery. */

@@ -60,9 +60,14 @@ export type CoreContext = {
  *
  * `Pick` rather than the transaction type itself: naming Drizzle's transaction
  * generic here would drag the driver's type parameters through the domain, and
- * the four verbs are all a repository is allowed to use anyway.
+ * these verbs are all a repository is allowed to use anyway.
+ *
+ * `execute` is on the list for the handful of things the query builder cannot
+ * say — drawing from a sequence, for one. It is a door into raw SQL and should
+ * stay a narrow one: a repository reaching for it to express an ordinary query
+ * has given up the typing that makes the rest of these safe.
  */
-export type DbExecutor = Pick<Db, "select" | "insert" | "update" | "delete">;
+export type DbExecutor = Pick<Db, "select" | "insert" | "update" | "delete" | "execute">;
 
 /** Thrown when a context would violate a tier or money invariant. */
 export class CoreContextError extends Error {

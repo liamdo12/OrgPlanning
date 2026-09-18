@@ -1,5 +1,8 @@
 import { createCoreContext, type CoreConfig, type CoreContext } from "./context.js";
 import type { AuthPort, ClockPort, EmailPort, StripePort } from "./ports.js";
+import { createStripeFake } from "./testing/stripe-fake.js";
+
+export { createStripeFake, type StripeFake } from "./testing/stripe-fake.js";
 
 /**
  * Test-only context factory.
@@ -34,7 +37,7 @@ export function createTestCoreContext(overrides: Partial<CoreContext> = {}): Cor
     override: () => null,
   };
 
-  const stripe: StripePort = { mode: () => "test" };
+  const stripe: StripePort = createStripeFake();
 
   const email: EmailPort = {
     send: () => Promise.resolve({ providerMessageId: "test-message" }),
