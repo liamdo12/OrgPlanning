@@ -493,6 +493,11 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       state: refunded ? ("refunded" as const) : ("succeeded" as const),
       amount: paidInFull ? money.total : money.depositAmount,
       providerPaymentIntentId: `pi_test_${order.reference.toLowerCase()}_deposit`,
+      // A transfer draws on a charge, not on an intent — `source_transaction`
+      // is the charge id — so a seeded payment without one cannot be paid out,
+      // and the demo's own headline moment ("transfer the deposit share to the
+      // vendor") would park as held. A placeholder, like the intent beside it.
+      providerChargeId: `ch_test_${order.reference.toLowerCase()}_deposit`,
       succeededAt: depositPaidAt,
     });
 
@@ -712,7 +717,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     id: seedId(`job:quote_expiry:${QUOTE_REQUEST.key}`),
     type: "expire_quote_request" as const,
     status: "queued" as const,
-    dedupeKey: `${QUOTE_REQUEST.key}:expire`,
+    dedupeKey: `expire_quote_request:${quoteRequestId}`,
     runAfter: quoteExpiresAt,
     payload: { quoteRequestId },
     isDemo: true,

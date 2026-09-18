@@ -60,6 +60,18 @@ export const jobRuns = app.table(
     clockOverrideActorId: uuid("clock_override_actor_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    /**
+     * Whoever asked for this run. Null when the timer did.
+     *
+     * Separate from the override's actor, because they answer different
+     * questions and are routinely different people — or, for a run with no
+     * override at all, one of them is nobody. "An administrator ran this" and
+     * "an administrator had moved the clock" both have to be answerable from
+     * this row alone, months later.
+     */
+    triggeredByUserId: uuid("triggered_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     triggeredBy: jobTrigger("triggered_by").notNull(),
     ...timestamps,
   },
@@ -67,5 +79,6 @@ export const jobRuns = app.table(
     index("job_runs_job_idx").on(table.jobId),
     index("job_runs_started_idx").on(table.startedAt),
     index("job_runs_clock_actor_idx").on(table.clockOverrideActorId),
+    index("job_runs_triggered_by_idx").on(table.triggeredByUserId),
   ],
 );
