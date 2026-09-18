@@ -459,7 +459,12 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       coolingWindowEndsAt: coolingEndsAt,
       balanceDueAt: paidInFull ? null : balanceDueAt,
       graceExpiresAt: balanceFailed ? at(anchorAt, hours(RULES.balanceGraceHours)) : null,
-      autoCompleteAt,
+      // Only once an order has been delivered. The lifecycle sets this on
+      // entering `fulfilled` and never clears it, so a completed order keeps
+      // the instant it auto-completed at and everything earlier has none — a
+      // confirmed booking carrying an auto-complete date is a deadline no job
+      // is working to.
+      autoCompleteAt: ["fulfilled", "completed"].includes(order.state) ? autoCompleteAt : null,
       fulfilledAt: ["fulfilled", "completed"].includes(order.state) ? eventAt : null,
       completedAt: order.state === "completed" ? autoCompleteAt : null,
       cancelledAt: order.state === "cancelled" ? at(depositPaidAt, hours(12)) : null,
@@ -560,12 +565,22 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
 
     // ---- jobs, derived from the order rather than hand-written -------------
 
+    // `type:orderId`, which is the key the ordering domain computes. It is not
+    // a cosmetic choice and the reference cannot serve: the domain addresses a
+    // job by that key to cancel it when an order ends and to refuse a duplicate
+    // when one is re-queued. A seeded job under any other key is invisible to
+    // both — a cancelled demo order would keep a balance charge due against it,
+    // and confirming one would schedule a second. This duplicates the domain's
+    // convention because `packages/db` may not import `packages/core`;
+    // `admin-orders.test.ts` asserts the two still agree.
+    const jobKey = (type: string) => `${type}:${orderId}`;
+
     if (!coolingClosed && !refunded) {
       jobRows.push({
         id: seedId(`job:cooling:${order.reference}`),
         type: "cooling_window_transfer" as const,
         status: "queued" as const,
-        dedupeKey: `${order.reference}:deposit_share`,
+        dedupeKey: jobKey("cooling_window_transfer"),
         runAfter: coolingEndsAt,
         payload: { orderId, reference: order.reference },
         isDemo: true,
@@ -577,7 +592,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
         id: seedId(`job:balance:${order.reference}`),
         type: "charge_balance" as const,
         status: "queued" as const,
-        dedupeKey: `${order.reference}:balance`,
+        dedupeKey: jobKey("charge_balance"),
         runAfter: balanceDueAt,
         payload: { orderId, reference: order.reference, amount: money.balanceAmount.toString() },
         isDemo: true,
@@ -589,19 +604,23 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
         id: seedId(`job:grace:${order.reference}`),
         type: "balance_grace_expiry" as const,
         status: "queued" as const,
-        dedupeKey: `${order.reference}:grace`,
+        dedupeKey: jobKey("balance_grace_expiry"),
         runAfter: at(anchorAt, hours(RULES.balanceGraceHours)),
         payload: { orderId, reference: order.reference },
         isDemo: true,
       });
     }
 
-    if (order.state === "confirmed" || order.state === "balance_due") {
+    // Entering `fulfilled` is what queues this, per the lifecycle table — not
+    // confirmation. Queueing it earlier put a job against orders that have not
+    // been delivered, under a key the domain would later find already taken:
+    // marking one of them fulfilled would then schedule nothing at all.
+    if (order.state === "fulfilled") {
       jobRows.push({
         id: seedId(`job:autocomplete:${order.reference}`),
         type: "auto_complete_order" as const,
         status: "queued" as const,
-        dedupeKey: `${order.reference}:auto_complete`,
+        dedupeKey: jobKey("auto_complete_order"),
         runAfter: autoCompleteAt,
         payload: { orderId, reference: order.reference },
         isDemo: true,

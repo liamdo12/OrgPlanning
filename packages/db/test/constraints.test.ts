@@ -88,10 +88,21 @@ describe.skipIf(!url)("database constraints", () => {
   });
 
   it("refuses a second queued job with the same type and dedupe key", async () => {
+    // Read from the seeded row rather than written out here: the key's shape is
+    // the ordering domain's to decide, and a test that restates it goes on
+    // passing against a key nothing else uses any more.
+    const [job] = await sql<{ type: string; dedupe_key: string }[]>`
+      select type, dedupe_key from app.planning_org_jobs where type = 'charge_balance' limit 1
+    `;
+
+    // Asserted rather than asserted-away: without a seeded job the insert below
+    // fails on a NOT NULL violation, and the test would report the wrong thing.
+    expect(job).toBeDefined();
+
     await expect(
       sql`
         insert into app.planning_org_jobs (type, dedupe_key, run_after, payload)
-        values ('charge_balance', 'TO-4192:balance', now(), '{}'::jsonb)
+        values (${job?.type as string}, ${job?.dedupe_key as string}, now(), '{}'::jsonb)
       `,
     ).rejects.toThrow(/jobs_type_dedupe_key/i);
   });

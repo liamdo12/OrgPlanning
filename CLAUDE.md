@@ -167,6 +167,16 @@ add a policy to "fix" a query returning nothing — check the role first.
 `seedId(name)`; instants are offsets from `seed_meta.anchor_at`. Never write a
 literal date into the seed, and never assert one in a test.
 
+A seeded **job** carries the key the ordering domain computes, `type:orderId`,
+and the seed repeats that convention because `packages/db` may not import
+`packages/core`. It is not cosmetic: the domain addresses a job by that key to
+call it off when an order ends and to refuse a duplicate when the same work is
+queued again, so a seeded job under any other key is invisible to both — a
+cancelled demo order would keep a balance charge due against it, and confirming
+one would schedule a second. The seed also queues work only where the lifecycle
+does; `auto_complete_order` belongs to `fulfilled`, not to `confirmed`.
+`packages/core/test/admin-orders.test.ts` asserts the two still agree.
+
 **Time.** Do not call `Date.now()` or `new Date()` in the domain — use
 `ctx.clock.now()`, with `ctx.clock.realNow()` for audit timestamps. This is a
 convention, not yet a lint rule. Under a clock override the job runner may touch
