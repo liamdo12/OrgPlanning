@@ -5,7 +5,8 @@
  * rebuild schemas and delete rows, and importing them should be a visible act.
  */
 export { migrate } from "./migrate.js";
-export { reset, reseedDemo } from "./reset.js";
+export { reset } from "./reset.js";
+export { reseedDemo } from "./demo.js";
 export { seed, type SeedOptions, type SeedResult } from "./seed/index.js";
 
 /**

@@ -1,5 +1,5 @@
 import { seed } from "../src/seed/index.js";
-import { reseedDemo } from "../src/reset.js";
+import { reseedDemo } from "../src/demo.js";
 import { allowDestructive, requireDatabaseUrl } from "./env.js";
 
 /**

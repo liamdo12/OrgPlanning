@@ -1,5 +1,6 @@
 import postgres from "postgres";
-import { reset, reseedDemo } from "../src/reset.js";
+import { reset } from "../src/reset.js";
+import { reseedDemo } from "../src/demo.js";
 
 /**
  * Shared setup for tests that need a real database.
