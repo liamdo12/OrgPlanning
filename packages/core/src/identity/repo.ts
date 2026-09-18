@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   communicationConsents,
   userRoles,
@@ -291,20 +291,38 @@ export async function deleteRole(ctx: CoreContext, userId: string, role: RoleNam
 }
 
 /**
- * Invalidates every session issued before now.
+ * Invalidates every session issued before `validAfter`.
  *
  * This is the revocation mechanism. Asking the auth provider to drop its own
  * sessions is done on top of this and is best effort; this row is what
  * `getActor` checks, so it is the guarantee.
+ *
+ * **`validAfter` must come from `ctx.clock.realNow()`, never `now()`.** The
+ * value it is compared against is the token's issue time, stamped by the auth
+ * provider on a clock nothing here can move. Writing a shifted instant into a
+ * column that is compared against a real one is a category error: under a
+ * backdated clock override it writes a cutoff in the past, every existing token
+ * still postdates it, and the revocation quietly does nothing.
+ *
+ * `greatest` rather than assignment, so the column can only ever move forward.
+ * A plain `set` lets a later write with an earlier instant *lower* a cutoff an
+ * earlier revocation raised — which brings sessions that were already dead back
+ * to life.
  */
 export async function bumpSessionsValidAfter(
   ctx: CoreContext,
   userId: string,
-  now: Date,
+  validAfter: Date,
 ): Promise<void> {
   await ctx.db
     .update(users)
-    .set({ sessionsValidAfter: now, updatedAt: now })
+    .set({
+      // An ISO string rather than the `Date`: a raw `sql` fragment bypasses
+      // Drizzle's column mapping, so the driver would receive a `Date` it does
+      // not know how to bind. The cast gives the plain string its type back.
+      sessionsValidAfter: sql`greatest(${users.sessionsValidAfter}, ${validAfter.toISOString()}::timestamptz)`,
+      updatedAt: validAfter,
+    })
     .where(eq(users.id, userId));
 }
 

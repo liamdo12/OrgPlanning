@@ -118,6 +118,16 @@ leaves the person bouncing off a challenge they cannot answer.
 rejects a token with no issue time at all rather than skipping the check. If you
 add a way to change what someone may do, move that column too.
 
+Two rules about *how* it moves, both enforced in `bumpSessionsValidAfter` and
+`bumpMemberSessions`. Write it from **`ctx.clock.realNow()`, never `now()`** —
+the value it is compared against is a token issue time the auth provider stamped
+on a clock nothing here can move, so a cutoff written from the shiftable domain
+clock sits in the past under a demo override and refuses nobody. And write it
+with **`greatest`, never assignment**, so the column only ever moves forward: a
+plain `set` lets a later write lower a cutoff an earlier revocation raised, which
+brings dead sessions back. Suspending a vendor does the same for its staff, in
+the same transaction as the status change.
+
 **Binding a provider subject depends on the provider confirming addresses.**
 `getActor` attaches a subject to an existing row only when the token says the
 address is verified, and for an email signup that claim rides in

@@ -134,7 +134,7 @@ export async function acceptAdminInvite(
   }
 
   await repo.insertRole(ctx, acceptingUserId, "admin", invite.invitedByUserId, now);
-  await repo.bumpSessionsValidAfter(ctx, acceptingUserId, now);
+  await repo.bumpSessionsValidAfter(ctx, acceptingUserId, ctx.clock.realNow());
 
   await record(
     ctx,

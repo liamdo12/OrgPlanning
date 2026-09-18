@@ -276,7 +276,7 @@ export async function clearSecondFactor(
   // Whoever is holding a session for this account loses it: if the factor was
   // removed because the account may be compromised, leaving live sessions alone
   // would make the removal pointless.
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, now);
+  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.mfa.clear",
@@ -348,7 +348,7 @@ export async function grantRole(
   }
 
   await repo.insertRole(ctx, targetUserId, role, admin.userId, now);
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, now);
+  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.role.grant",
@@ -366,7 +366,6 @@ export async function revokeRole(
   role: RoleName,
 ): Promise<void> {
   requireAdmin(actor);
-  const now = ctx.clock.now();
 
   const before = await repo.loadIdentity(ctx, targetUserId);
   if (!before) {
@@ -375,7 +374,7 @@ export async function revokeRole(
 
   await repo.deleteRole(ctx, targetUserId, role);
   // Without this the revoked role keeps working until the token expires.
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, now);
+  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action: "identity.role.revoke",
@@ -421,7 +420,7 @@ async function setStatus(
   }
 
   await repo.setUserStatus(ctx, targetUserId, status, now);
-  await repo.bumpSessionsValidAfter(ctx, targetUserId, now);
+  await repo.bumpSessionsValidAfter(ctx, targetUserId, ctx.clock.realNow());
 
   await record(ctx, actor, {
     action,
@@ -443,11 +442,13 @@ export async function endVendorStaffSessions(
   ctx: CoreContext,
   vendorId: string,
 ): Promise<string[]> {
-  const now = ctx.clock.now();
+  // The real clock, not the domain one: this is compared against a token issue
+  // time the auth provider stamped, which no override can move.
+  const cutoff = ctx.clock.realNow();
   const memberIds = await repo.loadVendorMemberIds(ctx, vendorId);
 
   for (const memberId of memberIds) {
-    await repo.bumpSessionsValidAfter(ctx, memberId, now);
+    await repo.bumpSessionsValidAfter(ctx, memberId, cutoff);
   }
 
   return memberIds;
