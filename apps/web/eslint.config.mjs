@@ -9,6 +9,8 @@ export default [
     // one by one because `globals` is not a dependency of this package.
     files: ["scripts/**/*.mjs"],
     languageOptions: { globals: { process: "readonly", console: "readonly" } },
+    // These are CLI commands; their output to stdout is the point.
+    rules: { "no-console": "off" },
   },
   {
     files: ["src/**/*.{ts,tsx}", "instrumentation.ts"],

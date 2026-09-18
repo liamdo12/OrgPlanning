@@ -78,7 +78,7 @@ packages/db/       Drizzle schema, migrations, seed (see its README)
 packages/ui/       glass design system
 packages/config/   tsconfig / eslint / tailwind / prettier presets
 design/            exported design canvas — read-only reference
-docs/              design-gaps.md (architecture and runbook land with later work)
+docs/              design-gaps.md, payments-testing.md (architecture and runbook land with later work)
 plans/             implementation plan and phase files
 supabase/          local stack config
 ```

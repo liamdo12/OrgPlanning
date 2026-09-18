@@ -28,20 +28,46 @@ const HST_BPS = 1300; // 13% Ontario
  * would exhaust Postgres. The *context* is still per request, which is what
  * keeps request-scoped state out of module scope.
  *
- * Nothing closes this yet, which is fine while no query is issued. Once the
- * schema lands, this needs a dev-mode cache on `globalThis` (module scope is
- * re-evaluated on every hot reload, and each reload would open another pool)
- * and a SIGTERM handler that drains it so rollouts do not cut live queries.
+ * Two things this needs that a plain module-level `let` does not give it, and
+ * both became real the moment routes started querying on every request:
+ *
+ * **A cache that survives hot reload.** Module scope is re-evaluated on each
+ * one, so a `let` opens another pool every time a file is saved, and the old
+ * one keeps its connections. Development runs out of them within an afternoon.
+ * `globalThis` outlives the module, so the pool does not multiply.
+ *
+ * **A drain on shutdown.** Without it a rollout severs whatever is in flight —
+ * including, now, a webhook mid-transaction.
  */
-let pool: { db: Db; close: () => Promise<void> } | undefined;
+type Pool = { db: Db; close: () => Promise<void> };
+
+const POOL_KEY = Symbol.for("occasion.web.pool");
+const globals = globalThis as typeof globalThis & { [POOL_KEY]?: Pool };
 
 function getDb(): Db {
   const env = getEnv();
-  pool ??= createDb({
-    connectionString: env.DATABASE_URL,
-    debug: env.APP_TIER === "local",
+
+  globals[POOL_KEY] ??= openPool(env.DATABASE_URL, env.APP_TIER === "local");
+  return globals[POOL_KEY].db;
+}
+
+function openPool(connectionString: string, debug: boolean): Pool {
+  const pool = createDb({ connectionString, debug });
+
+  // Once per pool, not once per request. `once` rather than `on`, because a
+  // listener added per request would leak them and eventually warn.
+  process.once("SIGTERM", () => void drain(pool));
+  process.once("SIGINT", () => void drain(pool));
+
+  return pool;
+}
+
+async function drain(pool: Pool): Promise<void> {
+  if (globals[POOL_KEY] === pool) delete globals[POOL_KEY];
+  await pool.close().catch(() => {
+    // Shutting down either way; a pool that will not close cleanly must not
+    // stop the process exiting.
   });
-  return pool.db;
 }
 
 function getConfig(): CoreConfig {
@@ -69,7 +95,7 @@ export function createRequestContext(): CoreContext {
     auth: createAuth(),
     clock: createClock(),
     email: createEmail(),
-    stripe: createStripe(getEnv().STRIPE_SECRET_KEY),
+    stripe: createStripe(getEnv().STRIPE_SECRET_KEY, getEnv().STRIPE_WEBHOOK_SECRET),
     config: getConfig(),
   });
 }

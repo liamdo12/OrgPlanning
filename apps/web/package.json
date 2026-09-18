@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start --port 3000",
     "auth:provision": "node --env-file-if-exists=.env.local scripts/provision-auth-users.mjs",
+    "stripe:onboard": "node --env-file-if-exists=.env.local scripts/stripe-onboard-demo-vendors.mjs",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
@@ -23,6 +24,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "server-only": "^0.0.1",
+    "stripe": "^22.6.2",
     "zod": "catalog:"
   },
   "devDependencies": {
