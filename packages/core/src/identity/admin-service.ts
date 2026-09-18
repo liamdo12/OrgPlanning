@@ -6,6 +6,7 @@ import { assertCanActOnUser, assertCanReadUser } from "./policies.js";
 import { requireAdmin } from "./service.js";
 import * as repo from "./repo.js";
 import * as adminRepo from "./admin-repo.js";
+import { formatMoney } from "../payments/money.js";
 
 /**
  * Account management.
@@ -531,21 +532,4 @@ function vendorProgress(row: adminRepo.AdminUserRow): string | null {
   if (row.vendorPayoutsEnabledAt) return "payouts enabled";
   if (row.vendorOnboardingPercent) return `onboarding ${row.vendorOnboardingPercent}%`;
   return row.vendorStatus;
-}
-
-/**
- * Cents to `C$1,039.00`.
- *
- * Formatted here so no screen ever divides a currency amount. `Number` is safe
- * on the way out because the value is only being displayed — the arithmetic
- * that has to reconcile happens in the database, in integers.
- */
-function formatMoney(cents: bigint): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-    currencyDisplay: "narrowSymbol",
-  })
-    .format(Number(cents) / 100)
-    .replace("$", "C$");
 }

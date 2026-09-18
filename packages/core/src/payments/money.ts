@@ -185,3 +185,33 @@ function assertBps(bps: number): void {
     });
   }
 }
+
+/**
+ * Cents to `C$1,039.00`.
+ *
+ * Here rather than in each screen so that no view ever divides a currency
+ * amount: the arithmetic that has to reconcile happens above in integers, and
+ * this is the one place the value stops being one. `Number` is safe on the way
+ * out because the result is only ever displayed.
+ *
+ * `narrowSymbol` gives `$` for Canadian dollars in an `en-CA` locale, which is
+ * ambiguous on a platform that will one day price in another currency, so CAD
+ * is spelled `C$` the way the prototype writes it (line 2723). Anything else
+ * keeps whatever symbol the locale gives it rather than being prefixed with a
+ * `C` that would be a lie.
+ */
+export function formatMoney(cents: bigint, currency = "CAD"): string {
+  // `Intl` throws a `RangeError` on anything that is not a currency code, and
+  // the column is `char(3)` with no check constraint behind it. A bad row
+  // should render as a row, not as a 500 that no error handler recognises —
+  // the fault is worth a wrong symbol, not a blank screen.
+  const code = /^[A-Za-z]{3}$/.test(currency) ? currency.toUpperCase() : "CAD";
+
+  const formatted = new Intl.NumberFormat("en-CA", {
+    style: "currency",
+    currency: code,
+    currencyDisplay: "narrowSymbol",
+  }).format(Number(cents) / 100);
+
+  return code === "CAD" ? formatted.replace("$", "C$") : formatted;
+}

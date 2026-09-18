@@ -359,6 +359,15 @@ export type TransitionOptions = {
   action: string;
   issueNote?: string | null;
   /**
+   * Extra detail for the audit entry's `after`.
+   *
+   * For the part of a decision the state does not carry — the note an
+   * administrator wrote when they resolved an issue, say. On the entry rather
+   * than in a second row, because two audit rows for one decision is two things
+   * that can be read apart.
+   */
+  auditAfter?: Record<string, unknown>;
+  /**
    * Runs inside the same transaction, after the state is written.
    *
    * It receives the deadlines the move computed, so that something written
@@ -478,7 +487,7 @@ export async function applyTransition(
         entityType: "order",
         entityId: orderId,
         before: { state: order.state },
-        after: { state: to },
+        after: { state: to, ...options.auditAfter },
       },
       tx,
     );
@@ -575,17 +584,31 @@ export async function raiseIssue(
   });
 }
 
-/** Resolves an issue back to whichever state the booking continues in. */
+/**
+ * Resolves an issue back to whichever state the booking continues in.
+ *
+ * The note is required and is kept on the audit entry rather than on the order:
+ * `issueNote` is cleared by this move — the problem is over — and what somebody
+ * needs six weeks later is why it was closed, which is a fact about the
+ * decision rather than about the order's present condition.
+ */
 export async function resolveIssue(
   ctx: CoreContext,
   actor: Actor,
   orderId: string,
   to: Extract<OrderState, "confirmed" | "fulfilled" | "cancelled">,
+  note: string,
 ): Promise<OrderChange> {
+  const trimmed = note.trim();
+  if (!trimmed) {
+    throw new ValidationError("Say how the problem was resolved.", { note: "required" });
+  }
+
   assertCanActOnOrder(actor, await parties(ctx, orderId));
   return applyTransition(ctx, actor, orderId, to, {
     action: "order.resolve_issue",
     issueNote: null,
+    auditAfter: { resolution: trimmed.slice(0, 500) },
   });
 }
 

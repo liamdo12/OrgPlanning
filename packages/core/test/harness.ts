@@ -36,8 +36,23 @@ export async function resetDatabase(url: string, anchorAt: Date = new Date()) {
  * adapter reports identity only, exactly as the real one does, and everything
  * that governs authority is still read from the database.
  */
-export function createDatabaseContext(url: string, stripe?: StripeFake) {
-  const pool = createDb({ connectionString: url, maxConnections: 2 });
+export function createDatabaseContext(
+  url: string,
+  stripe?: StripeFake,
+  /**
+   * Receives every statement the pool issues.
+   *
+   * For the one claim about a list screen that its output cannot make: that it
+   * runs a fixed number of queries rather than one per row. An N+1 is invisible
+   * in an assertion on what comes back, and is the defect a list grows first.
+   */
+  onQuery?: (query: string) => void,
+) {
+  const pool = createDb({
+    connectionString: url,
+    maxConnections: 2,
+    ...(onQuery ? { debug: { logQuery: (query: string) => onQuery(query) } } : {}),
+  });
   let current: AuthUser | null = null;
   // The domain clock, which an admin override can move. `realNow` below is
   // deliberately not shifted with it, because that is the whole distinction the

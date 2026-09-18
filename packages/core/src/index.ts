@@ -194,10 +194,46 @@ export {
   allocate,
   applyBps,
   computeOrderMoney,
+  formatMoney,
   sliceOrderMoney,
   type MoneySlice,
   type OrderMoney,
 } from "./payments/money.js";
+
+export {
+  paymentLabel,
+  type PaymentLabel,
+  type PaymentLabelKind,
+} from "./ordering/payment-label.js";
+
+export {
+  getOrderDetail,
+  listOrderVendors,
+  listOrdersForAdmin,
+  markOrderFulfilled,
+  orderStateLabel,
+  recordDashboardRefund,
+  refundCoolingWindow,
+  resolveOrderIssue,
+  retryBalance,
+  type AdminOrderDetail,
+  type AdminOrderList,
+  type AdminOrderListItem,
+  type OrderActions,
+  type OrderFilters,
+  type OrderMoneyBreakdown,
+  type RetryBalanceResult,
+} from "./ordering/admin-service.js";
+
+export {
+  PAYMENT_FILTERS,
+  type AuditRow as OrderAuditRow,
+  type PaymentFilter,
+  type PolicyRow as OrderPolicyRow,
+  type VendorOption,
+} from "./ordering/admin-repo.js";
+
+export type { PaymentRow, RefundRow, TransferRow } from "./payments/repo.js";
 
 export { buildPaymentPlan, type PaymentPlan, type PaymentPlanKind } from "./payments/plan.js";
 
