@@ -17,3 +17,5 @@ export * from "./payments.js";
 export * from "./automation.js";
 export * from "./comms.js";
 export * from "./trust.js";
+
+export { STANDING_HOLD, standingHoldReason } from "./common.js";

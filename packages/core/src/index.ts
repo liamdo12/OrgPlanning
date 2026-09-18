@@ -4,6 +4,7 @@ export {
   type AppTier,
   type CoreConfig,
   type CoreContext,
+  type DbExecutor,
 } from "./context.js";
 
 export type {
@@ -91,6 +92,39 @@ export {
   revokeAdminInvite,
   type AdminInvite,
 } from "./identity/invites.js";
+
+export {
+  VENDOR_STATUSES,
+  canTransition,
+  parseVendorStatus,
+  payoutAllowed,
+  publiclyListable,
+  reasonRequiredOnEntering,
+  type VendorStatus,
+} from "./vendors/transitions.js";
+
+export {
+  approveVendor,
+  assertVendorMayBePaid,
+  blockVendor,
+  getVendorDetail,
+  listVendorsForAdmin,
+  markUnderReview,
+  reinstateVendor,
+  suspendVendor,
+  type AdminVendorList,
+  type AdminVendorRow,
+  type OnboardingStep,
+  type StatusChange,
+  type VendorDetail,
+  type VendorFilter,
+} from "./vendors/service.js";
+
+export {
+  getPublicService,
+  listPublicServices,
+  type PublicService,
+} from "./catalog/service.js";
 
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 

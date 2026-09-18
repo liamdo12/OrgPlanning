@@ -1,5 +1,5 @@
 import { auditLog } from "@occasion/db/schema";
-import type { CoreContext } from "../context.js";
+import type { CoreContext, DbExecutor } from "../context.js";
 import type { Actor, RoleName } from "../identity/actor.js";
 import { isAuthenticated } from "../identity/actor.js";
 
@@ -28,12 +28,22 @@ export type AuditEntry = {
  * Takes the actor rather than reading it from the context so that a caller
  * cannot accidentally attribute an action to whoever happens to be signed in
  * while a job runs on someone else's behalf.
+ *
+ * `db` defaults to the context's handle and is passed explicitly by a caller
+ * writing inside a transaction. That is not a convenience: an audit row that
+ * commits separately from the change it describes will eventually describe a
+ * change that rolled back.
  */
-export async function record(ctx: CoreContext, actor: Actor, entry: AuditEntry): Promise<void> {
+export async function record(
+  ctx: CoreContext,
+  actor: Actor,
+  entry: AuditEntry,
+  db: DbExecutor = ctx.db,
+): Promise<void> {
   const actorUserId = isAuthenticated(actor) ? actor.userId : null;
   const actingRole: RoleName | null = isAuthenticated(actor) ? actor.activeRole : null;
 
-  await ctx.db.insert(auditLog).values({
+  await db.insert(auditLog).values({
     actorUserId,
     actingRole,
     action: entry.action,

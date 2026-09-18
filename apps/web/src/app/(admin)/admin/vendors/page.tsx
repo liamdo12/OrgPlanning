@@ -1,8 +1,18 @@
-import { vendors } from "@occasion/db/schema";
-import { DataTable, EmptyState, StatusBadge, type Column } from "@occasion/ui";
+import { EmptyState, GlassPanel } from "@occasion/ui";
+import {
+  NotFoundError,
+  VENDOR_STATUSES,
+  getVendorDetail,
+  listVendorsForAdmin,
+  type VendorStatus,
+} from "@occasion/core";
 import { AdminPage } from "../../_components/admin-page";
 import { requireAdminPage } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
+import { VendorFilters, type FilterChoice } from "./_components/vendor-filters";
+import { VendorRow } from "./_components/vendor-row";
+import { VendorDrawer } from "./_components/vendor-drawer";
+import { VendorDetailPanel } from "./_components/vendor-detail";
 
 /** Rendered per request: nothing it shows exists at build time. */
 export const dynamic = "force-dynamic";
@@ -10,99 +20,114 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Vendors · Occasion admin" };
 
 /**
- * Every vendor on the platform.
+ * The vendor approval queue.
  *
- * A list, not a row lookup, so the role gate is the whole authorization story
- * here — there is no entity id for an object policy to be asked about. The
- * moment this page grows a "view vendor" link, that page takes the actor as its
- * first argument and calls `assertCanReadVendorPrivately`.
+ * Every business on the platform, not the six the prototype draws: nothing in
+ * the schema separates "in the queue" from "in the catalogue", and an approval
+ * queue that hides businesses is not one. The states the prototype shows are
+ * intact — two applications waiting and one refused — and the divergence is
+ * recorded in `docs/design-gaps.md`.
  *
- * The query is inline because the vendor service does not exist yet. When it
- * lands, this reads from it and the columns below stay as they are.
+ * Which vendor's record is open is a query parameter rather than client state,
+ * so the record is server-rendered behind the same gate as the list and can be
+ * linked to.
  */
 
-type VendorRow = {
-  id: string;
-  name: string;
-  status: string;
-  baseArea: string | null;
-};
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-/**
- * `approved` is the only settled state, `blocked` the only bad one, and
- * `pending` is work waiting for somebody — which is why it is the warm tone
- * rather than the neutral one.
- */
-function toneFor(status: string) {
-  if (status === "approved") return "success" as const;
-  if (status === "blocked" || status === "suspended") return "danger" as const;
-  if (status === "pending") return "warn" as const;
-  return "neutral" as const;
+function first(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? "";
+  return value ?? "";
 }
 
-const COLUMNS: ReadonlyArray<Column<VendorRow>> = [
-  {
-    key: "name",
-    header: "Business",
-    width: "1.4fr",
-    mobile: "title",
-    render: (row) => <span className="font-bold">{row.name}</span>,
-  },
-  {
-    key: "area",
-    header: "Area",
-    width: "1fr",
-    mobile: "body",
-    render: (row) => <span className="text-body">{row.baseArea ?? "—"}</span>,
-  },
-  {
-    key: "status",
-    header: "Status",
-    width: "0.8fr",
-    mobile: "badge",
-    render: (row) => (
-      <StatusBadge tone={toneFor(row.status)}>
-        <span className="capitalize">{row.status}</span>
-      </StatusBadge>
-    ),
-  },
+/**
+ * The status filter from the URL.
+ *
+ * A value that is not a status is treated as no filter rather than refused.
+ * This is a query parameter somebody may have edited or a link that outlived a
+ * rename, and answering an error page for it would be a worse outcome than
+ * showing the whole queue.
+ */
+function statusFrom(value: string): VendorStatus | "all" {
+  return VENDOR_STATUSES.find((status) => status === value) ?? "all";
+}
+
+/** The chips, built here so the client component needs no runtime domain import. */
+const FILTER_CHOICES: readonly FilterChoice[] = [
+  { value: "all", label: "All" },
+  ...VENDOR_STATUSES.map((status) => ({
+    value: status,
+    label: status[0]!.toUpperCase() + status.slice(1),
+  })),
 ];
 
-export default async function AdminVendorsPage() {
-  await requireAdminPage();
-
+export default async function AdminVendorsPage({ searchParams }: { searchParams: SearchParams }) {
+  const actor = await requireAdminPage();
   const ctx = createRequestContext();
-  const rows = await ctx.db
-    .select({
-      id: vendors.id,
-      name: vendors.name,
-      status: vendors.status,
-      baseArea: vendors.baseArea,
-    })
-    .from(vendors);
 
-  // Ordered here because `drizzle-orm` is not resolvable from this package —
-  // only the schema is. The real screen orders in the query it replaces this
-  // with.
-  rows.sort((left, right) => left.name.localeCompare(right.name));
+  const params = await searchParams;
+  const status = statusFrom(first(params["status"]));
+  const search = first(params["q"]);
+  const openVendorId = first(params["vendor"]);
+
+  const list = await listVendorsForAdmin(ctx, actor, {
+    ...(status === "all" ? {} : { status }),
+    ...(search ? { search } : {}),
+  });
+
+  // Carried onto every row's link so opening a record does not silently reset
+  // the filter the person was working under.
+  const query = new URLSearchParams();
+  if (status !== "all") query.set("status", status);
+  if (search) query.set("q", search);
+
+  // A record that has been removed, or an id somebody typed, closes the drawer
+  // rather than failing the page: the list behind it is still useful.
+  const detail = openVendorId
+    ? await getVendorDetail(ctx, actor, openVendorId).catch((error: unknown) => {
+        if (error instanceof NotFoundError) return null;
+        throw error;
+      })
+    : null;
 
   return (
     <AdminPage
       title="Vendors"
-      blurb={`${rows.length} ${rows.length === 1 ? "business" : "businesses"} on the platform.`}
+      blurb="Every business on the platform. Approve the ones waiting, and suspend the ones that have to stop taking work."
+      toolbar={
+        <VendorFilters
+          status={status}
+          search={search}
+          choices={FILTER_CHOICES}
+          counts={list.counts}
+          total={list.total}
+        />
+      }
     >
-      <DataTable
-        caption="Vendors"
-        columns={COLUMNS}
-        rows={rows}
-        rowKey={(row) => row.id}
-        empty={
-          <EmptyState
-            title="No vendors yet"
-            blurb="Businesses appear here once they have signed up, whether or not they have finished onboarding."
-          />
-        }
-      />
+      {list.rows.length === 0 ? (
+        <EmptyState
+          title="Nothing here"
+          blurb={
+            search || status !== "all"
+              ? "No business matches this filter. Clear it to see the whole queue."
+              : "Businesses appear here once they have signed up, whether or not they have finished onboarding."
+          }
+        />
+      ) : (
+        <GlassPanel as="section" className="overflow-hidden" aria-label="Vendors">
+          <ul className="m-0 list-none p-0">
+            {list.rows.map((vendor) => (
+              <VendorRow key={vendor.id} vendor={vendor} query={query.toString()} />
+            ))}
+          </ul>
+        </GlassPanel>
+      )}
+
+      {detail ? (
+        <VendorDrawer title={detail.vendor.name}>
+          <VendorDetailPanel detail={detail} />
+        </VendorDrawer>
+      ) : null}
     </AdminPage>
   );
 }

@@ -58,3 +58,23 @@ export const isDemo = boolean("is_demo").notNull().default(false);
 export const tstzrange = customType<{ data: string; driverData: string }>({
   dataType: () => "tstzrange",
 });
+
+/**
+ * The prefix on every `held_reason` written because of a vendor's standing.
+ *
+ * Reinstating a vendor releases what suspending them parked, and nothing else —
+ * a payout held for a dispute or a failed account check must stay held. The
+ * release matches on this prefix, so it is the one thing that must not be
+ * spelled two ways.
+ *
+ * It lives here rather than in the domain because the seed writes these rows
+ * too, and `packages/db` cannot import `@occasion/core` — the dependency runs
+ * the other way. `packages/core` re-exports it so a domain caller never has to
+ * know that.
+ */
+export const STANDING_HOLD = "Vendor standing";
+
+/** The text written to `held_reason`, in one place so the prefix cannot drift. */
+export function standingHoldReason(status: string, reason?: string | null): string {
+  return reason ? `${STANDING_HOLD}: ${status} — ${reason}` : `${STANDING_HOLD}: ${status}`;
+}

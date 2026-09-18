@@ -38,6 +38,10 @@ export async function resetDatabase(url: string, anchorAt: Date = new Date()) {
 export function createDatabaseContext(url: string) {
   const pool = createDb({ connectionString: url, maxConnections: 2 });
   let current: AuthUser | null = null;
+  // The domain clock, which an admin override can move. `realNow` below is
+  // deliberately not shifted with it, because that is the whole distinction the
+  // override has to respect.
+  let shiftedNow: Date | null = null;
 
   const auth: AuthPort = { getCurrentUser: () => Promise.resolve(current) };
 
@@ -46,7 +50,11 @@ export function createDatabaseContext(url: string) {
     auth,
     stripe: { mode: () => "test" },
     email: { send: () => Promise.resolve({ providerMessageId: "test" }) },
-    clock: { now: () => new Date(), realNow: () => new Date(), override: () => null },
+    clock: {
+      now: () => shiftedNow ?? new Date(),
+      realNow: () => new Date(),
+      override: () => null,
+    },
     config: {
       appTier: "local",
       allowClockOverride: true,
@@ -61,6 +69,10 @@ export function createDatabaseContext(url: string) {
     ctx,
     setUser(user: AuthUser | null) {
       current = user;
+    },
+    /** Moves the domain clock, the way an admin demo override does. */
+    setDomainNow(instant: Date | null) {
+      shiftedNow = instant;
     },
     close: () => pool.close(),
   };

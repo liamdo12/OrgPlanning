@@ -24,6 +24,7 @@ export {
 export { StatusBadge, Pill, type StatusTone } from "./components/status-badge.js";
 export { FilterChip, FilterBar } from "./components/filter-chip.js";
 export { Avatar, AVATAR_TONES, initialsOf } from "./components/avatar.js";
+export { Swatch, SWATCH_TONES } from "./components/swatch.js";
 export {
   DataTable,
   type Column,

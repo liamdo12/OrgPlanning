@@ -47,6 +47,23 @@ export type CoreContext = {
   config: CoreConfig;
 };
 
+/**
+ * Anything that can run a query: the pooled handle, or a transaction.
+ *
+ * A repository function that only ever takes `ctx.db` cannot be composed into a
+ * transaction, and the writes this domain makes have to be — approving a vendor
+ * changes a status, parks the money already scheduled for them and ends their
+ * staff's sessions, and a crash between any two of those leaves the platform
+ * paying a business it has just suspended. So the functions that write take an
+ * executor, and the service hands them either the pool or the transaction it
+ * opened.
+ *
+ * `Pick` rather than the transaction type itself: naming Drizzle's transaction
+ * generic here would drag the driver's type parameters through the domain, and
+ * the four verbs are all a repository is allowed to use anyway.
+ */
+export type DbExecutor = Pick<Db, "select" | "insert" | "update" | "delete">;
+
 /** Thrown when a context would violate a tier or money invariant. */
 export class CoreContextError extends Error {
   override name = "CoreContextError";

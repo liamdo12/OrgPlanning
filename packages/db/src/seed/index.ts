@@ -552,7 +552,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
           ? money.depositVendorShare + money.balanceVendorShare
           : money.depositVendorShare,
         providerTransferId: held ? null : `tr_test_${order.reference.toLowerCase()}_deposit`,
-        heldReason: held ? `Vendor is ${vendorStatusNow}.` : null,
+        heldReason: held ? s.standingHoldReason(vendorStatusNow) : null,
         paidAt: held ? null : coolingEndsAt,
       });
     }
