@@ -95,7 +95,7 @@ supabase/          local stack config
   through `CoreContext`.
 - `apps/web` validates raw environment variables in one file, `src/lib/env.ts`.
   The others are exempt because they legitimately need the raw value:
-  `instrumentation.ts` (reads `NEXT_RUNTIME` to skip the Edge runtime),
+  `src/instrumentation.ts` (reads `NEXT_RUNTIME` to skip the Edge runtime),
   `src/proxy.ts` (it needs two variables before the app boots and must not fail
   a request when configuration is incomplete), and the build configs. Nothing
   else in the app may touch `process.env`. Operator scripts under `scripts/`

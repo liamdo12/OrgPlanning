@@ -13,7 +13,7 @@ export default [
     rules: { "no-console": "off" },
   },
   {
-    files: ["src/**/*.{ts,tsx}", "instrumentation.ts"],
+    files: ["src/**/*.{ts,tsx}"],
     rules: restrictedImports([
       {
         group: ["@occasion/core/testing"],

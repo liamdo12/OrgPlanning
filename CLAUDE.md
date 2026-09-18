@@ -44,13 +44,13 @@ so a variable exported in your shell does not reach the task.
 
 ## Layout
 
-| Package           | Rule                                                                                                                                                                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `instrumentation.ts`, `src/proxy.ts` and the build configs are exempt from `no-process-env`; operator scripts are `.mjs`, which the rule's glob never covers. |
-| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                                                                                                      |
-| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                                                                                                            |
-| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                                                                                                             |
-| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                                                                                                              |
+| Package           | Rule                                                                                                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`        | UI, server actions, route handlers. Validates raw env in `src/lib/env.ts`; only `src/instrumentation.ts`, `src/proxy.ts` and the build configs are exempt from `no-process-env`; operator scripts are `.mjs`, which the rule's glob never covers. |
+| `packages/core`   | Domain. No `next/*`, no `react`, no `@occasion/ui`, no `apps/*`, no `process` global, no `node:process`.                                                                                                                                          |
+| `packages/db`     | Drizzle schema, migrations, seed. Takes its connection string as an argument; same no-framework, no-process rules.                                                                                                                                |
+| `packages/ui`     | Presentation only. No `@occasion/core`, no `@occasion/db`. Data arrives as props.                                                                                                                                                                 |
+| `packages/config` | tsconfig / eslint / tailwind / prettier presets.                                                                                                                                                                                                  |
 
 ESLint enforces these over `src/**/*.{ts,tsx,mts,cts,js,mjs,cjs}` — the glob is
 wide on purpose, since a rule that stops applying to `.tsx` would not survive
@@ -72,10 +72,15 @@ still demo the clock; a production tier must refuse the same build's override.
 and `createCoreContext()`, and the returned config is frozen so it cannot be
 re-enabled afterwards.
 
-**The proxy lives at `apps/web/src/proxy.ts`.** With a `src/` directory Next
-looks for it there and nowhere else; at the package root it is an ordinary
-module that never runs, which is how session refresh was silently absent for
-two phases. It also puts the request path on a header, because a server
+**The framework hooks live under `src/`.** Both `apps/web/src/proxy.ts` and
+`apps/web/src/instrumentation.ts`. With a `src/` directory Next looks for them
+there and nowhere else; at the package root they are ordinary modules that never
+run, which is how session refresh was silently absent for two phases — and how
+boot-time environment validation had never run at all, so a container configured
+`production` with the clock override started instead of refusing, and answered
+every request with a 500 while staying up. Neither failure shows in a diff or a
+type error, because only the location is wrong.
+`src/framework-hooks.test.ts` asserts both placements. It also puts the request path on a header, because a server
 component has no other way to know what URL it is rendering — that is what lets
 a redirect to the login screen come back to where the person was.
 
@@ -118,7 +123,7 @@ leaves the person bouncing off a challenge they cannot answer.
 rejects a token with no issue time at all rather than skipping the check. If you
 add a way to change what someone may do, move that column too.
 
-Two rules about *how* it moves, both enforced in `bumpSessionsValidAfter` and
+Two rules about _how_ it moves, both enforced in `bumpSessionsValidAfter` and
 `bumpMemberSessions`. Write it from **`ctx.clock.realNow()`, never `now()`** —
 the value it is compared against is a token issue time the auth provider stamped
 on a clock nothing here can move, so a cutoff written from the shiftable domain
