@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   orders,
   paymentLinks,
@@ -606,7 +606,25 @@ export async function markWebhookFailed(db: DbExecutor, id: string, error: strin
     .where(eq(stripeEvents.id, id));
 }
 
-/** Events that arrived and have not been applied — including early arrivals. */
+/**
+ * How many times the sweep will come back for one event.
+ *
+ * An early arrival resolves on the next tick, so this is generous. What it is
+ * really for is the other case: an event that can *never* be applied, because
+ * the order it names has been deleted or was never written. Without a ceiling
+ * those rows accumulate at the front of the queue — the sweep reads the oldest
+ * fifty — and once fifty of them exist no newly arrived event is ever swept
+ * again. That is the failure the sweep was written to prevent, with an extra
+ * step in front of it.
+ */
+export const MAX_WEBHOOK_ATTEMPTS = 10;
+
+/**
+ * Events that arrived and have not been applied — including early arrivals.
+ *
+ * Bounded by attempts as well as by count, so a row that will never succeed
+ * stops being read and stays visible for a person instead.
+ */
 export function listUnprocessedWebhooks(db: DbExecutor, limit = 50) {
   return db
     .select({
@@ -618,9 +636,23 @@ export function listUnprocessedWebhooks(db: DbExecutor, limit = 50) {
       attempts: stripeEvents.attempts,
     })
     .from(stripeEvents)
-    .where(isNull(stripeEvents.processedAt))
+    .where(and(isNull(stripeEvents.processedAt), lt(stripeEvents.attempts, MAX_WEBHOOK_ATTEMPTS)))
     .orderBy(stripeEvents.receivedAt)
     .limit(limit);
+}
+
+/**
+ * Counts an attempt against an event that is still waiting for its order.
+ *
+ * Parking records no error, because nothing is wrong — but it has to count, or
+ * an event whose order will never exist is retried for ever and holds the front
+ * of the queue.
+ */
+export async function countWebhookAttempt(db: DbExecutor, id: string): Promise<void> {
+  await db
+    .update(stripeEvents)
+    .set({ attempts: sql`${stripeEvents.attempts} + 1` })
+    .where(eq(stripeEvents.id, id));
 }
 
 /** Whether a connected account belongs to a vendor this platform knows. */

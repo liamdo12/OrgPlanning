@@ -10,7 +10,6 @@ export {
 export type {
   AuthPort,
   AuthUser,
-  ClockOverride,
   ClockPort,
   EmailMessage,
   EmailPort,
@@ -256,6 +255,7 @@ export {
   refreshConnectStatus,
   refundWithinCoolingWindow,
   startConnectOnboarding,
+  sweepParkedWebhooks,
   transferShare,
   type BalanceResult,
   type DepositResult,
@@ -263,6 +263,7 @@ export {
   type PaymentLinkView,
   type RefundResult,
   type TransferResult,
+  type WebhookSweep,
 } from "./payments/service.js";
 
 export {
@@ -272,6 +273,59 @@ export {
   recordWebhook,
   vendorIdForStripeAccount,
 } from "./payments/repo.js";
+
+export {
+  OVERRIDE_TTL_MINUTES,
+  assertOverrideAllowed,
+  clearAllOverrides,
+  previewNow,
+  readOverride,
+  type StoredOverride,
+} from "./clock/override.js";
+
+export { demoClockStates, type DemoClockState } from "./clock/demo-states.js";
+
+export {
+  BATCH_LIMIT,
+  runDueJobs,
+  type JobResult,
+  type RunOptions,
+  type RunSummary,
+  type RunTrigger,
+} from "./jobs/runner.js";
+
+export { describeJob } from "./jobs/handlers.js";
+
+// `SYSTEM`, `isSystem` and the queue's raw `enqueue` are deliberately absent,
+// for the same reason `createTestCoreContext` is. `SYSTEM` passes the three
+// order policies, so one import of it from a server action turns them off for
+// whatever it is handed; `enqueue` is the widest write into the queue — any
+// type, any payload, any demo flag — and the payload is what the runner then
+// trusts to name an order. Both are reachable from `identity/actor.js` and
+// `jobs/repo.js` inside this package, which is where their callers are.
+
+export {
+  MAX_ATTEMPTS,
+  type JobRow,
+  type JobRunRow,
+  type JobStatus,
+  type JobType,
+} from "./jobs/repo.js";
+
+export {
+  assertReseedAllowed,
+  clearClockOverride,
+  getOpsView,
+  requeueJob,
+  reseedBlockers,
+  runDemoJobs,
+  setClockOverride,
+  type OpsView,
+  type QueuedJob,
+  type ReseedBlocker,
+} from "./jobs/admin-service.js";
+
+export { expireQuoteRequest, type QuoteExpiry } from "./quotes/service.js";
 
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 

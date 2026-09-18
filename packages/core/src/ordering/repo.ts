@@ -10,6 +10,7 @@ import {
   policyTemplates,
 } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
+import * as scheduler from "../jobs/repo.js";
 import type { OrderState, ScheduledJobType } from "./transitions.js";
 
 /**
@@ -352,19 +353,13 @@ export async function enqueue(
     isDemo: boolean;
   },
 ): Promise<boolean> {
-  const inserted = await db
-    .insert(jobs)
-    .values({
-      type: input.type,
-      dedupeKey: dedupeKey(input.type, input.orderId),
-      runAfter: input.runAfter,
-      payload: input.payload,
-      isDemo: input.isDemo,
-    })
-    .onConflictDoNothing({ target: [jobs.type, jobs.dedupeKey] })
-    .returning({ id: jobs.id });
-
-  return inserted.length === 1;
+  return scheduler.enqueue(db, {
+    type: input.type,
+    dedupeKey: dedupeKey(input.type, input.orderId),
+    runAfter: input.runAfter,
+    payload: input.payload,
+    isDemo: input.isDemo,
+  });
 }
 
 export function dedupeKey(type: ScheduledJobType, orderId: string): string {

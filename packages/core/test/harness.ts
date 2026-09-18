@@ -74,7 +74,6 @@ export function createDatabaseContext(
     clock: {
       now: () => shiftedNow ?? realNowOverride ?? new Date(),
       realNow: () => realNowOverride ?? new Date(),
-      override: () => null,
     },
     config: {
       appTier: "local",

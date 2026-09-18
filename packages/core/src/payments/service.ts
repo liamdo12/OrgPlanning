@@ -1202,3 +1202,61 @@ function attemptFromMetadata(object: Record<string, unknown>): { paymentId?: str
   const paymentId = (metadata as Record<string, unknown>)["payment_id"];
   return typeof paymentId === "string" && paymentId.length > 0 ? { paymentId } : {};
 }
+
+export type WebhookSweep = {
+  applied: number;
+  /** Still waiting for the transaction that writes their order. */
+  parked: number;
+  failed: number;
+};
+
+/**
+ * Replays the events that arrived before there was anything to apply them to.
+ *
+ * A confirmation can overtake the transaction that wrote its order: the
+ * checkout commits, the provider call returns, and Stripe's delivery reaches us
+ * first. The route parks such an event rather than failing it — the row is on
+ * disk, unprocessed, with no error, which is correct and on its own is only
+ * half an answer. This is the other half, and until it existed a parked event
+ * was applied by nothing at all: an order paid for and never confirmed, with no
+ * error anywhere to say so.
+ *
+ * Runs from the tick, on the real clock. Each event is applied on its own, so
+ * one that cannot be applied does not stop the rest — and one still waiting for
+ * its order stays parked with no error, because nothing is wrong yet.
+ */
+export async function sweepParkedWebhooks(ctx: CoreContext, limit = 50): Promise<WebhookSweep> {
+  const waiting = await repo.listUnprocessedWebhooks(ctx.db, limit);
+  const sweep: WebhookSweep = { applied: 0, parked: 0, failed: 0 };
+
+  for (const event of waiting) {
+    // The stored payload is the whole provider event; the object it is about
+    // sits inside it. Unwrapped here rather than stored twice.
+    const object = (event.payload as { data?: { object?: unknown } })?.data?.object;
+    if (!object || typeof object !== "object") {
+      await repo.markWebhookFailed(ctx.db, event.id, "The stored event carries no object.");
+      sweep.failed += 1;
+      continue;
+    }
+
+    try {
+      await applyWebhook(ctx, { type: event.type, object: object as Record<string, unknown> });
+      await repo.markWebhookProcessed(ctx.db, event.id, ctx.clock.realNow());
+      sweep.applied += 1;
+    } catch (error) {
+      if (error instanceof UnknownOrderError) {
+        // Still waiting for the transaction that writes its order. No error is
+        // recorded, because nothing is wrong — but the attempt is counted, so
+        // an event whose order will never exist eventually stops being read
+        // rather than holding the front of the queue for ever.
+        await repo.countWebhookAttempt(ctx.db, event.id);
+        sweep.parked += 1;
+        continue;
+      }
+      await repo.markWebhookFailed(ctx.db, event.id, String(error));
+      sweep.failed += 1;
+    }
+  }
+
+  return sweep;
+}
