@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   AppError,
   approveUser,
+  markEmailVerified,
   grantRoleToUser,
   parseRoleName,
   reinstateAccount,
@@ -15,6 +16,7 @@ import { requireAdminActor } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin";
 import { readString } from "../../../../lib/form-values";
+import { getEnv } from "../../../../lib/env";
 
 /**
  * The account list's actions.
@@ -98,10 +100,20 @@ export async function approveUserAction(
  * Asks the provider to send the verification email again.
  *
  * Two halves, like clearing a lost second factor: the domain decides whether
- * asking makes sense and records that somebody asked, and this sends. A failure
- * at the provider is reported as a failure — telling an administrator the email
- * went out when it did not is how somebody waits for a message that is never
- * coming.
+ * asking makes sense and records that somebody asked, and this sends.
+ *
+ * It asks the provider what *it* believes first, because the two can disagree
+ * in the one direction that matters. Somebody clicks the link, the provider
+ * marks the address confirmed, and our own row never learns — the callback
+ * failed, or they closed the tab before it ran. The account then reads
+ * `unverified` here for ever, and `resend` for an address the provider has
+ * already confirmed **succeeds and sends nothing**: no error, no email, and an
+ * administrator told it went out. Verified against a local stack; the mailbox
+ * stayed empty.
+ *
+ * So a confirmed address is not resent to. It is reconciled, which is the thing
+ * that should have happened when they clicked, and the administrator is told
+ * that instead.
  */
 export async function resendVerificationAction(
   _previous: UserActionState,
@@ -113,16 +125,64 @@ export async function resendVerificationAction(
 
   return run(async () => {
     const { email } = await resendVerification(ctx, actor, userId);
-
     const admin = createSupabaseAdminClient();
+
+    if (await providerHasConfirmed(email)) {
+      await markEmailVerified(ctx, userId);
+      return `${email} was already confirmed with the provider — this account is active now. No email was sent.`;
+    }
+
     const { error } = await admin.auth.resend({ type: "signup", email });
 
     if (error) {
-      throw new AppError(`Could not send to ${email}. The provider refused it; try again.`);
+      // The provider's own wording is not for showing anybody: its rate-limit
+      // message reads "you can only request this after 0 seconds".
+      const throttled = error.status === 429;
+      throw new AppError(
+        throttled
+          ? `The provider is rate-limiting verification emails. Wait a minute and try ${email} again.`
+          : `Could not send to ${email}. The provider refused it; try again.`,
+      );
     }
 
     return `Verification email sent to ${email}.`;
   });
+}
+
+/**
+ * Whether the provider considers this address confirmed.
+ *
+ * By address rather than by subject, because an account that has never signed
+ * in has no subject bound on our side — which is exactly the account this
+ * screen is about.
+ *
+ * A failure to ask is not a failure to send: if the lookup itself breaks, fall
+ * through and let the resend happen. The worst case is the silent no-op this
+ * guard exists to catch, which is where we already were.
+ */
+async function providerHasConfirmed(email: string): Promise<boolean> {
+  const env = getEnv();
+
+  try {
+    const response = await fetch(
+      `${env.SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}`,
+      {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      },
+    );
+
+    if (!response.ok) return false;
+
+    const body = (await response.json()) as { users?: { email?: string; email_confirmed_at?: string | null }[] };
+    const match = body.users?.find((user) => user.email?.toLowerCase() === email.toLowerCase());
+
+    return Boolean(match?.email_confirmed_at);
+  } catch {
+    return false;
+  }
 }
 
 export async function grantRoleAction(
