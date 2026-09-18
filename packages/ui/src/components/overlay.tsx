@@ -40,7 +40,13 @@ function useDismissable(open: boolean, onClose: () => void) {
     const focusables = () =>
       Array.from(
         surface.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          // `input[type=hidden]` is excluded because it matches every other
+          // way of writing this and cannot take focus: `.focus()` on one is a
+          // no-op, so an overlay whose first control is a form with a hidden
+          // field focuses nothing and leaves the reading position on the page
+          // behind. It would also make Tab wrap to an element that is not there.
+          'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), ' +
+            'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ) ?? [],
       );
 
