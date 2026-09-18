@@ -191,8 +191,8 @@ describe.skipIf(!url)("admin users", () => {
           select
             (select count(*) from app.planning_org_events e where e.owner_user_id = u.id) as events,
             (select count(*) from app.planning_org_orders o where o.user_id = u.id) as orders,
-            (select coalesce(sum(o.total), 0) from app.planning_org_orders o where o.user_id = u.id)
-              as spend
+            (select coalesce(sum(o.total), 0) from app.planning_org_orders o
+             where o.user_id = u.id and o.state not in ('cancelled', 'refunded')) as spend
           from app.planning_org_users u where u.email = ${email}
         `;
 
@@ -217,8 +217,8 @@ describe.skipIf(!url)("admin users", () => {
       const sarah = idOf("sarah@example.ca");
       const [truth] = await sql<{ spend: string; events: string }[]>`
         select
-          (select coalesce(sum(total), 0) from app.planning_org_orders where user_id = ${sarah})
-            as spend,
+          (select coalesce(sum(total), 0) from app.planning_org_orders
+           where user_id = ${sarah} and state not in ('cancelled', 'refunded')) as spend,
           (select count(*) from app.planning_org_events where owner_user_id = ${sarah}) as events
       `;
 
@@ -229,6 +229,32 @@ describe.skipIf(!url)("admin users", () => {
       const row = await loadForAdmin(ctx, sarah);
       expect(row?.totalSpend).toBe(BigInt(truth?.spend ?? 0));
       expect(row?.eventCount).toBe(Number(truth?.events));
+    });
+
+    it("leaves money that was given back out of the spend", async () => {
+      // Sarah has four orders, one of them cancelled and refunded. It still
+      // counts as an order she placed; it is not money the platform kept.
+      const sarah = idOf("sarah@example.ca");
+      const [cancelled] = await sql<{ reference: string; total: string }[]>`
+        select reference, total from app.planning_org_orders
+        where user_id = ${sarah} and state in ('cancelled', 'refunded')
+      `;
+      expect(cancelled).toBeDefined();
+
+      const [everything] = await sql<{ spend: string }[]>`
+        select coalesce(sum(total), 0) as spend from app.planning_org_orders
+        where user_id = ${sarah}
+      `;
+
+      const row = await loadForAdmin(ctx, sarah);
+      expect(row?.totalSpend).toBe(
+        BigInt(everything?.spend ?? 0) - BigInt(cancelled?.total ?? 0),
+      );
+
+      // The order is still there and still counted — four placed, three paid for.
+      expect(row?.orderCount).toBe(4);
+      const detail = await getUserDetail(ctx, admin, sarah);
+      expect(detail.orders.map((order) => order.reference)).toContain(cancelled?.reference);
     });
 
     it("hands back cents as a bigint, not a string wearing its type", async () => {

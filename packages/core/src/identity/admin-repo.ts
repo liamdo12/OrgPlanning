@@ -44,7 +44,12 @@ export type AdminUserRow = {
   vendorOnboardingPercent: string | null;
   eventCount: number;
   orderCount: number;
-  /** Cents. Never divided here — the service formats, the client does no maths. */
+  /**
+   * What the platform kept, in cents — cancelled and refunded orders excluded.
+   *
+   * Never divided here: the service formats it, and no screen does arithmetic
+   * on currency.
+   */
   totalSpend: bigint;
   lastSeenAt: Date | null;
   createdAt: Date;
@@ -83,6 +88,12 @@ function rolesFor(db: DbExecutor) {
  * Aggregated before the join rather than after. `sum(total)` across a join that
  * has already fanned out on events returns the spend multiplied by the number
  * of events, which looks plausible and is wrong.
+ *
+ * The count and the money answer two different questions and are scoped
+ * differently on purpose. The count is how many orders somebody placed, which
+ * includes the ones that fell through. The money is what the platform actually
+ * took, so a cancelled or refunded order contributes nothing — counting it
+ * would describe a customer as having spent money that has been given back.
  */
 function ordersFor(db: DbExecutor) {
   return db
@@ -92,7 +103,12 @@ function ordersFor(db: DbExecutor) {
       // `sum(bigint)` is `numeric`, and a raw fragment carries no mapping, so the
       // driver would hand back a string typed as `bigint` — and the first caller
       // to do `> 0n` on it would throw. Cents stay integers.
-      totalSpend: sql<bigint>`coalesce(sum(${orders.total}), 0)`.mapWith(BigInt).as("total_spend"),
+      totalSpend: sql<bigint>`coalesce(
+        sum(${orders.total}) filter (where ${orders.state} not in ('cancelled', 'refunded')),
+        0
+      )`
+        .mapWith(BigInt)
+        .as("total_spend"),
     })
     .from(orders)
     .groupBy(orders.userId)
