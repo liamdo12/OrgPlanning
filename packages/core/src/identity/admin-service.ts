@@ -155,9 +155,12 @@ export async function approveUser(ctx: CoreContext, actor: Actor, userId: string
   if (!before) throw new NotFoundError("No such account.");
 
   if (before.status !== "pending") {
-    throw new ValidationError(`Only a pending account can be approved. This one is ${before.status}.`, {
-      status: "illegal",
-    });
+    throw new ValidationError(
+      `Only a pending account can be approved. This one is ${before.status}.`,
+      {
+        status: "illegal",
+      },
+    );
   }
 
   await repo.setUserStatus(ctx.db, userId, "active", ctx.clock.now());

@@ -44,13 +44,16 @@ export function SuspendDialog({
   intent: "suspend" | "block";
   action: (state: VendorActionState, form: FormData) => Promise<VendorActionState>;
 }) {
-  const [state, submit, pending] = useActionState(async (previous: VendorActionState, form: FormData) => {
-    const next = await action(previous, form);
-    // Closing only on success: a refusal has to stay on screen next to the
-    // field that caused it, or the reason for it is gone before it is read.
-    if (!next.error) onDone(next);
-    return next;
-  }, INITIAL);
+  const [state, submit, pending] = useActionState(
+    async (previous: VendorActionState, form: FormData) => {
+      const next = await action(previous, form);
+      // Closing only on success: a refusal has to stay on screen next to the
+      // field that caused it, or the reason for it is gone before it is read.
+      if (!next.error) onDone(next);
+      return next;
+    },
+    INITIAL,
+  );
 
   const verb = intent === "suspend" ? "Suspend" : "Block";
 

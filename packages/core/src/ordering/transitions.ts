@@ -203,9 +203,7 @@ export function jobsOnEntering(
 ): readonly ScheduledJob[] {
   if (to === "confirmed" && from !== "pending_payment") return [];
 
-  return ON_ENTERING[to].filter(
-    (job) => job.type !== "charge_balance" || shape.hasBalance,
-  );
+  return ON_ENTERING[to].filter((job) => job.type !== "charge_balance" || shape.hasBalance);
 }
 
 /**

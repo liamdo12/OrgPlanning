@@ -105,9 +105,7 @@ export function VendorDetailPanel({ detail }: { detail: VendorDetail }) {
       </section>
 
       <section>
-        <h3 className="m-0 mb-2 text-[15px] font-bold">
-          People ({members.length})
-        </h3>
+        <h3 className="m-0 mb-2 text-[15px] font-bold">People ({members.length})</h3>
         {members.length === 0 ? (
           <p className="m-0 text-[14px] text-body">
             Nobody is attached to this business yet, so suspending it signs nobody out.
@@ -156,7 +154,9 @@ export function VendorDetailPanel({ detail }: { detail: VendorDetail }) {
       <section>
         <h3 className="m-0 mb-2 text-[15px] font-bold">History</h3>
         {history.length === 0 ? (
-          <p className="m-0 text-[14px] text-body">Nothing has changed since this record was made.</p>
+          <p className="m-0 text-[14px] text-body">
+            Nothing has changed since this record was made.
+          </p>
         ) : (
           <ol className="m-0 grid list-none gap-2 p-0 text-[14px]">
             {history.map((entry) => (

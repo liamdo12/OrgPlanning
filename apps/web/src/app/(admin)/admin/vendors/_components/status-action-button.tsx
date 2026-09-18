@@ -113,7 +113,12 @@ export function StatusActionButton({
   if (decision.reasonFor) {
     return (
       <>
-        <Button intent={decision.intent} size="sm" onClick={() => setAsking(true)} aria-label={label}>
+        <Button
+          intent={decision.intent}
+          size="sm"
+          onClick={() => setAsking(true)}
+          aria-label={label}
+        >
           {decision.label}
         </Button>
 
@@ -140,7 +145,13 @@ export function StatusActionButton({
     <>
       <form action={submit}>
         <input type="hidden" name="vendorId" value={vendorId} />
-        <Button type="submit" intent={decision.intent} size="sm" disabled={pending} aria-label={label}>
+        <Button
+          type="submit"
+          intent={decision.intent}
+          size="sm"
+          disabled={pending}
+          aria-label={label}
+        >
           {pending ? "Working…" : decision.label}
         </Button>
       </form>

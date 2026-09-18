@@ -319,7 +319,11 @@ export async function releaseCapacity(db: DbExecutor, orderId: string): Promise<
 
 export function listCapacityBlocks(db: DbExecutor, orderId: string) {
   return db
-    .select({ id: capacityBlocks.id, serviceId: capacityBlocks.serviceId, active: capacityBlocks.active })
+    .select({
+      id: capacityBlocks.id,
+      serviceId: capacityBlocks.serviceId,
+      active: capacityBlocks.active,
+    })
     .from(capacityBlocks)
     .where(eq(capacityBlocks.orderId, orderId));
 }
@@ -445,7 +449,6 @@ export async function completeCheckout(
 ): Promise<void> {
   await db.update(checkouts).set({ completedAt: now }).where(eq(checkouts.id, checkoutId));
 }
-
 
 /**
  * The cancellation policy a booking is made under.

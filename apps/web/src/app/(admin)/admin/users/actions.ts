@@ -176,7 +176,9 @@ async function providerHasConfirmed(email: string): Promise<boolean> {
 
     if (!response.ok) return false;
 
-    const body = (await response.json()) as { users?: { email?: string; email_confirmed_at?: string | null }[] };
+    const body = (await response.json()) as {
+      users?: { email?: string; email_confirmed_at?: string | null }[];
+    };
     const match = body.users?.find((user) => user.email?.toLowerCase() === email.toLowerCase());
 
     return Boolean(match?.email_confirmed_at);

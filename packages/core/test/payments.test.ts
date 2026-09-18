@@ -349,7 +349,10 @@ describe.skipIf(!url)("orders and payments", () => {
       expect(after?.state).toBe("confirmed");
 
       const jobs = await ordering.listJobsForOrder(ctx.db, order.id);
-      const queued = jobs.filter((job) => job.status === "queued").map((job) => job.type).sort();
+      const queued = jobs
+        .filter((job) => job.status === "queued")
+        .map((job) => job.type)
+        .sort();
       expect(queued).toEqual(["charge_balance", "cooling_window_transfer"]);
     });
 

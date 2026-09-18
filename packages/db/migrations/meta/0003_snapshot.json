@@ -131,12 +131,8 @@
           "tableFrom": "planning_org_audit_log",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["actor_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -241,12 +237,8 @@
           "tableFrom": "planning_org_communication_consents",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -256,10 +248,7 @@
         "communication_consents_user_channel_key": {
           "name": "communication_consents_user_channel_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "channel"
-          ]
+          "columns": ["user_id", "channel"]
         }
       },
       "policies": {},
@@ -356,12 +345,8 @@
           "tableFrom": "planning_org_user_roles",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -370,12 +355,8 @@
           "tableFrom": "planning_org_user_roles",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "granted_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["granted_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -385,10 +366,7 @@
         "user_roles_user_role_key": {
           "name": "user_roles_user_role_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "role"
-          ]
+          "columns": ["user_id", "role"]
         }
       },
       "policies": {},
@@ -508,16 +486,12 @@
         "planning_org_users_auth_provider_sub_unique": {
           "name": "planning_org_users_auth_provider_sub_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "auth_provider_sub"
-          ]
+          "columns": ["auth_provider_sub"]
         },
         "planning_org_users_email_unique": {
           "name": "planning_org_users_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},
@@ -592,12 +566,8 @@
           "tableFrom": "planning_org_vendor_members",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -606,12 +576,8 @@
           "tableFrom": "planning_org_vendor_members",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -621,10 +587,7 @@
         "vendor_members_vendor_user_key": {
           "name": "vendor_members_vendor_user_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "vendor_id",
-            "user_id"
-          ]
+          "columns": ["vendor_id", "user_id"]
         }
       },
       "policies": {},
@@ -779,16 +742,12 @@
         "planning_org_vendors_slug_unique": {
           "name": "planning_org_vendors_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         },
         "planning_org_vendors_stripe_account_id_unique": {
           "name": "planning_org_vendors_stripe_account_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "stripe_account_id"
-          ]
+          "columns": ["stripe_account_id"]
         }
       },
       "policies": {},
@@ -916,12 +875,8 @@
           "tableFrom": "planning_org_admin_invites",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "invited_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["invited_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -930,12 +885,8 @@
           "tableFrom": "planning_org_admin_invites",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "accepted_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["accepted_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -945,9 +896,7 @@
         "planning_org_admin_invites_token_unique": {
           "name": "planning_org_admin_invites_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -1018,11 +967,7 @@
         "auth_attempts_scope_subject_window_key": {
           "name": "auth_attempts_scope_subject_window_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "scope",
-            "subject",
-            "window_started_at"
-          ]
+          "columns": ["scope", "subject", "window_started_at"]
         }
       },
       "policies": {},
@@ -1088,9 +1033,7 @@
         "planning_org_categories_slug_unique": {
           "name": "planning_org_categories_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -1186,9 +1129,7 @@
         "planning_org_neighbourhoods_slug_unique": {
           "name": "planning_org_neighbourhoods_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -1310,9 +1251,7 @@
         "planning_org_policy_templates_tier_unique": {
           "name": "planning_org_policy_templates_tier_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "tier"
-          ]
+          "columns": ["tier"]
         }
       },
       "policies": {},
@@ -1363,9 +1302,7 @@
         "planning_org_seed_meta_revision_unique": {
           "name": "planning_org_seed_meta_revision_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "revision"
-          ]
+          "columns": ["revision"]
         }
       },
       "policies": {},
@@ -1439,12 +1376,8 @@
           "tableFrom": "planning_org_blackout_dates",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1454,10 +1387,7 @@
         "blackout_dates_vendor_day_key": {
           "name": "blackout_dates_vendor_day_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "vendor_id",
-            "day"
-          ]
+          "columns": ["vendor_id", "day"]
         }
       },
       "policies": {},
@@ -1553,12 +1483,8 @@
           "tableFrom": "planning_org_capacity_blocks",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1626,12 +1552,8 @@
           "tableFrom": "planning_org_daily_capacity",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1641,10 +1563,7 @@
         "daily_capacity_service_day_key": {
           "name": "daily_capacity_service_day_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "service_id",
-            "day"
-          ]
+          "columns": ["service_id", "day"]
         }
       },
       "policies": {},
@@ -1736,12 +1655,8 @@
           "tableFrom": "planning_org_saved_services",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1750,12 +1665,8 @@
           "tableFrom": "planning_org_saved_services",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1765,10 +1676,7 @@
         "saved_services_user_service_key": {
           "name": "saved_services_user_service_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "user_id",
-            "service_id"
-          ]
+          "columns": ["user_id", "service_id"]
         }
       },
       "policies": {},
@@ -1851,12 +1759,8 @@
           "tableFrom": "planning_org_service_areas",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1865,12 +1769,8 @@
           "tableFrom": "planning_org_service_areas",
           "tableTo": "planning_org_neighbourhoods",
           "schemaTo": "app",
-          "columnsFrom": [
-            "neighbourhood_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["neighbourhood_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1880,10 +1780,7 @@
         "service_areas_service_neighbourhood_key": {
           "name": "service_areas_service_neighbourhood_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "service_id",
-            "neighbourhood_id"
-          ]
+          "columns": ["service_id", "neighbourhood_id"]
         }
       },
       "policies": {},
@@ -1964,12 +1861,8 @@
           "tableFrom": "planning_org_service_media",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2067,12 +1960,8 @@
           "tableFrom": "planning_org_service_packages",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -2082,10 +1971,7 @@
         "service_packages_service_name_key": {
           "name": "service_packages_service_name_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "service_id",
-            "name"
-          ]
+          "columns": ["service_id", "name"]
         }
       },
       "policies": {},
@@ -2256,12 +2142,8 @@
           "tableFrom": "planning_org_services",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2270,12 +2152,8 @@
           "tableFrom": "planning_org_services",
           "tableTo": "planning_org_categories",
           "schemaTo": "app",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2285,9 +2163,7 @@
         "planning_org_services_slug_unique": {
           "name": "planning_org_services_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -2401,12 +2277,8 @@
           "tableFrom": "planning_org_event_items",
           "tableTo": "planning_org_events",
           "schemaTo": "app",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2415,12 +2287,8 @@
           "tableFrom": "planning_org_event_items",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2587,12 +2455,8 @@
           "tableFrom": "planning_org_events",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2601,12 +2465,8 @@
           "tableFrom": "planning_org_events",
           "tableTo": "planning_org_neighbourhoods",
           "schemaTo": "app",
-          "columnsFrom": [
-            "neighbourhood_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["neighbourhood_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2711,12 +2571,8 @@
           "tableFrom": "planning_org_checkouts",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2725,12 +2581,8 @@
           "tableFrom": "planning_org_checkouts",
           "tableTo": "planning_org_events",
           "schemaTo": "app",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -2870,12 +2722,8 @@
           "tableFrom": "planning_org_order_items",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -2884,12 +2732,8 @@
           "tableFrom": "planning_org_order_items",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -2898,12 +2742,8 @@
           "tableFrom": "planning_org_order_items",
           "tableTo": "planning_org_service_packages",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_package_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_package_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3180,12 +3020,8 @@
           "tableFrom": "planning_org_orders",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3194,12 +3030,8 @@
           "tableFrom": "planning_org_orders",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -3208,12 +3040,8 @@
           "tableFrom": "planning_org_orders",
           "tableTo": "planning_org_events",
           "schemaTo": "app",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3222,12 +3050,8 @@
           "tableFrom": "planning_org_orders",
           "tableTo": "planning_org_policy_templates",
           "schemaTo": "app",
-          "columnsFrom": [
-            "policy_template_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["policy_template_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -3237,9 +3061,7 @@
         "planning_org_orders_reference_unique": {
           "name": "planning_org_orders_reference_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "reference"
-          ]
+          "columns": ["reference"]
         }
       },
       "policies": {},
@@ -3367,12 +3189,8 @@
           "tableFrom": "planning_org_quote_offers",
           "tableTo": "planning_org_quote_requests",
           "schemaTo": "app",
-          "columnsFrom": [
-            "quote_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["quote_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3381,12 +3199,8 @@
           "tableFrom": "planning_org_quote_offers",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3396,10 +3210,7 @@
         "quote_offers_request_vendor_key": {
           "name": "quote_offers_request_vendor_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "quote_request_id",
-            "vendor_id"
-          ]
+          "columns": ["quote_request_id", "vendor_id"]
         }
       },
       "policies": {},
@@ -3486,12 +3297,8 @@
           "tableFrom": "planning_org_quote_request_invites",
           "tableTo": "planning_org_quote_requests",
           "schemaTo": "app",
-          "columnsFrom": [
-            "quote_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["quote_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3500,12 +3307,8 @@
           "tableFrom": "planning_org_quote_request_invites",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3515,10 +3318,7 @@
         "quote_request_invites_request_vendor_key": {
           "name": "quote_request_invites_request_vendor_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "quote_request_id",
-            "vendor_id"
-          ]
+          "columns": ["quote_request_id", "vendor_id"]
         }
       },
       "policies": {},
@@ -3703,12 +3503,8 @@
           "tableFrom": "planning_org_quote_requests",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -3717,12 +3513,8 @@
           "tableFrom": "planning_org_quote_requests",
           "tableTo": "planning_org_events",
           "schemaTo": "app",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -3731,12 +3523,8 @@
           "tableFrom": "planning_org_quote_requests",
           "tableTo": "planning_org_categories",
           "schemaTo": "app",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -3833,12 +3621,8 @@
           "tableFrom": "planning_org_payment_links",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -3848,9 +3632,7 @@
         "planning_org_payment_links_token_unique": {
           "name": "planning_org_payment_links_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -3997,12 +3779,8 @@
           "tableFrom": "planning_org_payments",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -4012,9 +3790,7 @@
         "planning_org_payments_provider_payment_intent_id_unique": {
           "name": "planning_org_payments_provider_payment_intent_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_payment_intent_id"
-          ]
+          "columns": ["provider_payment_intent_id"]
         }
       },
       "policies": {},
@@ -4178,12 +3954,8 @@
           "tableFrom": "planning_org_refunds",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4192,12 +3964,8 @@
           "tableFrom": "planning_org_refunds",
           "tableTo": "planning_org_payments",
           "schemaTo": "app",
-          "columnsFrom": [
-            "payment_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4206,12 +3974,8 @@
           "tableFrom": "planning_org_refunds",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "requested_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["requested_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4221,9 +3985,7 @@
         "planning_org_refunds_provider_refund_id_unique": {
           "name": "planning_org_refunds_provider_refund_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_refund_id"
-          ]
+          "columns": ["provider_refund_id"]
         }
       },
       "policies": {},
@@ -4330,9 +4092,7 @@
         "planning_org_stripe_events_event_id_unique": {
           "name": "planning_org_stripe_events_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "event_id"
-          ]
+          "columns": ["event_id"]
         }
       },
       "policies": {},
@@ -4467,12 +4227,8 @@
           "tableFrom": "planning_org_transfers",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -4481,12 +4237,8 @@
           "tableFrom": "planning_org_transfers",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -4496,17 +4248,12 @@
         "planning_org_transfers_provider_transfer_id_unique": {
           "name": "planning_org_transfers_provider_transfer_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_transfer_id"
-          ]
+          "columns": ["provider_transfer_id"]
         },
         "transfers_order_kind_key": {
           "name": "transfers_order_kind_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "order_id",
-            "kind"
-          ]
+          "columns": ["order_id", "kind"]
         }
       },
       "policies": {},
@@ -4648,12 +4395,8 @@
           "tableFrom": "planning_org_job_runs",
           "tableTo": "planning_org_jobs",
           "schemaTo": "app",
-          "columnsFrom": [
-            "job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["job_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -4662,12 +4405,8 @@
           "tableFrom": "planning_org_job_runs",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "clock_override_actor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["clock_override_actor_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4792,10 +4531,7 @@
         "jobs_type_dedupe_key": {
           "name": "jobs_type_dedupe_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "type",
-            "dedupe_key"
-          ]
+          "columns": ["type", "dedupe_key"]
         }
       },
       "policies": {},
@@ -4955,12 +4691,8 @@
           "tableFrom": "planning_org_email_sends",
           "tableTo": "planning_org_email_templates",
           "schemaTo": "app",
-          "columnsFrom": [
-            "template_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["template_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -4969,12 +4701,8 @@
           "tableFrom": "planning_org_email_sends",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "recipient_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["recipient_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -4984,9 +4712,7 @@
         "planning_org_email_sends_idempotency_key_unique": {
           "name": "planning_org_email_sends_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "idempotency_key"
-          ]
+          "columns": ["idempotency_key"]
         }
       },
       "policies": {},
@@ -5075,9 +4801,7 @@
         "planning_org_email_templates_key_unique": {
           "name": "planning_org_email_templates_key_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key"
-          ]
+          "columns": ["key"]
         }
       },
       "policies": {},
@@ -5179,12 +4903,8 @@
           "tableFrom": "planning_org_messages",
           "tableTo": "planning_org_threads",
           "schemaTo": "app",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5193,12 +4913,8 @@
           "tableFrom": "planning_org_messages",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "sender_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["sender_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -5300,12 +5016,8 @@
           "tableFrom": "planning_org_notifications",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5383,12 +5095,8 @@
           "tableFrom": "planning_org_thread_participants",
           "tableTo": "planning_org_threads",
           "schemaTo": "app",
-          "columnsFrom": [
-            "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["thread_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5397,12 +5105,8 @@
           "tableFrom": "planning_org_thread_participants",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -5412,10 +5116,7 @@
         "thread_participants_thread_user_key": {
           "name": "thread_participants_thread_user_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "thread_id",
-            "user_id"
-          ]
+          "columns": ["thread_id", "user_id"]
         }
       },
       "policies": {},
@@ -5531,12 +5232,8 @@
           "tableFrom": "planning_org_threads",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5545,12 +5242,8 @@
           "tableFrom": "planning_org_threads",
           "tableTo": "planning_org_quote_requests",
           "schemaTo": "app",
-          "columnsFrom": [
-            "quote_request_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["quote_request_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5559,12 +5252,8 @@
           "tableFrom": "planning_org_threads",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -5738,12 +5427,8 @@
           "tableFrom": "planning_org_disputes",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5752,12 +5437,8 @@
           "tableFrom": "planning_org_disputes",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "raised_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["raised_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -5766,12 +5447,8 @@
           "tableFrom": "planning_org_disputes",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "assigned_to_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["assigned_to_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -5781,9 +5458,7 @@
         "planning_org_disputes_provider_dispute_id_unique": {
           "name": "planning_org_disputes_provider_dispute_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "provider_dispute_id"
-          ]
+          "columns": ["provider_dispute_id"]
         }
       },
       "policies": {},
@@ -5946,12 +5621,8 @@
           "tableFrom": "planning_org_reviews",
           "tableTo": "planning_org_orders",
           "schemaTo": "app",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5960,12 +5631,8 @@
           "tableFrom": "planning_org_reviews",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "author_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["author_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5974,12 +5641,8 @@
           "tableFrom": "planning_org_reviews",
           "tableTo": "planning_org_vendors",
           "schemaTo": "app",
-          "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["vendor_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -5988,12 +5651,8 @@
           "tableFrom": "planning_org_reviews",
           "tableTo": "planning_org_services",
           "schemaTo": "app",
-          "columnsFrom": [
-            "service_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["service_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -6002,12 +5661,8 @@
           "tableFrom": "planning_org_reviews",
           "tableTo": "planning_org_users",
           "schemaTo": "app",
-          "columnsFrom": [
-            "moderated_by_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["moderated_by_user_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -6017,9 +5672,7 @@
         "reviews_order_key": {
           "name": "reviews_order_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "order_id"
-          ]
+          "columns": ["order_id"]
         }
       },
       "policies": {},
@@ -6036,87 +5689,47 @@
     "app.booking_mode": {
       "name": "booking_mode",
       "schema": "app",
-      "values": [
-        "book_now",
-        "quote"
-      ]
+      "values": ["book_now", "quote"]
     },
     "app.consent_basis": {
       "name": "consent_basis",
       "schema": "app",
-      "values": [
-        "express",
-        "implied",
-        "withdrawn"
-      ]
+      "values": ["express", "implied", "withdrawn"]
     },
     "app.consent_channel": {
       "name": "consent_channel",
       "schema": "app",
-      "values": [
-        "marketing_email",
-        "product_email"
-      ]
+      "values": ["marketing_email", "product_email"]
     },
     "app.dispute_state": {
       "name": "dispute_state",
       "schema": "app",
-      "values": [
-        "open",
-        "under_review",
-        "resolved",
-        "rejected"
-      ]
+      "values": ["open", "under_review", "resolved", "rejected"]
     },
     "app.email_audience": {
       "name": "email_audience",
       "schema": "app",
-      "values": [
-        "customers",
-        "vendors",
-        "admins",
-        "all"
-      ]
+      "values": ["customers", "vendors", "admins", "all"]
     },
     "app.email_send_state": {
       "name": "email_send_state",
       "schema": "app",
-      "values": [
-        "queued",
-        "sent",
-        "delivered",
-        "bounced",
-        "complained",
-        "failed"
-      ]
+      "values": ["queued", "sent", "delivered", "bounced", "complained", "failed"]
     },
     "app.event_visibility": {
       "name": "event_visibility",
       "schema": "app",
-      "values": [
-        "private",
-        "shared"
-      ]
+      "values": ["private", "shared"]
     },
     "app.job_status": {
       "name": "job_status",
       "schema": "app",
-      "values": [
-        "queued",
-        "running",
-        "done",
-        "failed",
-        "held"
-      ]
+      "values": ["queued", "running", "done", "failed", "held"]
     },
     "app.job_trigger": {
       "name": "job_trigger",
       "schema": "app",
-      "values": [
-        "cron",
-        "admin_button",
-        "system"
-      ]
+      "values": ["cron", "admin_button", "system"]
     },
     "app.job_type": {
       "name": "job_type",
@@ -6134,11 +5747,7 @@
     "app.moderation_state": {
       "name": "moderation_state",
       "schema": "app",
-      "values": [
-        "pending",
-        "approved",
-        "rejected"
-      ]
+      "values": ["pending", "approved", "rejected"]
     },
     "app.order_state": {
       "name": "order_state",
@@ -6158,133 +5767,67 @@
     "app.payment_kind": {
       "name": "payment_kind",
       "schema": "app",
-      "values": [
-        "deposit",
-        "balance",
-        "full"
-      ]
+      "values": ["deposit", "balance", "full"]
     },
     "app.payment_state": {
       "name": "payment_state",
       "schema": "app",
-      "values": [
-        "pending",
-        "succeeded",
-        "failed",
-        "refunded"
-      ]
+      "values": ["pending", "succeeded", "failed", "refunded"]
     },
     "app.place_kind": {
       "name": "place_kind",
       "schema": "app",
-      "values": [
-        "neighbourhood",
-        "district",
-        "venue",
-        "city"
-      ]
+      "values": ["neighbourhood", "district", "venue", "city"]
     },
     "app.policy_tier": {
       "name": "policy_tier",
       "schema": "app",
-      "values": [
-        "flexible",
-        "moderate",
-        "strict"
-      ]
+      "values": ["flexible", "moderate", "strict"]
     },
     "app.price_unit": {
       "name": "price_unit",
       "schema": "app",
-      "values": [
-        "event",
-        "guest",
-        "bouquet",
-        "cake",
-        "install",
-        "arch",
-        "table",
-        "package",
-        "hour"
-      ]
+      "values": ["event", "guest", "bouquet", "cake", "install", "arch", "table", "package", "hour"]
     },
     "app.quote_offer_state": {
       "name": "quote_offer_state",
       "schema": "app",
-      "values": [
-        "sent",
-        "accepted",
-        "declined",
-        "withdrawn",
-        "expired"
-      ]
+      "values": ["sent", "accepted", "declined", "withdrawn", "expired"]
     },
     "app.quote_request_state": {
       "name": "quote_request_state",
       "schema": "app",
-      "values": [
-        "open",
-        "closed",
-        "expired",
-        "booked"
-      ]
+      "values": ["open", "closed", "expired", "booked"]
     },
     "app.refund_state": {
       "name": "refund_state",
       "schema": "app",
-      "values": [
-        "requested",
-        "settled",
-        "needs_attention"
-      ]
+      "values": ["requested", "settled", "needs_attention"]
     },
     "app.transfer_kind": {
       "name": "transfer_kind",
       "schema": "app",
-      "values": [
-        "deposit_share",
-        "balance_share"
-      ]
+      "values": ["deposit_share", "balance_share"]
     },
     "app.transfer_state": {
       "name": "transfer_state",
       "schema": "app",
-      "values": [
-        "pending",
-        "paid",
-        "held",
-        "failed",
-        "reversed"
-      ]
+      "values": ["pending", "paid", "held", "failed", "reversed"]
     },
     "app.user_role_name": {
       "name": "user_role_name",
       "schema": "app",
-      "values": [
-        "customer",
-        "vendor",
-        "admin"
-      ]
+      "values": ["customer", "vendor", "admin"]
     },
     "app.user_status": {
       "name": "user_status",
       "schema": "app",
-      "values": [
-        "active",
-        "pending",
-        "unverified",
-        "suspended"
-      ]
+      "values": ["active", "pending", "unverified", "suspended"]
     },
     "app.vendor_status": {
       "name": "vendor_status",
       "schema": "app",
-      "values": [
-        "pending",
-        "approved",
-        "suspended",
-        "blocked"
-      ]
+      "values": ["pending", "approved", "suspended", "blocked"]
     }
   },
   "schemas": {

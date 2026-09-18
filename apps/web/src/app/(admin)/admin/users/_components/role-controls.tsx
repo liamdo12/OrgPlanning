@@ -37,25 +37,19 @@ export function RoleControls({
   const [confirming, setConfirming] = useState<RoleName | null>(null);
   const [outcome, setOutcome] = useState<UserActionState | null>(null);
 
-  const [, grant, granting] = useActionState(
-    async (previous: UserActionState, form: FormData) => {
-      const next = await grantRoleAction(previous, form);
-      setOutcome(next);
-      if (!next.error) router.refresh();
-      return next;
-    },
-    INITIAL,
-  );
+  const [, grant, granting] = useActionState(async (previous: UserActionState, form: FormData) => {
+    const next = await grantRoleAction(previous, form);
+    setOutcome(next);
+    if (!next.error) router.refresh();
+    return next;
+  }, INITIAL);
 
-  const [, revoke, revoking] = useActionState(
-    async (previous: UserActionState, form: FormData) => {
-      const next = await revokeRoleAction(previous, form);
-      setOutcome(next);
-      if (!next.error) router.refresh();
-      return next;
-    },
-    INITIAL,
-  );
+  const [, revoke, revoking] = useActionState(async (previous: UserActionState, form: FormData) => {
+    const next = await revokeRoleAction(previous, form);
+    setOutcome(next);
+    if (!next.error) router.refresh();
+    return next;
+  }, INITIAL);
 
   return (
     <div className="grid gap-3">

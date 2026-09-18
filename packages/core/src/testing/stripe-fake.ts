@@ -108,7 +108,12 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
     completeOnboarding(accountId) {
       const account = accounts.get(accountId);
       if (!account) throw new Error(`This fake has no account ${accountId}.`);
-      accounts.set(accountId, { ...account, chargesEnabled: true, payoutsEnabled: true, requirementsDue: [] });
+      accounts.set(accountId, {
+        ...account,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        requirementsDue: [],
+      });
     },
 
     mode: () => options.mode ?? "test",
@@ -238,7 +243,10 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
 
     findPaymentIntentByMetadata({ orderId, paymentId }) {
       for (const intent of intents.values()) {
-        if (intent.metadata["order_id"] === orderId && intent.metadata["payment_id"] === paymentId) {
+        if (
+          intent.metadata["order_id"] === orderId &&
+          intent.metadata["payment_id"] === paymentId
+        ) {
           return Promise.resolve(intent);
         }
       }

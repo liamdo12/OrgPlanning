@@ -119,7 +119,9 @@ describe("order transitions", () => {
   });
 
   it("schedules the balance and the cooling window only on a first confirmation", () => {
-    const first = jobsOnEntering("pending_payment", "confirmed", WITH_BALANCE).map((job) => job.type);
+    const first = jobsOnEntering("pending_payment", "confirmed", WITH_BALANCE).map(
+      (job) => job.type,
+    );
     expect(first).toEqual(["cooling_window_transfer", "charge_balance"]);
 
     // The same state, reached by an order that has just paid. Re-enqueueing here

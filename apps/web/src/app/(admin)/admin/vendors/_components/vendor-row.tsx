@@ -15,7 +15,9 @@ import { toneFor } from "./status-tone";
  */
 
 export function VendorRow({ vendor, query }: { vendor: AdminVendorRow; query: string }) {
-  const href = query ? `/admin/vendors?${query}&vendor=${vendor.id}` : `/admin/vendors?vendor=${vendor.id}`;
+  const href = query
+    ? `/admin/vendors?${query}&vendor=${vendor.id}`
+    : `/admin/vendors?vendor=${vendor.id}`;
 
   return (
     <li className="flex flex-wrap items-center gap-[14px] border-b border-hairline px-[18px] py-[13px] last:border-b-0">

@@ -137,21 +137,26 @@ function membershipFor(db: DbExecutor) {
   return db
     .select({
       userId: vendorMembers.userId,
-      vendorId: sql<string>`(array_agg(${vendors.id} order by ${vendors.name}, ${vendors.id}))[1]`.as("vendor_id"),
-      vendorName: sql<string>`(array_agg(${vendors.name} order by ${vendors.name}, ${vendors.id}))[1]`.as(
-        "vendor_name",
-      ),
-      memberRole: sql<string>`(array_agg(${vendorMembers.role} order by ${vendors.name}, ${vendors.id}))[1]`.as(
-        "member_role",
-      ),
-      vendorStatus: sql<string>`(array_agg(${vendors.status}::text order by ${vendors.name}, ${vendors.id}))[1]`.as(
-        "vendor_status",
-      ),
-      payoutsEnabledAt: sql<
-        Date | null
-      >`(array_agg(${vendors.stripePayoutsEnabled} order by ${vendors.name}, ${vendors.id}))[1]`.as(
-        "payouts_enabled_at",
-      ),
+      vendorId:
+        sql<string>`(array_agg(${vendors.id} order by ${vendors.name}, ${vendors.id}))[1]`.as(
+          "vendor_id",
+        ),
+      vendorName:
+        sql<string>`(array_agg(${vendors.name} order by ${vendors.name}, ${vendors.id}))[1]`.as(
+          "vendor_name",
+        ),
+      memberRole:
+        sql<string>`(array_agg(${vendorMembers.role} order by ${vendors.name}, ${vendors.id}))[1]`.as(
+          "member_role",
+        ),
+      vendorStatus:
+        sql<string>`(array_agg(${vendors.status}::text order by ${vendors.name}, ${vendors.id}))[1]`.as(
+          "vendor_status",
+        ),
+      payoutsEnabledAt:
+        sql<Date | null>`(array_agg(${vendors.stripePayoutsEnabled} order by ${vendors.name}, ${vendors.id}))[1]`.as(
+          "payouts_enabled_at",
+        ),
       onboardingPercent: sql<
         string | null
       >`(array_agg(${vendors.onboardingPercent} order by ${vendors.name}, ${vendors.id}))[1]`.as(
@@ -357,10 +362,7 @@ export type MembershipRow = {
 };
 
 /** Every business this person works for, not just the one the row shows. */
-export async function listMemberships(
-  ctx: CoreContext,
-  userId: string,
-): Promise<MembershipRow[]> {
+export async function listMemberships(ctx: CoreContext, userId: string): Promise<MembershipRow[]> {
   return ctx.db
     .select({
       vendorId: vendors.id,
@@ -432,11 +434,7 @@ export type AuditRow = {
  * account, which is what a support question is about. What the person did
  * themselves is a different screen.
  */
-export async function listAudit(
-  ctx: CoreContext,
-  userId: string,
-  limit = 20,
-): Promise<AuditRow[]> {
+export async function listAudit(ctx: CoreContext, userId: string, limit = 20): Promise<AuditRow[]> {
   // Aliased, because this query already has `users` in it as the subject of the
   // audit rows; without a second name the join condition is ambiguous.
   const actor = alias(users, "audit_actor");
@@ -471,7 +469,11 @@ export async function listAudit(
  * suspending an administrator removes one just as surely as demoting them.
  */
 export async function lockAdminRoles(db: DbExecutor): Promise<void> {
-  await db.select({ id: userRoles.id }).from(userRoles).where(eq(userRoles.role, "admin")).for("update");
+  await db
+    .select({ id: userRoles.id })
+    .from(userRoles)
+    .where(eq(userRoles.role, "admin"))
+    .for("update");
 }
 
 /**

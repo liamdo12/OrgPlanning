@@ -148,11 +148,7 @@ export {
   type VendorFilter,
 } from "./vendors/service.js";
 
-export {
-  getPublicService,
-  listPublicServices,
-  type PublicService,
-} from "./catalog/service.js";
+export { getPublicService, listPublicServices, type PublicService } from "./catalog/service.js";
 
 export {
   ORDER_STATES,

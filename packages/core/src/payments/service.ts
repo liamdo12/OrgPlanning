@@ -6,10 +6,7 @@ import { assertCanActOnOrder, assertCanPayOrder } from "../identity/policies.js"
 import { requireAdmin } from "../identity/service.js";
 import * as ordering from "../ordering/repo.js";
 import { applyTransition } from "../ordering/service.js";
-import {
-  payoutAllowed as orderPayoutAllowed,
-  parseOrderState,
-} from "../ordering/transitions.js";
+import { payoutAllowed as orderPayoutAllowed, parseOrderState } from "../ordering/transitions.js";
 import { payoutAllowed as vendorPayoutAllowed, type VendorStatus } from "../vendors/transitions.js";
 import { sliceOrderMoney } from "./money.js";
 import { mintPaymentLinkToken, paymentLinkDigest, paymentLinkState } from "./payment-links.js";
@@ -582,7 +579,10 @@ export async function transferShare(
   const payee = await repo.loadPayeeAccount(ctx.db, order.vendorId);
   if (!payee) throw new NotFoundError("No such order.");
 
-  const source = kind === "deposit_share" ? await depositPayment(ctx, orderId) : await repo.succeededPaymentOfKind(ctx.db, orderId, "balance");
+  const source =
+    kind === "deposit_share"
+      ? await depositPayment(ctx, orderId)
+      : await repo.succeededPaymentOfKind(ctx.db, orderId, "balance");
   if (!source?.providerPaymentIntentId || !source.providerChargeId) {
     throw new ValidationError("There is no settled charge to transfer from.", {
       payment: "unsettled",
@@ -607,7 +607,12 @@ export async function transferShare(
 
   const heldReason =
     refundShortfall ??
-    payoutBlockedReason(order.state, payee.status as VendorStatus, payee.name, payee.stripeAccountId);
+    payoutBlockedReason(
+      order.state,
+      payee.status as VendorStatus,
+      payee.name,
+      payee.stripeAccountId,
+    );
 
   const claim = await repo.claimTransfer(ctx.db, {
     orderId,
@@ -1018,7 +1023,11 @@ export async function refreshConnectStatus(
   const now = ctx.clock.realNow();
   await repo.setConnectedAccount(ctx.db, vendorId, {
     accountId: account.id,
-    status: account.payoutsEnabled ? "enabled" : account.requirementsDue.length ? "pending" : "review",
+    status: account.payoutsEnabled
+      ? "enabled"
+      : account.requirementsDue.length
+        ? "pending"
+        : "review",
     chargesEnabledAt: account.chargesEnabled ? now : null,
     payoutsEnabledAt: account.payoutsEnabled ? now : null,
   });
@@ -1099,7 +1108,10 @@ export async function applyWebhook(
       });
       if (!payment) throw new UnknownOrderError(intentId);
 
-      const error = event.object["last_payment_error"] as { code?: string; message?: string } | null;
+      const error = event.object["last_payment_error"] as {
+        code?: string;
+        message?: string;
+      } | null;
       await repo.markPaymentFailed(ctx.db, payment.id, {
         code: error?.code ?? null,
         message: error?.message ?? null,

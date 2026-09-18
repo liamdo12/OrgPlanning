@@ -41,7 +41,11 @@ describe("money parity with the seed", () => {
           hstBps: HST_BPS,
         });
 
-        expect([subtotal, registered, domain.subtotal]).toEqual([subtotal, registered, seeded.subtotal]);
+        expect([subtotal, registered, domain.subtotal]).toEqual([
+          subtotal,
+          registered,
+          seeded.subtotal,
+        ]);
         expect([subtotal, registered, domain.tax]).toEqual([subtotal, registered, seeded.tax]);
         expect([subtotal, registered, domain.total]).toEqual([subtotal, registered, seeded.total]);
         expect([subtotal, registered, domain.commission]).toEqual([

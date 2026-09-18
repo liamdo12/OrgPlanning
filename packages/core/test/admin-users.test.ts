@@ -102,9 +102,7 @@ describe.skipIf(!url)("admin users", () => {
 
       database.setUser(null);
       const anonymous = await getActor(ctx, {});
-      await expect(listUsersForAdmin(ctx, anonymous)).rejects.toBeInstanceOf(
-        UnauthenticatedError,
-      );
+      await expect(listUsersForAdmin(ctx, anonymous)).rejects.toBeInstanceOf(UnauthenticatedError);
     });
 
     it("refuses a suspended administrator", async () => {
@@ -247,9 +245,7 @@ describe.skipIf(!url)("admin users", () => {
       `;
 
       const row = await loadForAdmin(ctx, sarah);
-      expect(row?.totalSpend).toBe(
-        BigInt(everything?.spend ?? 0) - BigInt(cancelled?.total ?? 0),
-      );
+      expect(row?.totalSpend).toBe(BigInt(everything?.spend ?? 0) - BigInt(cancelled?.total ?? 0));
 
       // The order is still there and still counted — four placed, three paid for.
       expect(row?.orderCount).toBe(4);
@@ -628,9 +624,9 @@ describe.skipIf(!url)("admin users", () => {
       `;
       expect(row?.status).toBe("unverified");
 
-      await expect(
-        resendVerification(ctx, admin, idOf("sarah@example.ca")),
-      ).rejects.toBeInstanceOf(ValidationError);
+      await expect(resendVerification(ctx, admin, idOf("sarah@example.ca"))).rejects.toBeInstanceOf(
+        ValidationError,
+      );
     });
   });
 

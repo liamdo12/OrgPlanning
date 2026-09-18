@@ -308,7 +308,11 @@ export async function createCheckout(
           action: "order.create",
           entityType: "order",
           entityId: order.id,
-          after: { reference: order.reference, total: money.total.toString(), state: "pending_payment" },
+          after: {
+            reference: order.reference,
+            total: money.total.toString(),
+            state: "pending_payment",
+          },
         },
         tx,
       );

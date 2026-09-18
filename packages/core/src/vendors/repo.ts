@@ -394,12 +394,7 @@ export async function holdUnpaidTransfers(
   const rows = await db
     .update(transfers)
     .set({ state: "held", heldReason: reason, updatedAt: now })
-    .where(
-      and(
-        eq(transfers.vendorId, vendorId),
-        inArray(transfers.state, ["pending", "failed"]),
-      ),
-    )
+    .where(and(eq(transfers.vendorId, vendorId), inArray(transfers.state, ["pending", "failed"])))
     .returning({ id: transfers.id });
 
   return rows.length;

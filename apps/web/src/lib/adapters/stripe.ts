@@ -311,7 +311,9 @@ function toProviderAmount(amount: bigint): number {
 
 function toPaymentIntent(intent: Stripe.PaymentIntent): ProviderPaymentIntent {
   const charge =
-    typeof intent.latest_charge === "string" ? intent.latest_charge : (intent.latest_charge?.id ?? null);
+    typeof intent.latest_charge === "string"
+      ? intent.latest_charge
+      : (intent.latest_charge?.id ?? null);
   const paymentMethod =
     typeof intent.payment_method === "string"
       ? intent.payment_method

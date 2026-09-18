@@ -134,7 +134,12 @@ export async function markPaymentFailed(
 ): Promise<void> {
   await db
     .update(payments)
-    .set({ state: "failed", failureCode: input.code, failureMessage: input.message, failedAt: input.now })
+    .set({
+      state: "failed",
+      failureCode: input.code,
+      failureMessage: input.message,
+      failedAt: input.now,
+    })
     .where(eq(payments.id, paymentId));
 }
 
@@ -370,10 +375,7 @@ export async function openRefund(
  * writes it too — the two must agree, or one order reads "succeeded · refunded"
  * and the next reads "refunded · refunded" for the same situation.
  */
-export async function markPaymentRefunded(
-  db: DbExecutor,
-  paymentId: string,
-): Promise<void> {
+export async function markPaymentRefunded(db: DbExecutor, paymentId: string): Promise<void> {
   await db.update(payments).set({ state: "refunded" }).where(eq(payments.id, paymentId));
 }
 
@@ -406,7 +408,10 @@ export async function flagRefundForAttention(
   refundId: string,
   reason: string,
 ): Promise<void> {
-  await db.update(refunds).set({ state: "needs_attention", reason }).where(eq(refunds.id, refundId));
+  await db
+    .update(refunds)
+    .set({ state: "needs_attention", reason })
+    .where(eq(refunds.id, refundId));
 }
 
 export function loadRefund(db: DbExecutor, refundId: string): Promise<RefundRow | undefined> {
@@ -581,11 +586,7 @@ export async function recordWebhook(
   };
 }
 
-export async function markWebhookProcessed(
-  db: DbExecutor,
-  id: string,
-  now: Date,
-): Promise<void> {
+export async function markWebhookProcessed(db: DbExecutor, id: string, now: Date): Promise<void> {
   await db
     .update(stripeEvents)
     .set({ processedAt: now, lastError: null })
