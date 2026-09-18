@@ -39,6 +39,19 @@ export const users = app.table(
      * it is set.
      */
     mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
+    /**
+     * The payment provider's record of this person.
+     *
+     * Written the first time they pay for anything and reused afterwards. It
+     * has to exist before the deposit rather than at the balance: a card can
+     * only be charged off-session later if it was saved against a customer at
+     * the moment it was first charged, and the balance charge fourteen days
+     * before an event is exactly that later charge.
+     *
+     * No card data is stored here or anywhere else in this schema — this is an
+     * identifier the provider resolves, which is the whole point of holding one.
+     */
+    stripeCustomerId: text("stripe_customer_id").unique(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     isDemo,
     ...timestamps,

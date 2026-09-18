@@ -22,6 +22,27 @@
       "when": 1789674999409,
       "tag": "0002_zz_manual_rename_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789701760194,
+      "tag": "0003_order_lifecycle_and_deposits",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789702021298,
+      "tag": "0004_customer_of_record",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789702022298,
+      "tag": "0005_order_reference_sequence",
+      "breakpoints": true
     }
   ]
 }

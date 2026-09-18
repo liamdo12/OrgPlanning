@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "./client.js";
-import { users } from "./schema/identity.js";
+import { users, vendors } from "./schema/identity.js";
 
 /**
  * Support for giving seeded accounts provider logins.
@@ -57,4 +57,58 @@ export async function forgetProviderBinding(db: Db, userIds: readonly string[]):
     .returning({ id: users.id });
 
   return cleared.length;
+}
+
+/** A vendor that needs somewhere for its money to go. */
+export type PayableVendor = {
+  id: string;
+  name: string;
+  slug: string;
+  stripeAccountId: string | null;
+};
+
+/**
+ * Approved demo vendors, with whatever connected account they already have.
+ *
+ * Here for the same reason as the two above: `drizzle-orm` is a dependency of
+ * this package and not of the app, and the operator script that completes
+ * payment onboarding lives there.
+ */
+export async function listPayableDemoVendors(db: Db): Promise<PayableVendor[]> {
+  return db
+    .select({
+      id: vendors.id,
+      name: vendors.name,
+      slug: vendors.slug,
+      stripeAccountId: vendors.stripeAccountId,
+    })
+    .from(vendors)
+    .where(and(eq(vendors.isDemo, true), eq(vendors.status, "approved")))
+    .orderBy(vendors.name);
+}
+
+/**
+ * Records the connected account an operator script has just created.
+ *
+ * The enabled timestamps are cleared, not left alone. The seed sets them
+ * alongside a placeholder account id so the vendor screen has something to
+ * show; a freshly created account has completed no onboarding, and carrying
+ * those timestamps over would leave the row claiming payouts work when the
+ * account behind it cannot take one. They come back when the provider says so,
+ * through `account.updated` or a status refresh.
+ */
+export async function setDemoConnectedAccount(
+  db: Db,
+  vendorId: string,
+  accountId: string,
+): Promise<void> {
+  await db
+    .update(vendors)
+    .set({
+      stripeAccountId: accountId,
+      stripeStatus: "pending",
+      stripeChargesEnabled: null,
+      stripePayoutsEnabled: null,
+    })
+    .where(eq(vendors.id, vendorId));
 }

@@ -74,8 +74,16 @@ export const transferState = app.enum("transfer_state", [
   "reversed",
 ]);
 
-/** Scheduled work. Each value is produced by a rule, never hand-queued. */
+/**
+ * Scheduled work. Each value is produced by a rule, never hand-queued.
+ *
+ * `expire_unpaid` releases the soft capacity hold a checkout takes: an order
+ * sits in `pending_payment` holding its date, and if the deposit never arrives
+ * nothing else would ever free it. The order lifecycle
+ * (`packages/core/src/ordering/lifecycle.md`) schedules it thirty minutes out.
+ */
 export const jobType = app.enum("job_type", [
+  "expire_unpaid",
   "cooling_window_transfer",
   "charge_balance",
   "expire_quote_request",

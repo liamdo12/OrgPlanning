@@ -7,6 +7,7 @@ import {
   integer,
   numeric,
   text,
+  timestamp,
   unique,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -43,7 +44,15 @@ export const services = app.table(
     /** Gradient stops the prototype renders in place of photography. */
     toneStart: text("tone_start"),
     toneEnd: text("tone_end"),
-    publishedAt: text("published_at"),
+    /**
+     * When the vendor made this service visible to customers.
+     *
+     * A timestamp, not the text it was declared as: nothing writes it yet —
+     * publishing belongs to the vendor catalogue screen — and a column that
+     * will hold an instant should not be the one place in the schema where a
+     * date is a string waiting to be compared as one.
+     */
+    publishedAt: timestamp("published_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [

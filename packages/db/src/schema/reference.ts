@@ -46,6 +46,15 @@ export const policyTemplates = app.table(`${TABLE_PREFIX}policy_templates`, {
   tier: policyTier("tier").notNull().unique(),
   name: text("name").notNull(),
   summary: text("summary").notNull(),
+  /**
+   * What the deposit is, in basis points of the total.
+   *
+   * A column rather than a platform-wide rate because the deposit is part of
+   * the policy the vendor chose — 10% flexible, 20% moderate, 30% strict — and
+   * an order carries the template it was booked under. The platform setting of
+   * the same name is the fallback for an order with no template attached.
+   */
+  depositBps: integer("deposit_bps").notNull(),
   /** Hours after the deposit during which a customer may cancel for free. */
   freeCancellationHours: integer("free_cancellation_hours").notNull(),
   /** Percentage refunded after the free window, in basis points. */

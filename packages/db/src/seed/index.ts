@@ -193,13 +193,14 @@ async function seedReference(db: Db): Promise<void> {
         tier: policy.tier,
         name: policy.name,
         summary: policy.summary,
+        depositBps: policy.depositBps,
         freeCancellationHours: policy.freeCancellationHours,
         lateRefundBps: policy.lateRefundBps,
       })),
     )
     .onConflictDoUpdate({
       target: s.policyTemplates.id,
-      set: { summary: sql`excluded.summary` },
+      set: { summary: sql`excluded.summary`, depositBps: sql`excluded.deposit_bps` },
     });
 
   await db
