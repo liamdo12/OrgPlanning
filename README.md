@@ -78,10 +78,25 @@ packages/db/       Drizzle schema, migrations, seed (see its README)
 packages/ui/       glass design system
 packages/config/   tsconfig / eslint / tailwind / prettier presets
 design/            exported design canvas — read-only reference
-docs/              design-gaps.md, payments-testing.md (architecture and runbook land with later work)
+docs/              see below
 plans/             implementation plan and phase files
 supabase/          local stack config
 ```
+
+## Documentation
+
+In the working tree under `docs/`. Not linked, because `docs/`, `plans/` and
+`design/` are deliberately unpublished — they were removed from history on
+2026-09-16 and are gitignored, so a link here would be dead in any clone.
+
+| File                         | What it answers                                        |
+| ---------------------------- | ------------------------------------------------------ |
+| `docs/architecture.md`       | what this is, as built                                 |
+| `docs/admin-runbook.md`      | what to do when something has gone wrong               |
+| `docs/operations-runbook.md` | the job queue, the two runners, reseeding              |
+| `docs/security-review.md`    | the security checklist, and the test behind each claim |
+| `docs/payments-testing.md`   | exercising the money paths against Stripe test mode    |
+| `docs/design-gaps.md`        | every deliberate difference from the design canvas     |
 
 ## Import rules (enforced by ESLint, checked in CI)
 
