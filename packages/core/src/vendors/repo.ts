@@ -25,9 +25,14 @@ import { STANDING_HOLD, type VendorStatus } from "./transitions.js";
  * A vendor's category is not a column: it is what their services sell.
  *
  * Aggregated over a join rather than read from a correlated subquery. Drizzle
- * renders a column inside a raw `sql` fragment without its table prefix, so the
- * subquery form compiles to `where "vendor_id" = "id"` — which Postgres rejects
- * as ambiguous, and which would silently mean the wrong thing if it did not.
+ * qualifies a column inside a raw `sql` fragment with its table **only when the
+ * query has a join**; in a single-table one the subquery form compiles to
+ * `where "vendor_id" = "id"`, which Postgres rejects as ambiguous here and
+ * which would silently mean the wrong thing if it did not — as it does in a
+ * subquery whose inner table has both names, where it simply returns zero.
+ *
+ * The rule is about the *outer* query, so a correlated fragment inside a joined
+ * query is fine and stays: `disputes/repo.ts` has one, and it is correct.
  */
 const categoryNames = sql<string | null>`string_agg(distinct ${categories.name}, ', ')`;
 const serviceCount = sql<number>`count(distinct ${services.id})::int`;

@@ -1,4 +1,5 @@
 import type { CoreContext } from "../context.js";
+import { closeDisputesForOrder } from "../disputes/service.js";
 import { NotFoundError, ValidationError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 import { assertCanActOnOrder, assertCanReadOrder } from "../identity/policies.js";
@@ -484,7 +485,19 @@ export async function resolveOrderIssue(
     });
   }
 
-  return ordering.resolveIssue(ctx, actor, orderId, target, note);
+  return ctx.db.transaction(async (tx) => {
+    const scoped: CoreContext = { ...ctx, db: tx as unknown as CoreContext["db"] };
+
+    const change = await ordering.resolveIssue(scoped, actor, orderId, target, note);
+
+    // The complaints queue is the other half of this move. An administrator can
+    // take a booking out of `issue` from this screen without ever opening the
+    // queue, and a case left open against an order that has moved on is an
+    // entry nobody can action — the thing it was about is settled.
+    await closeDisputesForOrder(scoped, actor, orderId, note, tx);
+
+    return change;
+  });
 }
 
 /**

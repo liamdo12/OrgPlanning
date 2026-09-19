@@ -92,7 +92,10 @@ export function BottomTabBar({
             <span
               className={cx(
                 "max-w-full truncate text-tab font-bold",
-                active ? "text-ink" : "text-body",
+                // `text-on-chrome` rather than `text-body`: this label sits on
+                // the glass bar rather than on the page, and the body colour
+                // does not clear AA there at this size. See the token.
+                active ? "text-ink" : "text-on-chrome",
               )}
             >
               {item.label}

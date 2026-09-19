@@ -55,6 +55,18 @@
    * strongest, so it is not in this token set — see docs/design-gaps.md.
    */
   --color-body: #3c4a43;
+  /**
+   * Secondary text sitting directly on the translucent chrome.
+   *
+   * `--color-body` clears AA over the page background and does not clear it
+   * over the bottom tab bar, where the glass composites to roughly `#97AB9F`:
+   * measured at 3.8:1 against a 10.5px bold label, where 4.5:1 is required.
+   * This is the same colour darkened until it clears with room to spare (5.0:1
+   * at that composite), which keeps an inactive tab distinguishable from the
+   * active one — using `--color-ink` for both would have met the ratio by
+   * removing the distinction.
+   */
+  --color-on-chrome: #2c3832;
 
   /* --- role ------------------------------------------------------------ */
 

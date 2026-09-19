@@ -731,6 +731,38 @@ describe.skipIf(!url)("jobs and the clock", () => {
       expect(blockers.map((blocker) => blocker.code)).toContain("pending_payment");
     });
 
+    it.each([
+      ["a demo business", "vendor_id", "app.planning_org_vendors"],
+      ["a demo account", "user_id", "app.planning_org_users"],
+    ])("refuses when a real booking is attached to %s", async (_what, column) => {
+      // The reseed's contract is that it deletes demo rows and leaves
+      // everything else standing, and with a real order on a demo row it
+      // cannot: the row is on the list, the order is not, and the delete dies
+      // on a foreign key several layers below the button.
+      //
+      // Both sides, because `createCheckout` writes `is_demo: false` on every
+      // order — so the ordinary way to try the deployed demo, signing in as a
+      // seeded account and booking something, produces the customer-side case
+      // on the first attempt.
+      const order = await orderByReference("TO-4192");
+      await sql`update app.planning_org_orders set is_demo = false where id = ${order.id}`;
+      // Only the side under test is demo, so a pass cannot come from the other.
+      await sql`
+        update app.planning_org_vendors set is_demo = ${column === "vendor_id"}
+        where id = ${order.vendorId}
+      `;
+      await sql`
+        update app.planning_org_users set is_demo = ${column === "user_id"}
+        where id = ${order.userId}
+      `;
+
+      const blockers = await reseedBlockers(ctx, admin, "local");
+      const blocker = blockers.find((one) => one.code === "real_orders_on_demo_rows");
+
+      expect(blocker).toBeDefined();
+      expect(blocker?.message).toContain("1 order");
+    });
+
     it("is refused outright on a production tier", async () => {
       const blockers = await reseedBlockers(productionContext(), admin, "production");
       expect(blockers.map((blocker) => blocker.code)).toContain("tier");

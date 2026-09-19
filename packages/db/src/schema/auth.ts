@@ -1,4 +1,5 @@
-import { index, integer, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { index, integer, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { app, timestamps, TABLE_PREFIX } from "./common.js";
 import { users } from "./identity.js";
 
@@ -67,6 +68,15 @@ export const adminInvites = app.table(
   },
   (table) => [
     index("admin_invites_email_idx").on(table.email),
+    // One live invitation per address, and the database is what enforces it.
+    // The service revokes any outstanding one before inserting, which under
+    // `read committed` two concurrent requests both do against snapshots
+    // missing each other's row — and two working tokens is exactly what the
+    // revoke is for. Partial, because the rule is about invitations still in
+    // play: an address can be invited again once the first is revoked.
+    uniqueIndex("admin_invites_one_live_per_email")
+      .on(table.email)
+      .where(sql`${table.revokedAt} is null and ${table.acceptedAt} is null`),
     index("admin_invites_invited_by_idx").on(table.invitedByUserId),
     index("admin_invites_accepted_user_idx").on(table.acceptedUserId),
   ],

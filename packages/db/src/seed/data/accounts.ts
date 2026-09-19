@@ -82,10 +82,17 @@ export const ADMIN_USER = {
  *
  * `Terrace Rentals` is Blocked with incomplete onboarding, which is why it has
  * no connected payment account.
+ *
+ * The taglines are not from the prototype, which shows a business by its
+ * category and neighbourhood rather than by a line it wrote. They are here
+ * because the moderation queue takes reports about a vendor's own profile text,
+ * and a queue whose demo rows point at an empty column demonstrates nothing.
+ * Terrace Rentals' is the one the seeded report is about.
  */
 export const ADMIN_VENDORS = [
   {
     key: "bloom",
+    tagline: "Seasonal arrangements, grown and tied in Liberty Village.",
     slug: "bloom-and-co",
     name: "Bloom & Co",
     categorySlug: "flowers",
@@ -98,6 +105,7 @@ export const ADMIN_VENDORS = [
   },
   {
     key: "kimchi",
+    tagline: "Korean street food, served hot from the cart.",
     slug: "kimchi-kart",
     name: "Kimchi Kart",
     categorySlug: "catering",
@@ -113,6 +121,7 @@ export const ADMIN_VENDORS = [
   },
   {
     key: "lens",
+    tagline: "Documentary event photography, two shooters, fast turnaround.",
     slug: "lens-studio",
     name: "Lens Studio",
     categorySlug: "photography",
@@ -125,6 +134,7 @@ export const ADMIN_VENDORS = [
   },
   {
     key: "terrace",
+    tagline: "Fully licensed and insured for every venue in the city.",
     slug: "terrace-rentals",
     name: "Terrace Rentals",
     categorySlug: "decorations",
@@ -137,6 +147,7 @@ export const ADMIN_VENDORS = [
   },
   {
     key: "quartet",
+    tagline: "Strings for ceremonies, receptions and everything between.",
     slug: "the-bloor-quartet",
     name: "The Bloor Quartet",
     categorySlug: "entertainment",
@@ -149,6 +160,7 @@ export const ADMIN_VENDORS = [
   },
   {
     key: "halo",
+    tagline: "Arches, backdrops and lighting, installed and struck same day.",
     slug: "studio-halo",
     name: "Studio Halo",
     categorySlug: "decorations",

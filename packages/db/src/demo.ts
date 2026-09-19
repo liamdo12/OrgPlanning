@@ -49,7 +49,28 @@ const DEMO_DELETES = [
   `delete from app.planning_org_email_sends where recipient_user_id in (select id from app.planning_org_users where is_demo)
      or to_email in (select email from app.planning_org_users where is_demo)`,
 
-  // Trust.
+  // Trust. The reports come first and by every target they can name: they hold
+  // no foreign key at all — a review id, a message id or a vendor id in one
+  // polymorphic column — so nothing below would take them with it, and a report
+  // left behind points at a row that no longer exists.
+  `delete from app.planning_org_content_reports
+     where (target_type = 'review'
+            and target_id in (select id from app.planning_org_reviews
+                              where order_id in (select id from app.planning_org_orders where is_demo)))
+        or (target_type = 'vendor_profile'
+            and target_id in (select id from app.planning_org_vendors where is_demo))
+        or (target_type = 'message'
+            and target_id in (select id from app.planning_org_messages where thread_id in (
+                  select id from app.planning_org_threads where order_id in (select id from app.planning_org_orders where is_demo)
+                     or vendor_id in (select id from app.planning_org_vendors where is_demo))))
+        or reporter_user_id in (select id from app.planning_org_users where is_demo)`,
+  // Cascades from the dispute, but named anyway: the cascade is a property of
+  // the constraint rather than of this list, and a note written by a demo
+  // administrator on a case about a real order belongs to neither.
+  `delete from app.planning_org_dispute_messages
+     where dispute_id in (select id from app.planning_org_disputes
+                          where order_id in (select id from app.planning_org_orders where is_demo))
+        or author_user_id in (select id from app.planning_org_users where is_demo)`,
   `delete from app.planning_org_reviews where order_id in (select id from app.planning_org_orders where is_demo)`,
   `delete from app.planning_org_disputes where order_id in (select id from app.planning_org_orders where is_demo)`,
 

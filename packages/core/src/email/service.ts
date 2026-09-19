@@ -844,13 +844,6 @@ export async function unsubscribe(ctx: CoreContext, token: string): Promise<void
 /** What one account has agreed to, for the screen that shows it. */
 export type MarketingConsent = repo.MarketingConsent;
 
-export function marketingConsentFor(
-  ctx: CoreContext,
-  userId: string,
-): Promise<MarketingConsent | undefined> {
-  return repo.marketingConsentFor(ctx.db, userId);
-}
-
 /**
  * Records or withdraws express consent for one account.
  *

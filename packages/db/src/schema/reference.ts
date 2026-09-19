@@ -1,4 +1,4 @@
-import { integer, jsonb, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, numeric, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { app, timestamps, TABLE_PREFIX } from "./common.js";
 import { placeKind, policyTier } from "./enums.js";
 
@@ -10,6 +10,28 @@ export const categories = app.table(`${TABLE_PREFIX}categories`, {
   /** Listing count shown on the discovery tiles, not a computed total. */
   displayCount: integer("display_count").notNull().default(0),
   sortOrder: integer("sort_order").notNull().default(0),
+  /**
+   * The category's own colour, as a CSS background.
+   *
+   * The prototype draws a category as a gradient tile and gives it no icon at
+   * all (`cats()`, lines 1967–1973), so this is the editable visual the screen
+   * needs — a glyph field would have nothing to render.
+   */
+  tone: text("tone"),
+  /**
+   * Whether the category is offered.
+   *
+   * Deactivating is the answer to "delete a category that has services": the
+   * listings keep the category they were filed under, and a delete is refused
+   * while anything points at it.
+   *
+   * **Nothing reads this yet.** The screen that files a service under a
+   * category is the vendor catalogue, which this milestone does not build, so
+   * the flag records the operator's decision and the listing editor is what
+   * will honour it. Recorded in `docs/design-gaps.md` rather than left as a
+   * column that looks enforced.
+   */
+  active: boolean("active").notNull().default(true),
   ...timestamps,
 });
 

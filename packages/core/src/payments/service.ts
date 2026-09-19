@@ -367,13 +367,27 @@ async function handOffToLink(
   const { token, digest } = mintPaymentLinkToken();
 
   const mintLink = (tx: DbExecutor, expiresAt: Date) =>
-    repo.createPaymentLink(tx, {
-      orderId: order.id,
-      token: digest,
-      amount: order.balanceAmount,
-      currency: order.currency,
-      expiresAt,
-    });
+    repo.createPaymentLink(
+      tx,
+      {
+        orderId: order.id,
+        token: digest,
+        amount: order.balanceAmount,
+        currency: order.currency,
+        expiresAt,
+      },
+      // The **domain** clock, because that is the clock a link's liveness is
+      // judged on: `paymentLinkState` compares `expires_at` against
+      // `ctx.clock.now()`. Retiring on `realNow()` instead leaves a window
+      // whenever an override sits behind real time — a prior link expiring
+      // between the two reads as retired to this statement and as `payable` to
+      // the page that spends it, which is two live tokens for one balance.
+      //
+      // An override is only reachable off production, so this was a demo-tier
+      // hole rather than a real one. The rule it breaks is the same either way:
+      // one question, one clock.
+      ctx.clock.now(),
+    );
 
   if (order.state === "action_required") {
     // A second decline on an order already waiting. The order does not move —
@@ -396,6 +410,25 @@ async function handOffToLink(
         // would swallow the one carrying the link that still works.
         about: `${order.id}:${paymentId ?? expiresAt.getTime()}`,
       });
+
+      // The first decline is audited by the transition into `action_required`.
+      // This branch makes no transition, so without an entry of its own the
+      // log would be silent about a live payment link being minted and posted
+      // — which is a bearer credential for a charge, most often created by an
+      // administrator pressing Retry. The token is not recorded anywhere but
+      // the message; what belongs here is that one was issued and until when.
+      await record(
+        ctx,
+        actor,
+        {
+          action: "payment.balance_link_reissued",
+          entityType: "order",
+          entityId: order.id,
+          before: { state: order.state },
+          after: { expiresAt: expiresAt.toISOString(), attempt: paymentId },
+        },
+        tx,
+      );
     });
 
     return { outcome: "action_required", paymentId: paymentId ?? "", link: { token, expiresAt } };

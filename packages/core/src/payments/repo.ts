@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import {
   orders,
   paymentLinks,
@@ -487,10 +487,40 @@ const linkColumns = {
   consumedAt: paymentLinks.consumedAt,
 };
 
+/**
+ * Mints a link, and puts out the one it replaces.
+ *
+ * `now` is the caller's **domain** clock, matching `paymentLinkState`. A link
+ * retired against one clock and read against another is a link that can be
+ * dead to the statement that replaced it and alive to the page that spends it.
+ *
+ * A replacement is issued when the balance declines again, so the order can
+ * hold more than one link in its lifetime — but never more than one that works.
+ * Leaving the old one live means a second bearer token for the same money, and
+ * the operator who revokes "the link" revokes whichever one they were looking
+ * at. Expiring rather than deleting keeps the history: the row is still there
+ * to explain what was sent and when it stopped working.
+ *
+ * `expires_at = now()` rather than a flag, because that is the column
+ * `paymentLinkState` already reads; a second way of saying "dead" is a second
+ * thing to remember to check.
+ */
 export async function createPaymentLink(
   db: DbExecutor,
   input: { orderId: string; token: string; amount: bigint; currency: string; expiresAt: Date },
+  now: Date,
 ): Promise<PaymentLinkRow> {
+  await db
+    .update(paymentLinks)
+    .set({ expiresAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(paymentLinks.orderId, input.orderId),
+        isNull(paymentLinks.consumedAt),
+        gt(paymentLinks.expiresAt, now),
+      ),
+    );
+
   const [row] = await db.insert(paymentLinks).values(input).returning(linkColumns);
   return row as PaymentLinkRow;
 }

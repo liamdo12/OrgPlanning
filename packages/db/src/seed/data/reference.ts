@@ -4,14 +4,50 @@
  * Citations are line numbers in `design/Event Marketplace Glass.dc.html`.
  */
 
-/** Source: categories(), lines 1968–1973. `all` is a UI filter, not a category. */
+/**
+ * Source: `cats()`, lines 1968–1973. `all` is a UI filter, not a category.
+ *
+ * The tone is the category's whole visual in the prototype — it draws a
+ * gradient tile and no icon — so it is transcribed exactly rather than
+ * approximated with a colour of our own.
+ */
 export const CATEGORIES = [
-  { slug: "flowers", name: "Flowers", displayCount: 21 },
-  { slug: "catering", name: "Catering", displayCount: 34 },
-  { slug: "cakes", name: "Cakes", displayCount: 17 },
-  { slug: "photography", name: "Photography", displayCount: 26 },
-  { slug: "entertainment", name: "Entertainment", displayCount: 15 },
-  { slug: "decorations", name: "Decorations", displayCount: 11 },
+  {
+    slug: "flowers",
+    name: "Flowers",
+    displayCount: 21,
+    tone: "linear-gradient(140deg, #EADFD1, #D6BFA8)",
+  },
+  {
+    slug: "catering",
+    name: "Catering",
+    displayCount: 34,
+    tone: "linear-gradient(140deg, #E7DDCB, #CDB79A)",
+  },
+  {
+    slug: "cakes",
+    name: "Cakes",
+    displayCount: 17,
+    tone: "linear-gradient(140deg, #EFE2DA, #DCC3B6)",
+  },
+  {
+    slug: "photography",
+    name: "Photography",
+    displayCount: 26,
+    tone: "linear-gradient(140deg, #D9E2DB, #B4C6BA)",
+  },
+  {
+    slug: "entertainment",
+    name: "Entertainment",
+    displayCount: 15,
+    tone: "linear-gradient(140deg, #DCD9E6, #BDB8CF)",
+  },
+  {
+    slug: "decorations",
+    name: "Decorations",
+    displayCount: 11,
+    tone: "linear-gradient(140deg, #E9DCDF, #D0B4BA)",
+  },
 ] as const;
 
 /**

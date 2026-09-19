@@ -1,5 +1,5 @@
-import { eq, inArray, sql } from "drizzle-orm";
-import { orders, payments } from "@occasion/db/schema";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { orders, payments, users, vendors } from "@occasion/db/schema";
 import { demoClockStates, type DemoClockState } from "../clock/demo-states.js";
 import {
   assertOverrideAllowed,
@@ -211,16 +211,27 @@ export async function runDemoJobs(ctx: CoreContext, actor: Actor): Promise<RunSu
 export async function requeueJob(ctx: CoreContext, actor: Actor, jobId: string): Promise<void> {
   requireAdmin(actor);
 
-  const requeued = await repo.requeue(ctx.db, jobId, ctx.clock.realNow());
-  if (!requeued) {
-    throw new ValidationError("That job is not parked.", { job: "not_held" });
-  }
+  // One transaction, because the entry describes a state that is read before
+  // the write and destroyed by it. Outside one, the lock the read takes is
+  // released immediately and the audit row can commit on its own.
+  await ctx.db.transaction(async (tx) => {
+    const before = await repo.requeue(tx, jobId, ctx.clock.realNow());
+    if (!before) {
+      throw new ValidationError("That job is not parked.", { job: "not_held" });
+    }
 
-  await record(ctx, actor, {
-    action: "ops.job.requeue",
-    entityType: "job",
-    entityId: jobId,
-    after: { status: "queued" },
+    await record(
+      ctx,
+      actor,
+      {
+        action: "ops.job.requeue",
+        entityType: "job",
+        entityId: jobId,
+        before,
+        after: { status: "queued", heldReason: null, attempts: 0 },
+      },
+      tx,
+    );
   });
 }
 
@@ -275,6 +286,34 @@ export async function reseedBlockers(
       code: "pending_payment",
       message:
         "A payment attempt has no outcome yet. Deleting it would lose the only record of a charge that may still settle.",
+    });
+  }
+
+  // A real booking attached to a demo row. The reseed deletes demo rows and
+  // leaves everything else standing, which it cannot do here: the vendor or the
+  // customer is on its list and the order referencing them is not, so the
+  // delete is refused by the foreign key — as a Postgres error, several layers
+  // below the button.
+  //
+  // **Both sides**, because the customer is the likelier one. `createCheckout`
+  // writes `is_demo: false` on every order it makes, and the ordinary way to
+  // try the deployed demo is to sign in as a seeded account and book something.
+  // That produces a real order owned by a demo user on the first attempt.
+  //
+  // Refused with a sentence instead. Deleting the order is not on offer: it is
+  // somebody's booking, and the contract of this operation is that it touches
+  // demo rows only.
+  const [attached] = await ctx.db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(orders)
+    .innerJoin(vendors, eq(vendors.id, orders.vendorId))
+    .innerJoin(users, eq(users.id, orders.userId))
+    .where(and(eq(orders.isDemo, false), or(eq(vendors.isDemo, true), eq(users.isDemo, true))));
+
+  if ((attached?.total ?? 0) > 0) {
+    blockers.push({
+      code: "real_orders_on_demo_rows",
+      message: `${attached?.total} order(s) that are not demo data belong to a demo account or a demo business. Reseeding would have to delete those rows out from under them.`,
     });
   }
 

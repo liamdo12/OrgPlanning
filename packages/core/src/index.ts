@@ -171,9 +171,17 @@ export {
   shiftCalendarDays,
 } from "./ordering/schedule.js";
 
+// `applyTransition` is deliberately absent, for the same reason `enqueue` is.
+// It is the only function that writes an order state, and it decides nothing:
+// it takes the move it is given, queues the work that move implies, sends the
+// message that move sends, and signs the audit row with whichever actor it was
+// handed. Every legitimate caller has already run a policy on the order before
+// reaching it, and it is reachable from `ordering/service.js` inside this
+// package, where those callers are. On the barrel it would be one import away
+// from a server action that could walk any order to any state.
+
 export {
   DEFAULT_ORDERING_POLICY,
-  applyTransition,
   autoComplete,
   cancelOrder,
   createCheckout,
@@ -184,7 +192,6 @@ export {
   type CheckoutLine,
   type CheckoutRequest,
   type CheckoutResult,
-  type OrderChange,
   type OrderDetail,
   type OrderingPolicy,
 } from "./ordering/service.js";
@@ -325,7 +332,18 @@ export {
   type ReseedBlocker,
 } from "./jobs/admin-service.js";
 
-export { expireQuoteRequest, type QuoteExpiry } from "./quotes/service.js";
+// `effectivePricing` is deliberately absent too, for a milder reason than the
+// rest: it takes no actor because it reads the platform's own rates rather than
+// anybody's row, and a server action has no use for it — the checkout reads it
+// for itself. On the barrel it would be a new ungated export earning its place
+// by being convenient in a test.
+
+// `expireQuoteRequest` is deliberately absent. It closes a quote request by id
+// and expires the offers standing against it, and it asks nobody's permission —
+// the actor it takes is there to sign the audit row, not to be checked. Its one
+// caller is the `quote_expiry` job handler, inside this package. Exported, it
+// would let any signed-in account close any other customer's open request and
+// withdraw a vendor's live offers, with that account's name on the entry.
 
 export {
   SECOND_CONFIRMATION_ABOVE,
@@ -334,7 +352,6 @@ export {
   liveTemplate,
   previewTemplate,
   recordDeliveryEvent as recordEmailDeliveryEvent,
-  marketingConsentFor,
   saveTemplate,
   sendBroadcast,
   setMarketingConsent,
@@ -351,12 +368,14 @@ export {
   type SentSummary,
 } from "./email/service.js";
 
-// `queueTransactional` and `deliverSend` are deliberately absent. The first is
-// how the lifecycle attaches a message to a move and takes no actor at all —
-// reachable from a server action, it is a way to send any template to any
-// account with no authority check. The second is the job's delivery step and
-// calls the provider. Both are reachable from `email/service.js` inside this
-// package, which is where their callers are.
+// `queueTransactional`, `deliverSend` and `marketingConsentFor` are
+// deliberately absent. The first is how the lifecycle attaches a message to a
+// move and takes no actor at all — reachable from a server action, it is a way
+// to send any template to any account with no authority check. The second is
+// the job's delivery step and calls the provider. The third reads one account's
+// consent record by id and asks nobody's permission; the screen that shows it
+// gets it from `getUserDetail`, which does. All three are reachable from
+// `email/service.js` inside this package, which is where their callers are.
 
 export {
   ACTIVE_WINDOW_DAYS,
@@ -393,6 +412,107 @@ export { builtInTemplate, builtInTemplates, type TemplateKey } from "./email/tem
 export { escapeHtml, templateHash, type RenderedEmail } from "./email/render.js";
 
 export { emailOnEntering, type EmailOnTransition } from "./ordering/transitions.js";
+
+export {
+  DISPUTE_RESOLUTIONS,
+  DISPUTE_STATES,
+  canTransition as canTransitionDispute,
+  disputeResolutionLabel,
+  disputeStateLabel,
+  isOpen as disputeIsOpen,
+  parseDisputeResolution,
+  parseDisputeState,
+  type DisputeResolution,
+  type DisputeState,
+} from "./disputes/transitions.js";
+
+export {
+  addDisputeNote,
+  assignDispute,
+  getDispute,
+  listDisputes,
+  listDisputesForOrder,
+  openDispute,
+  resolveDispute,
+  startDisputeReview,
+  type DisputeDetail,
+  type DisputeFilter,
+  type DisputeList,
+  type DisputeSummary,
+  type ResolveDisputeInput,
+  type ResolveDisputeResult,
+} from "./disputes/service.js";
+
+export type { DisputeNote } from "./disputes/repo.js";
+
+// `closeDisputesForOrder` is deliberately absent, for the same reason
+// `applyTransition` is. It closes every open case against an order without
+// asking anybody's permission and signs the entries with whichever actor it is
+// handed; its one caller is the orders screen's own "resolve issue", which has
+// already run the order policy. On the barrel it would be a way to mark another
+// customer's complaint settled under that account's name.
+
+export {
+  CONTENT_DECISIONS,
+  CONTENT_TARGETS,
+  REMOVED_TEXT,
+  decisionLabel as contentDecisionLabel,
+  decisionsFor,
+  parseContentDecision,
+  parseContentTarget,
+  targetLabel as contentTargetLabel,
+  type ContentDecision,
+  type ContentTarget,
+} from "./moderation/targets.js";
+
+export {
+  decideReport,
+  getReport,
+  listReports,
+  reportContent,
+  type DecideResult,
+  type ReportDetail,
+  type ReportFilter,
+  type ReportList,
+  type ReportSummary,
+} from "./moderation/service.js";
+
+export type { ReportCounts, ReportRow, TargetContent } from "./moderation/repo.js";
+
+export {
+  SETTING_KEYS,
+  SETTING_SPECS,
+  formatSettingValue,
+  parseSettingValue,
+  specFor as settingSpecFor,
+  type SettingKey,
+  type SettingKind,
+  type SettingSpec,
+} from "./reference/settings.js";
+
+export {
+  createCategory,
+  deleteCategory,
+  listCategories as listCategoriesForAdmin,
+  listSettings as listPlatformSettings,
+  moveCategory,
+  slugify,
+  updateCategory,
+  updateSetting,
+  type AdminCategory,
+  type AdminSetting,
+} from "./reference/service.js";
+
+export {
+  PERIODS,
+  getAnalytics,
+  parsePeriod,
+  periodLabel,
+  windowFor,
+  type Period,
+  type PlatformAnalytics,
+  type Rate as AnalyticsRate,
+} from "./analytics/service.js";
 
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 
