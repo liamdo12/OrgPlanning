@@ -79,6 +79,8 @@ function getConfig(): CoreConfig {
     commissionBps: COMMISSION_BPS,
     hstBps: HST_BPS,
     currency: "CAD",
+    brandName: env.BRAND_NAME,
+    appUrl: env.APP_URL,
   };
 }
 
@@ -94,7 +96,11 @@ export function createRequestContext(): CoreContext {
     db: getDb(),
     auth: createAuth(),
     clock: createClock(),
-    email: createEmail(),
+    email: createEmail({
+      apiKey: getEnv().RESEND_API_KEY,
+      from: getEnv().EMAIL_FROM,
+      sandboxRecipient: getEnv().EMAIL_SANDBOX_RECIPIENT,
+    }),
     stripe: createStripe(getEnv().STRIPE_SECRET_KEY, getEnv().STRIPE_WEBHOOK_SECRET),
     config: getConfig(),
   });

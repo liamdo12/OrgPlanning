@@ -327,6 +327,12 @@ function toPaymentIntent(intent: Stripe.PaymentIntent): ProviderPaymentIntent {
     chargeId: charge,
     clientSecret: intent.client_secret ?? null,
     paymentMethodId: paymentMethod,
+    cardLast4:
+      (typeof intent.payment_method === "string"
+        ? null
+        : (intent.payment_method?.card?.last4 ?? null)) ??
+      intent.last_payment_error?.payment_method?.card?.last4 ??
+      null,
     failureCode: intent.last_payment_error?.code ?? null,
     failureMessage: intent.last_payment_error?.message ?? null,
   };

@@ -52,6 +52,29 @@ const envSchema = z
 
     RESEND_API_KEY: z.string().min(1),
 
+    /** The `From:` on every message the platform sends. */
+    EMAIL_FROM: z.email(),
+
+    /**
+     * Where every message goes instead of its real recipient.
+     *
+     * Set on every tier but production. No sending domain is verified in this
+     * milestone, so a message addressed to a real customer would bounce at the
+     * provider — and a demo that mails real people about demo orders is worse
+     * than one that mails nobody. The real recipient travels in the subject, so
+     * the sandbox inbox still shows who each message was for.
+     *
+     * The production tier refuses it outright, below. A redirect left on in
+     * production is every customer's mail going to one inbox, silently.
+     */
+    EMAIL_SANDBOX_RECIPIENT: z.email().optional(),
+
+    /** Signs the provider's delivery webhook. */
+    EMAIL_WEBHOOK_SECRET: z.string().min(16),
+
+    /** What the platform calls itself in a message. The `{{brand_name}}` field. */
+    BRAND_NAME: z.string().min(1).default("Occasion"),
+
     /** Absolute origin used to build single-use tokenised links in emails. */
     APP_URL: z.url(),
 
@@ -90,6 +113,29 @@ const envSchema = z
           message: "must be false when APP_TIER=production",
         });
       }
+    }
+
+    // A sandbox redirect is a development convenience with a production
+    // failure mode nobody would notice for weeks: every customer's mail
+    // arriving in one inbox, and none of it arriving where it was addressed.
+    if (value.APP_TIER === "production" && value.EMAIL_SANDBOX_RECIPIENT) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_SANDBOX_RECIPIENT"],
+        message: "must be unset when APP_TIER=production; it redirects every recipient",
+      });
+    }
+
+    // The other half of the same rule. Off production, nothing has a verified
+    // sending domain in this milestone, so a message without the redirect is
+    // one addressed to a real person from an unverified sender.
+    if (value.APP_TIER !== "production" && !value.EMAIL_SANDBOX_RECIPIENT) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["EMAIL_SANDBOX_RECIPIENT"],
+        message:
+          "required unless APP_TIER=production; no sending domain is verified yet, so mail must not leave for real addresses",
+      });
     }
 
     // Live payments are gated on an accountant and legal review that has not
