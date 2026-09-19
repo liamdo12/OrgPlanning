@@ -583,6 +583,44 @@ describe.skipIf(!url)("orders and payments", () => {
       expect(jobs.map((job) => job.type)).toContain("balance_grace_expiry");
     });
 
+    it("emails that link and that deadline, and keeps neither beside the send", async () => {
+      const order = await book();
+      await payDeposit(order.id);
+
+      stripe.declineNextCharge();
+      const result = await chargeBalance(ctx, admin, order.id);
+      const token = result.link?.token as string;
+
+      const [send] = await sql<{ subject: string; merge_values: Record<string, string> }[]>`
+        select subject, merge_values from app.planning_org_email_sends
+        where subject like 'We could not charge%'
+      `;
+      expect(send?.subject).toContain("We could not charge your card");
+
+      // The link is a bearer credential. It belongs in the message and in the
+      // job that delivers it, and nowhere a screen reads.
+      expect(Object.keys(send?.merge_values ?? {})).not.toContain("payment_link");
+      expect(Object.keys(send?.merge_values ?? {})).not.toContain("card_last4");
+      expect(JSON.stringify(send?.merge_values ?? {})).not.toContain(token);
+
+      // The deadline in the message is the instant the grace job will act on,
+      // not a second reading of the clock a few minutes either side of it.
+      const [job] = await sql<{ payload: { html: string } }[]>`
+        select payload from app.planning_org_jobs
+        where type = 'send_email' order by created_at desc limit 1
+      `;
+      expect(job?.payload.html).toContain(token);
+
+      const after = await ordering.load(ctx.db, order.id);
+      const deadline = new Intl.DateTimeFormat("en-CA", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "America/Toronto",
+      }).format(after?.graceExpiresAt as Date);
+      expect(job?.payload.html).toContain(deadline);
+    });
+
     it("pays the balance through the link, and then the link is gone", async () => {
       const order = await book();
       await payDeposit(order.id);

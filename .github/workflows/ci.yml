@@ -105,12 +105,21 @@ jobs:
         -e STRIPE_SECRET_KEY=sk_test_ci
         -e STRIPE_WEBHOOK_SECRET=whsec_ci
         -e RESEND_API_KEY=re_ci
+        -e EMAIL_FROM=ci@example.com
+        -e EMAIL_WEBHOOK_SECRET=ci-secret-ci-secret
+        -e BRAND_NAME=Occasion
         -e APP_URL=http://localhost:3000
         -e JOBS_TICK_SECRET=ci-secret-ci-secret
 
       # Set per step rather than in BASE_ENV, because each step is testing a
       # different tier. Named here so the check below knows not to look for them.
-      PER_STEP_KEYS: APP_TIER ALLOW_CLOCK_OVERRIDE ALLOW_DESTRUCTIVE_SEED
+      #
+      # `EMAIL_SANDBOX_RECIPIENT` is on this list for a reason the others are
+      # not: it is *required* off production and *refused* on it. A single value
+      # in BASE_ENV could only satisfy one of the two steps below, and the step
+      # it broke would fail for a reason that has nothing to do with what it is
+      # testing.
+      PER_STEP_KEYS: APP_TIER ALLOW_CLOCK_OVERRIDE ALLOW_DESTRUCTIVE_SEED EMAIL_SANDBOX_RECIPIENT
 
     steps:
       - uses: actions/checkout@v5
@@ -158,6 +167,7 @@ jobs:
             -e APP_TIER=demo \
             -e ALLOW_CLOCK_OVERRIDE=true \
             -e ALLOW_DESTRUCTIVE_SEED=true \
+            -e EMAIL_SANDBOX_RECIPIENT=ci@example.com \
             ${{ env.BASE_ENV }} \
             occasion:ci
           for i in $(seq 1 30); do
@@ -199,3 +209,30 @@ jobs:
           # The exit code alone would also be satisfied by docker failing to
           # start the image at all, so assert on the reason.
           echo "$output" | grep -q "ALLOW_CLOCK_OVERRIDE"
+
+      # The same shape as the step above, pointing the other way. A sandbox
+      # redirect is a development convenience whose production failure mode is
+      # silent: every customer's mail arriving in one inbox, and none of it
+      # arriving where it was addressed. Nothing at runtime would show it, so
+      # the container has to refuse to boot.
+      - name: Refuse a production tier that redirects every recipient
+        run: |
+          set -euo pipefail
+          status=0
+          output=$(timeout 60 docker run --rm \
+            -e APP_TIER=production \
+            -e ALLOW_CLOCK_OVERRIDE=false \
+            -e ALLOW_DESTRUCTIVE_SEED=false \
+            -e EMAIL_SANDBOX_RECIPIENT=ci@example.com \
+            ${{ env.BASE_ENV }} \
+            occasion:ci 2>&1) || status=$?
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "::error::container booted with APP_TIER=production and EMAIL_SANDBOX_RECIPIENT set"
+            exit 1
+          fi
+          if [ "$status" -eq 124 ]; then
+            echo "::error::container neither exited nor was refused; it hung"
+            exit 1
+          fi
+          echo "$output" | grep -q "EMAIL_SANDBOX_RECIPIENT"

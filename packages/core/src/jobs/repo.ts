@@ -215,10 +215,34 @@ export async function claimDue(
 }
 
 /** A job that did what it was for. */
+/**
+ * Finished, and the message body dropped.
+ *
+ * Dropping `html` is the security half. An email job's payload carries the
+ * rendered message, and one of those messages — the declined-balance email —
+ * contains a single-use payment link in plaintext. Everywhere else that link is
+ * a hash, deliberately, so that reading a table hands nobody the capability it
+ * describes; a `done` row keeping the rendered body for ever is the way around
+ * that rule. Once the message has been handed to the provider the body has no
+ * further reader, and `email_sends` holds the record that it was sent.
+ *
+ * Only that one key. The rest of the payload is what the queue is *about* —
+ * `orderId` is how the admin screen labels a run "Charge balance · TO-4192" —
+ * and emptying the whole thing takes that away.
+ *
+ * `done` only: a `failed` or `held` job still has to be retried from what it
+ * was given, which for an email is the body.
+ */
 export async function markDone(db: DbExecutor, jobId: string, now: Date): Promise<void> {
   await db
     .update(jobs)
-    .set({ status: "done", lastError: null, heldReason: null, updatedAt: now })
+    .set({
+      status: "done",
+      payload: sql`${jobs.payload} - 'html'`,
+      lastError: null,
+      heldReason: null,
+      updatedAt: now,
+    })
     .where(eq(jobs.id, jobId));
 }
 

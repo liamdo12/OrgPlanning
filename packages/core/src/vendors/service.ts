@@ -1,4 +1,5 @@
 import { record } from "../audit/service.js";
+import { queueTransactional } from "../email/service.js";
 import type { CoreContext, DbExecutor } from "../context.js";
 import { NotFoundError, ValidationError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
@@ -289,6 +290,35 @@ async function changeStatus(
         vendorId,
         now,
       ));
+    }
+
+    if (to === "approved" && current.status !== "approved") {
+      // The business is told it is live, once per time it becomes live. The
+      // members are told rather than the business, because a vendor is an
+      // organisation and an organisation has no inbox; reinstating a suspended
+      // vendor is a different message and is not sent here.
+      const owners = await repo.listMemberUserIds(tx, vendorId);
+      for (const userId of owners) {
+        await queueTransactional(ctx, tx, {
+          templateKey: "vendor_approved",
+          userId,
+          values: {
+            vendor_name: current.name,
+            city: current.baseArea ?? "Toronto",
+            calendar_link: new URL("/vendor/calendar", ctx.config.appUrl).toString(),
+          },
+          // The vendor, the person, and *this* approval. A business approved,
+          // blocked and approved again is genuinely live twice and says so
+          // twice; without the instant the key is a constant and the second
+          // message would be swallowed by the first one's. The same approval
+          // applied twice cannot reach here — `assertTransition` refuses
+          // `approved → approved` — so this does not weaken the guard against
+          // a duplicate.
+          about: `${vendorId}:${userId}:${now.toISOString()}`,
+          isDemo: current.isDemo,
+          now: ctx.clock.realNow(),
+        });
+      }
     }
 
     let endedSessions = 0;

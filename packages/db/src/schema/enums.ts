@@ -136,6 +136,21 @@ export const placeKind = app.enum("place_kind", ["neighbourhood", "district", "v
 
 export const emailAudience = app.enum("email_audience", ["customers", "vendors", "admins", "all"]);
 
+/**
+ * What a template is for.
+ *
+ * `automatic` is transactional — the lifecycle sends it, the recipient asked
+ * for it by placing an order, and it may carry per-recipient secrets.
+ * `vendors` is operational mail to businesses on the platform. `broadcast` is
+ * marketing: it needs express consent per recipient and may carry no secret at
+ * all, because a broadcast body is written once and sent to everyone.
+ */
+export const emailTemplateClass = app.enum("email_template_class", [
+  "automatic",
+  "vendors",
+  "broadcast",
+]);
+
 export const emailSendState = app.enum("email_send_state", [
   "queued",
   "sent",

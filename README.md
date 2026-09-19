@@ -139,11 +139,20 @@ override.
 | Job execution under override (demo-flagged rows only) | ✅      | ✅                  | ❌                         |
 | Reseed demo data                                      | ✅      | ✅ (typed env name) | ❌                         |
 | Live Stripe keys                                      | ❌      | ❌                  | out of scope for this plan |
+| Email to real addresses                               | ❌      | ❌                  | ✅                         |
 
 A process configured as `production` with either flag on refuses to boot. That
 check lives in two places on purpose — the zod schema in `apps/web/src/lib/env.ts`
 and `createCoreContext()` in `packages/core` — so neither a bad deployment nor a
 future caller constructing its own context can get past it.
+
+The email row is the same rule pointing the other way. No sending domain is
+verified in this milestone, so off production every message is redirected to
+`EMAIL_SANDBOX_RECIPIENT` with its intended recipient in the subject — a demo
+that mails real people about demo orders is worse than one that mails nobody.
+`env.ts` **requires** that variable off production and **refuses** it on
+production, where leaving it set would be every customer's mail arriving in one
+inbox and none of it arriving where it was addressed.
 
 ## Money and time conventions
 

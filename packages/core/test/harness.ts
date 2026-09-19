@@ -82,6 +82,8 @@ export function createDatabaseContext(
       commissionBps: 1000,
       hstBps: 1300,
       currency: "CAD",
+      brandName: "Occasion",
+      appUrl: "https://example.test",
     },
   });
 

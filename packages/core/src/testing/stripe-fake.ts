@@ -149,6 +149,7 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
         chargeId: null,
         clientSecret: `${id}_secret`,
         paymentMethodId: null,
+        cardLast4: null,
         failureCode: null,
         failureMessage: null,
         metadata,
@@ -183,6 +184,10 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
         chargeId: decline || requiresAction ? null : nextId("ch"),
         clientSecret: `${id}_secret`,
         paymentMethodId,
+        // The fake's one card. A test asserting the failed-balance email needs
+        // the digits to be something, and the same four every time is what lets
+        // it assert them.
+        cardLast4: "4242",
         failureCode: decline?.code ?? null,
         failureMessage: decline?.message ?? null,
         metadata,
@@ -213,6 +218,7 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
         chargeId: null,
         clientSecret: `${intentId}_secret`,
         paymentMethodId: null,
+        cardLast4: null,
         failureCode: null,
         failureMessage: null,
         metadata,

@@ -10,6 +10,7 @@ import {
   reinstateAccount,
   resendVerification,
   revokeRoleFromUser,
+  setMarketingConsent,
   suspendAccount,
 } from "@occasion/core";
 import { requireAdminActor } from "../../../../lib/auth-guard";
@@ -224,5 +225,35 @@ export async function revokeRoleAction(
 
     await revokeRoleFromUser(ctx, actor, userId, role);
     return `Revoked ${role}. Their existing sessions have ended.`;
+  });
+}
+
+/**
+ * Records or withdraws express consent to marketing email.
+ *
+ * An administrator is not deciding here; they are writing down something that
+ * happened elsewhere — a signup box, a phone call, a signed agreement — which
+ * is why the source is part of the record. The domain audits it either way, and
+ * `getEmailView`'s recipient counts change the moment it commits, so the effect
+ * is visible on the screen that cares about it.
+ */
+export async function setConsentAction(
+  _previous: UserActionState,
+  form: FormData,
+): Promise<UserActionState> {
+  const actor = await requireAdminActor();
+  const ctx = createRequestContext();
+  const userId = readString(form, "userId");
+  const granted = readString(form, "granted") === "true";
+
+  return run(async () => {
+    await setMarketingConsent(ctx, actor, userId, {
+      granted,
+      source: "admin: recorded on the account screen",
+    });
+
+    return granted
+      ? "Express consent recorded. This account can now receive a broadcast."
+      : "Consent withdrawn. This account is excluded from every broadcast.";
   });
 }
