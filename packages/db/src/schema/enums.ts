@@ -180,3 +180,36 @@ export const disputeState = app.enum("dispute_state", [
 ]);
 
 export const moderationState = app.enum("moderation_state", ["pending", "approved", "rejected"]);
+
+/**
+ * How a dispute ended.
+ *
+ * Separate from `state` because "closed" and "what was done about it" are
+ * different facts, and only the second one answers a vendor asking why their
+ * payout was reversed. `dismissed` pairs with the `rejected` state and the
+ * other two with `resolved`; the pairing is a check constraint rather than a
+ * convention, so a case cannot be dismissed and refunded at once.
+ */
+export const disputeResolution = app.enum("dispute_resolution", [
+  "refund_recorded",
+  "vendor_warned",
+  "dismissed",
+]);
+
+/**
+ * What a content report is about.
+ *
+ * The three kinds of text a person can write that another person can see: a
+ * review, a message in a thread, and the line a business writes about itself.
+ */
+export const contentTarget = app.enum("content_target", ["review", "message", "vendor_profile"]);
+
+/**
+ * A moderator's decision, and what it does to the content.
+ *
+ * `hide` unpublishes and keeps the words, `remove` unpublishes and redacts
+ * them. Both are needed: hiding is reversible and is what a borderline call
+ * deserves, while a defamatory or personal-information posting has to stop
+ * existing in the row an administrator can read.
+ */
+export const contentDecision = app.enum("content_decision", ["keep", "hide", "remove"]);

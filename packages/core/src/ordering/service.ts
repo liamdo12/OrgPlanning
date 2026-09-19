@@ -33,6 +33,7 @@ import {
   type OrderState,
 } from "./transitions.js";
 import { retirePaymentLinks } from "../payments/repo.js";
+import * as reference from "../reference/repo.js";
 
 /**
  * What an order does, and everything that follows from it doing it.
@@ -57,12 +58,59 @@ export type OrderingPolicy = {
   defaultDepositBps: number;
 };
 
+/**
+ * What the platform charges when its settings table says nothing.
+ *
+ * A fallback, not the answer: `effectivePricing` reads the table first, so an
+ * administrator changing the commission on the settings screen changes what the
+ * next booking costs. These values are what a database that has never been
+ * seeded prices at, which has to be something defensible rather than zero.
+ */
 export const DEFAULT_ORDERING_POLICY: OrderingPolicy = {
   balanceLeadDays: 14,
   coolingWindowHours: 48,
   fullPaymentBelow: 25_000n,
   defaultDepositBps: 2_000,
 };
+
+/** The rates and windows a booking is priced at, right now. */
+export type EffectivePricing = {
+  commissionBps: number;
+  hstBps: number;
+  policy: OrderingPolicy;
+};
+
+/**
+ * Reads the platform's numbers out of `platform_settings`.
+ *
+ * This is the one place they enter the money path, and it is what makes the
+ * settings screen more than a form over a table nobody consults. The context's
+ * own rates stay as the boot-validated fallback: they are checked by
+ * `createCoreContext`, so a missing row still prices at a rate somebody vetted.
+ */
+export async function effectivePricing(
+  ctx: CoreContext,
+  db: DbExecutor = ctx.db,
+): Promise<EffectivePricing> {
+  const numbers = await reference.readNumbers(db, {
+    commission_bps: ctx.config.commissionBps,
+    hst_bps: ctx.config.hstBps,
+    deposit_bps: DEFAULT_ORDERING_POLICY.defaultDepositBps,
+    cooling_window_hours: DEFAULT_ORDERING_POLICY.coolingWindowHours,
+    balance_lead_days: DEFAULT_ORDERING_POLICY.balanceLeadDays,
+  });
+
+  return {
+    commissionBps: numbers["commission_bps"] as number,
+    hstBps: numbers["hst_bps"] as number,
+    policy: {
+      ...DEFAULT_ORDERING_POLICY,
+      defaultDepositBps: numbers["deposit_bps"] as number,
+      coolingWindowHours: numbers["cooling_window_hours"] as number,
+      balanceLeadDays: numbers["balance_lead_days"] as number,
+    },
+  };
+}
 
 export type CheckoutLine = {
   serviceId: string;
@@ -119,7 +167,15 @@ export async function createCheckout(
   ctx: CoreContext,
   actor: Actor,
   request: CheckoutRequest,
-  policy: OrderingPolicy = DEFAULT_ORDERING_POLICY,
+  /**
+   * Overrides the platform's settings for this one checkout.
+   *
+   * Left out, the rates and windows come from `platform_settings` — which is
+   * what an administrator edits. A caller passing this is stating terms it
+   * already holds, which is how a test prices a booking without writing to the
+   * settings table.
+   */
+  policy?: OrderingPolicy,
 ): Promise<CheckoutResult> {
   // Not a validation failure: there is nothing wrong with what was sent, and a
   // caller that cannot tell the two apart shows "a booking needs somebody to
@@ -143,6 +199,11 @@ export async function createCheckout(
   const now = ctx.clock.now();
 
   return ctx.db.transaction(async (tx) => {
+    // Read inside the transaction, so every order in one cart is priced at the
+    // same rates even if an administrator saves a new commission mid-checkout.
+    const pricing = await effectivePricing(ctx, tx);
+    const terms = policy ?? pricing.policy;
+
     const event = await repo.loadEventForOrder(tx, request.eventId);
     if (!event) throw new NotFoundError("No such event.");
 
@@ -163,8 +224,8 @@ export async function createCheckout(
       throw new NotFoundError("No such cancellation policy.");
     }
 
-    const depositBps = template?.depositBps ?? policy.defaultDepositBps;
-    const coolingWindowHours = template?.freeCancellationHours ?? policy.coolingWindowHours;
+    const depositBps = template?.depositBps ?? terms.defaultDepositBps;
+    const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
 
     const timeZone = event.timezone || DEFAULT_TIMEZONE;
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
@@ -247,8 +308,8 @@ export async function createCheckout(
       const money = computeOrderMoney({
         subtotal,
         vendorHstRegistered: first.vendorHstRegistered,
-        commissionBps: ctx.config.commissionBps,
-        hstBps: ctx.config.hstBps,
+        commissionBps: pricing.commissionBps,
+        hstBps: pricing.hstBps,
       });
 
       const plan = buildPaymentPlan({
@@ -256,9 +317,9 @@ export async function createCheckout(
         now,
         eventStart,
         depositBps,
-        balanceLeadDays: policy.balanceLeadDays,
+        balanceLeadDays: terms.balanceLeadDays,
         coolingWindowHours,
-        fullPaymentBelow: policy.fullPaymentBelow,
+        fullPaymentBelow: terms.fullPaymentBelow,
         timeZone,
       });
 
@@ -701,8 +762,13 @@ export async function getOrder(
  * writes anything: a role check answers "an admin may use this", not "this
  * person may touch that row", and a vendor reading another vendor's order by id
  * is the failure that distinction exists to stop.
+ *
+ * Exported for the other domains that guard an order they only hold by id —
+ * the complaints queue, so far — and deliberately not on the package barrel: it
+ * reads an order without asking anybody's permission, which is exactly what a
+ * policy argument is supposed to be, not a thing a server action can call.
  */
-async function parties(ctx: CoreContext, orderId: string): Promise<OrderParties> {
+export async function parties(ctx: CoreContext, orderId: string): Promise<OrderParties> {
   const order = await repo.load(ctx.db, orderId);
   if (!order) throw new NotFoundError("No such order.");
   return { id: order.id, userId: order.userId, vendorId: order.vendorId };

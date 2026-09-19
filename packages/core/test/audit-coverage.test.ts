@@ -42,6 +42,21 @@ import {
 } from "../src/jobs/admin-service.js";
 import { runDueJobs } from "../src/jobs/runner.js";
 import { saveTemplate, setMarketingConsent } from "../src/email/service.js";
+import {
+  addDisputeNote,
+  assignDispute,
+  openDispute,
+  resolveDispute,
+  startDisputeReview,
+} from "../src/disputes/service.js";
+import { decideReport, reportContent } from "../src/moderation/service.js";
+import {
+  createCategory,
+  deleteCategory,
+  moveCategory,
+  updateCategory,
+  updateSetting,
+} from "../src/reference/service.js";
 import { builtInTemplate } from "../src/email/templates/index.js";
 import { createStripeFake, type StripeFake } from "../src/testing/stripe-fake.js";
 import { createDatabaseContext, ownerSql, resetDatabase, testDatabaseUrl } from "./harness.js";
@@ -95,6 +110,12 @@ type Subjects = {
   unverifiedUserId: string;
   jobId: string;
   inviteId: string;
+  disputeId: string;
+  reportId: string;
+  categoryId: string;
+  /** A category nothing is filed under, so deleting it is allowed. */
+  emptyCategoryId: string;
+  reviewId: string;
 };
 
 type Case = {
@@ -364,6 +385,125 @@ const CASES: readonly Case[] = [
       });
     },
   },
+
+  // ---- complaints ---------------------------------------------------------
+  {
+    screen: "disputes",
+    what: "opening a case",
+    action: "dispute.open",
+    entityType: "dispute",
+    run: (c, a, s) => openDispute(c, a, s.confirmedOrderId, { reason: "arrived late" }),
+  },
+  {
+    screen: "disputes",
+    what: "writing an internal note",
+    action: "dispute.note",
+    entityType: "dispute",
+    entity: "disputeId",
+    run: (c, a, s) => addDisputeNote(c, a, s.disputeId, "Called the vendor; no record of it."),
+  },
+  {
+    screen: "disputes",
+    what: "picking a case up",
+    action: "dispute.assign",
+    entityType: "dispute",
+    entity: "disputeId",
+    before: true,
+    run: (c, a, s) => assignDispute(c, a, s.disputeId, s.activeUserId),
+  },
+  {
+    screen: "disputes",
+    what: "starting to investigate",
+    action: "dispute.review",
+    entityType: "dispute",
+    entity: "disputeId",
+    before: true,
+    run: (c, a, s) => startDisputeReview(c, a, s.disputeId),
+  },
+  {
+    screen: "disputes",
+    what: "closing a case",
+    action: "dispute.resolve",
+    entityType: "dispute",
+    entity: "disputeId",
+    before: true,
+    run: (c, a, s) =>
+      resolveDispute(c, a, s.disputeId, {
+        resolution: "vendor_warned",
+        note: "Vendor warned; delivery window restated.",
+      }),
+  },
+
+  // ---- moderation ---------------------------------------------------------
+  {
+    screen: "moderation",
+    what: "reporting content",
+    action: "moderation.report",
+    entityType: "content_report",
+    run: (c, a, s) =>
+      reportContent(c, a, {
+        targetType: "review",
+        targetId: s.reviewId,
+        reason: "Names a member of staff",
+      }),
+  },
+  {
+    screen: "moderation",
+    what: "deciding a report",
+    action: "moderation.decide",
+    entityType: "content_report",
+    entity: "reportId",
+    // The words that were taken down: the row they were on no longer holds
+    // them, so the entry is the only place left to read them.
+    before: true,
+    run: (c, a, s) => decideReport(c, a, s.reportId, { decision: "remove", note: "Unsupported." }),
+  },
+
+  // ---- categories and settings --------------------------------------------
+  {
+    screen: "categories",
+    what: "creating a category",
+    action: "category.create",
+    entityType: "category",
+    run: (c, a) => createCategory(c, a, { name: "Lighting" }),
+  },
+  {
+    screen: "categories",
+    what: "renaming a category",
+    action: "category.update",
+    entityType: "category",
+    entity: "categoryId",
+    before: true,
+    run: (c, a, s) => updateCategory(c, a, s.categoryId, { name: "Flowers & plants" }),
+  },
+  {
+    screen: "categories",
+    what: "reordering the list",
+    action: "category.reorder",
+    entityType: "category",
+    entity: "categoryId",
+    before: true,
+    run: (c, a, s) => moveCategory(c, a, s.categoryId, "down"),
+  },
+  {
+    screen: "categories",
+    what: "deleting an unused category",
+    action: "category.delete",
+    entityType: "category",
+    entity: "emptyCategoryId",
+    before: true,
+    run: (c, a, s) => deleteCategory(c, a, s.emptyCategoryId),
+  },
+  {
+    screen: "settings",
+    what: "changing the commission",
+    action: "settings.update",
+    entityType: "platform_setting",
+    // No `entity`: `audit_log.entity_id` is a uuid and a setting is keyed by
+    // name, so the key travels in the payload instead.
+    before: true,
+    run: (c, a) => updateSetting(c, a, "commission_bps", "1200"),
+  },
 ];
 
 describe.skipIf(!url)("audit coverage", () => {
@@ -449,6 +589,23 @@ describe.skipIf(!url)("audit coverage", () => {
         returning id
       `),
       inviteId: invite.id,
+      disputeId: await one(sql`
+        select d.id from app.planning_org_disputes d
+        join app.planning_org_orders o on o.id = d.order_id
+        where o.reference = 'TO-4188'
+      `),
+      reportId: await one(
+        sql`select id from app.planning_org_content_reports where target_type = 'vendor_profile'`,
+      ),
+      categoryId: await one(
+        sql`select id from app.planning_org_categories where slug = 'flowers'`,
+      ),
+      emptyCategoryId: await one(sql`
+        insert into app.planning_org_categories (slug, name, sort_order)
+        values ('audit-only', 'Audit only', 99)
+        returning id
+      `),
+      reviewId: await one(sql`select id from app.planning_org_reviews limit 1`),
     };
 
     for (const [key, value] of Object.entries(subjects)) {
@@ -535,7 +692,7 @@ describe.skipIf(!url)("audit coverage", () => {
    * strings.
    */
   const ACTION_PATTERN =
-    /"((?:order|payment|identity|vendor|ops|email|transfer|quote)\.[a-z_.]+)"/g;
+    /"((?:order|payment|identity|vendor|ops|email|transfer|quote|dispute|moderation|category|settings)\.[a-z_.]+)"/g;
 
   function actionsInSource(): string[] {
     const root = dirname(dirname(fileURLToPath(import.meta.url)));

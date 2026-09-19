@@ -8,6 +8,7 @@ import { CATEGORIES, PLACES, PLATFORM_SETTINGS, POLICY_TEMPLATES } from "./data/
 import { ADMIN_USER, ADMIN_VENDORS, CATALOG_VENDORS, USERS } from "./data/accounts.js";
 import { SERVICES } from "./data/catalog.js";
 import { EVENTS, ORDERS, QUOTE_REQUEST, RULES } from "./data/activity.js";
+import { CONTENT_REPORTS, DISPUTES, REVIEWS } from "./data/trust.js";
 
 /**
  * Rebuilds the demo data.
@@ -157,11 +158,19 @@ async function seedReference(db: Db): Promise<void> {
         name: category.name,
         displayCount: category.displayCount,
         sortOrder: index,
+        tone: category.tone,
       })),
     )
     .onConflictDoUpdate({
       target: s.categories.id,
-      set: { name: sql`excluded.name`, displayCount: sql`excluded.display_count` },
+      // `active` and `sortOrder` are deliberately not restored: they are what
+      // the categories screen edits, and a reseed of reference data would
+      // otherwise undo an administrator's ordering every time it ran.
+      set: {
+        name: sql`excluded.name`,
+        displayCount: sql`excluded.display_count`,
+        tone: sql`excluded.tone`,
+      },
     });
 
   await db
@@ -259,6 +268,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       id: seedId(`vendor:${vendor.key}`),
       slug: vendor.slug,
       name: vendor.name,
+      tagline: vendor.tagline,
       status: vendor.status,
       baseArea: vendor.baseArea,
       stripeAccountId: vendor.stripeConnected ? `acct_test_${vendor.key}` : null,
@@ -277,6 +287,9 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       id: seedId(`vendor:${vendor.key}`),
       slug: vendor.slug,
       name: vendor.name,
+      // No profile line: these never appear on an admin screen, and the
+      // moderation queue's demo rows point at the six that do.
+      tagline: null,
       status: vendor.status,
       baseArea: vendor.baseArea,
       stripeAccountId: `acct_test_${vendor.key}`,
@@ -297,7 +310,13 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     .values(vendorRows)
     .onConflictDoUpdate({
       target: s.vendors.id,
-      set: { status: sql`excluded.status`, name: sql`excluded.name` },
+      // The profile line comes back with it: removing one is a moderation
+      // decision the demo is meant to be able to show twice.
+      set: {
+        status: sql`excluded.status`,
+        name: sql`excluded.name`,
+        tagline: sql`excluded.tagline`,
+      },
     });
   counts["vendors"] = vendorRows.length;
 
@@ -722,6 +741,111 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     payload: { quoteRequestId },
     isDemo: true,
   });
+
+  // ---- trust: reviews, complaints and reported content --------------------
+
+  const orderParties = new Map(
+    ORDERS.map((order) => [
+      order.reference,
+      {
+        id: seedId(`order:${order.reference}`),
+        userId: seedId(`user:${order.userKey}`),
+        vendorId: seedId(`vendor:${order.vendorKey}`),
+        serviceId: seedId(`service:${order.serviceKey}`),
+      },
+    ]),
+  );
+
+  const reviewRows = REVIEWS.map((review) => {
+    const parties = orderParties.get(review.orderReference);
+    if (!parties) throw new Error(`Review ${review.key} names no seeded order.`);
+    return {
+      id: seedId(`review:${review.key}`),
+      orderId: parties.id,
+      authorUserId: parties.userId,
+      vendorId: parties.vendorId,
+      serviceId: parties.serviceId,
+      rating: review.rating,
+      body: review.body,
+      publishedAt: at(anchorAt, days(review.publishedDaysAfterAnchor)),
+    };
+  });
+  await db
+    .insert(s.reviews)
+    .values(reviewRows)
+    .onConflictDoUpdate({
+      target: s.reviews.id,
+      set: { body: sql`excluded.body`, publishedAt: sql`excluded.published_at` },
+    });
+  counts["reviews"] = reviewRows.length;
+
+  const disputeRows = DISPUTES.map((dispute) => {
+    const parties = orderParties.get(dispute.orderReference);
+    if (!parties) throw new Error(`Dispute ${dispute.key} names no seeded order.`);
+    return {
+      id: seedId(`dispute:${dispute.key}`),
+      orderId: parties.id,
+      raisedByUserId: parties.userId,
+      state: dispute.state,
+      reason: dispute.reason,
+      detail: dispute.detail,
+      assignedToUserId:
+        "assignTo" in dispute ? seedId(`user:${dispute.assignTo as string}`) : null,
+      createdAt: at(anchorAt, days(dispute.openedDaysAfterAnchor)),
+    };
+  });
+  await db
+    .insert(s.disputes)
+    .values(disputeRows)
+    .onConflictDoUpdate({
+      target: s.disputes.id,
+      set: { state: sql`excluded.state`, createdAt: sql`excluded.created_at` },
+    });
+  counts["disputes"] = disputeRows.length;
+
+  const disputeMessageRows = DISPUTES.flatMap((dispute) =>
+    dispute.messages.map((message) => ({
+      id: seedId(`dispute_message:${dispute.key}:${message.key}`),
+      disputeId: seedId(`dispute:${dispute.key}`),
+      authorUserId: seedId(`user:${message.authorKey}`),
+      body: message.body,
+      createdAt: at(anchorAt, days(message.daysAfterAnchor)),
+    })),
+  );
+  if (disputeMessageRows.length > 0) {
+    await db
+      .insert(s.disputeMessages)
+      .values(disputeMessageRows)
+      .onConflictDoUpdate({
+        target: s.disputeMessages.id,
+        set: { body: sql`excluded.body`, createdAt: sql`excluded.created_at` },
+      });
+  }
+  counts["dispute_messages"] = disputeMessageRows.length;
+
+  // The target id is resolved per kind rather than stored in the fixture: a
+  // report names a row in one of three tables, and writing the uuid out by hand
+  // is how a seeded report ends up pointing at nothing.
+  const reportRows = CONTENT_REPORTS.map((report) => ({
+    id: seedId(`content_report:${report.key}`),
+    targetType: report.targetType,
+    targetId:
+      report.targetType === "review"
+        ? seedId(`review:${report.targetKey}`)
+        : seedId(`vendor:${report.targetKey}`),
+    reporterUserId: seedId(`user:${report.reporterKey}`),
+    reason: report.reason,
+    detail: report.detail,
+    createdAt: at(anchorAt, days(report.daysAfterAnchor)),
+  }));
+  await db
+    .insert(s.contentReports)
+    .values(reportRows)
+    .onConflictDoUpdate({
+      target: s.contentReports.id,
+      set: { reason: sql`excluded.reason`, createdAt: sql`excluded.created_at` },
+    });
+  counts["content_reports"] = reportRows.length;
 
   // ---- jobs ---------------------------------------------------------------
 

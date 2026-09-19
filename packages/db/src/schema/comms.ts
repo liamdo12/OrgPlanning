@@ -1,6 +1,6 @@
 import { index, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { app, timestamps, TABLE_PREFIX } from "./common.js";
-import { emailAudience, emailSendState, emailTemplateClass } from "./enums.js";
+import { emailAudience, emailSendState, emailTemplateClass, moderationState } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { orders } from "./ordering.js";
 import { quoteRequests } from "./quotes.js";
@@ -55,11 +55,24 @@ export const messages = app.table(
     senderUserId: uuid("sender_user_id").references(() => users.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Whether a moderator has acted on this message.
+     *
+     * The same three columns a review carries, for the same reason: hiding is
+     * reversible and removal is not, and a message that was taken down has to
+     * be distinguishable from one nobody ever looked at.
+     */
+    moderation: moderationState("moderation").notNull().default("approved"),
+    moderatedByUserId: uuid("moderated_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    moderatedAt: timestamp("moderated_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("messages_thread_idx").on(table.threadId, table.sentAt),
     index("messages_sender_idx").on(table.senderUserId),
+    index("messages_moderated_by_idx").on(table.moderatedByUserId),
   ],
 );
 

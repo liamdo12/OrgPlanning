@@ -407,6 +407,109 @@ export { escapeHtml, templateHash, type RenderedEmail } from "./email/render.js"
 
 export { emailOnEntering, type EmailOnTransition } from "./ordering/transitions.js";
 
+export {
+  DISPUTE_RESOLUTIONS,
+  DISPUTE_STATES,
+  canTransition as canTransitionDispute,
+  disputeResolutionLabel,
+  disputeStateLabel,
+  isOpen as disputeIsOpen,
+  parseDisputeResolution,
+  parseDisputeState,
+  type DisputeResolution,
+  type DisputeState,
+} from "./disputes/transitions.js";
+
+export {
+  addDisputeNote,
+  assignDispute,
+  getDispute,
+  listDisputes,
+  listDisputesForOrder,
+  openDispute,
+  resolveDispute,
+  startDisputeReview,
+  type DisputeDetail,
+  type DisputeFilter,
+  type DisputeList,
+  type DisputeSummary,
+  type ResolveDisputeInput,
+  type ResolveDisputeResult,
+} from "./disputes/service.js";
+
+export type { DisputeNote } from "./disputes/repo.js";
+
+// `closeDisputesForOrder` is deliberately absent, for the same reason
+// `applyTransition` is. It closes every open case against an order without
+// asking anybody's permission and signs the entries with whichever actor it is
+// handed; its one caller is the orders screen's own "resolve issue", which has
+// already run the order policy. On the barrel it would be a way to mark another
+// customer's complaint settled under that account's name.
+
+export {
+  CONTENT_DECISIONS,
+  CONTENT_TARGETS,
+  REMOVED_TEXT,
+  decisionLabel as contentDecisionLabel,
+  decisionsFor,
+  parseContentDecision,
+  parseContentTarget,
+  targetLabel as contentTargetLabel,
+  type ContentDecision,
+  type ContentTarget,
+} from "./moderation/targets.js";
+
+export {
+  decideReport,
+  getReport,
+  listReports,
+  reportContent,
+  type DecideResult,
+  type ReportDetail,
+  type ReportFilter,
+  type ReportList,
+  type ReportSummary,
+} from "./moderation/service.js";
+
+export type { ReportRow, TargetContent } from "./moderation/repo.js";
+
+export {
+  SETTING_KEYS,
+  SETTING_SPECS,
+  formatSettingValue,
+  parseSettingValue,
+  specFor as settingSpecFor,
+  type SettingKey,
+  type SettingKind,
+  type SettingSpec,
+} from "./reference/settings.js";
+
+export {
+  createCategory,
+  deleteCategory,
+  listCategories as listCategoriesForAdmin,
+  listSettings as listPlatformSettings,
+  moveCategory,
+  slugify,
+  updateCategory,
+  updateSetting,
+  type AdminCategory,
+  type AdminSetting,
+} from "./reference/service.js";
+
+export {
+  PERIODS,
+  getAnalytics,
+  parsePeriod,
+  periodLabel,
+  windowFor,
+  type Period,
+  type PlatformAnalytics,
+  type Rate as AnalyticsRate,
+} from "./analytics/service.js";
+
+export { effectivePricing, type EffectivePricing } from "./ordering/service.js";
+
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 
 // `createTestCoreContext` is intentionally absent: it lives at

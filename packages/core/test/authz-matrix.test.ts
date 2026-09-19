@@ -52,6 +52,21 @@ import {
   transferShare,
 } from "../src/payments/service.js";
 import { requeueJob } from "../src/jobs/admin-service.js";
+import {
+  addDisputeNote,
+  assignDispute,
+  getDispute,
+  listDisputesForOrder,
+  openDispute,
+  resolveDispute,
+  startDisputeReview,
+} from "../src/disputes/service.js";
+import { decideReport, getReport, reportContent } from "../src/moderation/service.js";
+import {
+  deleteCategory,
+  moveCategory,
+  updateCategory,
+} from "../src/reference/service.js";
 import { getEmailView, setMarketingConsent } from "../src/email/service.js";
 import { createDatabaseContext, ownerSql, resetDatabase, testDatabaseUrl } from "./harness.js";
 import { entityIds, exportedFunctions, takesActor } from "./surface.js";
@@ -134,6 +149,20 @@ type Subjects = {
   serviceId: string;
   jobId: string;
   inviteId: string;
+  /** The seeded complaint against TO-4188. */
+  disputeId: string;
+  /** The seeded report against Terrace Rentals' profile line. */
+  reportId: string;
+  categoryId: string;
+  /**
+   * Content nobody has reported yet.
+   *
+   * Bloom & Co's profile line rather than the seeded review: `reportContent`
+   * admits six identities, and the database refuses a second open report from
+   * one person about one thing — so a target the seed has already had reported
+   * would make one identity fail on a unique index rather than on authority.
+   */
+  unreportedVendorId: string;
 };
 
 type Entry = {
@@ -152,6 +181,14 @@ const READ_ORDER: readonly Identity[] = ["customer", "vendorMember", ...ADMIN];
 const ACT_ON_ORDER: readonly Identity[] = ["vendorMember", ...ADMIN];
 /** `assertCanPayOrder`: the customer whose card it is, plus an administrator. */
 const PAY_ORDER: readonly Identity[] = ["customer", ...ADMIN];
+/** Anybody signed in and in good standing — no role required. */
+const SIGNED_IN: readonly Identity[] = [
+  "customer",
+  "otherCustomer",
+  "vendorMember",
+  "otherVendor",
+  ...ADMIN,
+];
 
 const REGISTRY: readonly Entry[] = [
   // ---- accounts ----------------------------------------------------------
@@ -326,6 +363,78 @@ const REGISTRY: readonly Entry[] = [
       }),
   },
 
+  // ---- complaints ---------------------------------------------------------
+  { name: "getDispute", allow: ADMIN, call: (c, a, s) => getDispute(c, a, s.disputeId) },
+  {
+    name: "openDispute",
+    allow: ADMIN,
+    call: (c, a, s) => openDispute(c, a, s.orderId, { reason: "matrix" }),
+  },
+  {
+    name: "addDisputeNote",
+    allow: ADMIN,
+    call: (c, a, s) => addDisputeNote(c, a, s.disputeId, "matrix"),
+  },
+  {
+    name: "assignDispute",
+    allow: ADMIN,
+    call: (c, a, s) => assignDispute(c, a, s.disputeId, s.targetUserId),
+  },
+  {
+    name: "startDisputeReview",
+    allow: ADMIN,
+    call: (c, a, s) => startDisputeReview(c, a, s.disputeId),
+  },
+  {
+    name: "resolveDispute",
+    allow: ADMIN,
+    call: (c, a, s) =>
+      resolveDispute(c, a, s.disputeId, { resolution: "vendor_warned", note: "matrix" }),
+  },
+  {
+    name: "listDisputesForOrder",
+    allow: ADMIN,
+    call: (c, a, s) => listDisputesForOrder(c, a, s.orderId),
+  },
+
+  // ---- moderation ---------------------------------------------------------
+  { name: "getReport", allow: ADMIN, call: (c, a, s) => getReport(c, a, s.reportId) },
+  {
+    name: "decideReport",
+    allow: ADMIN,
+    call: (c, a, s) => decideReport(c, a, s.reportId, { decision: "keep" }),
+  },
+  {
+    name: "reportContent",
+    // The one function here that is not administrative: reporting is how
+    // content reaches the queue at all, so any signed-in account in good
+    // standing may do it. Anonymous and suspended are still refused.
+    allow: SIGNED_IN,
+    call: (c, a, s) =>
+      reportContent(c, a, {
+        targetType: "vendor_profile",
+        targetId: s.unreportedVendorId,
+        reason: "matrix",
+      }),
+  },
+
+  // ---- categories ---------------------------------------------------------
+  {
+    name: "updateCategory",
+    allow: ADMIN,
+    call: (c, a, s) => updateCategory(c, a, s.categoryId, { name: "Matrix" }),
+  },
+  {
+    name: "moveCategory",
+    allow: ADMIN,
+    call: (c, a, s) => moveCategory(c, a, s.categoryId, "down"),
+  },
+  {
+    name: "deleteCategory",
+    allow: ADMIN,
+    call: (c, a, s) => deleteCategory(c, a, s.categoryId),
+  },
+
   // ---- operations and email ----------------------------------------------
   { name: "requeueJob", allow: ADMIN, call: (c, a, s) => requeueJob(c, a, s.jobId) },
   {
@@ -436,6 +545,18 @@ describe.skipIf(!url)("authorization matrix", () => {
 
     const invite = await inviteAdmin(ctx, actors.get("admin") as Actor, "matrix@occasion.test");
 
+    const [dispute] = await sql<{ id: string }[]>`
+      select d.id from app.planning_org_disputes d
+      join app.planning_org_orders o on o.id = d.order_id
+      where o.reference = 'TO-4188'
+    `;
+    const [report] = await sql<{ id: string }[]>`
+      select id from app.planning_org_content_reports where target_type = 'vendor_profile'
+    `;
+    const [category] = await sql<{ id: string }[]>`
+      select id from app.planning_org_categories where slug = 'decorations'
+    `;
+
     // Onboard one vendor through the fake so the provider has heard of it.
     await sql`
       update app.planning_org_vendors set stripe_account_id = null where id = ${lens?.id as string}
@@ -455,6 +576,10 @@ describe.skipIf(!url)("authorization matrix", () => {
       serviceId: service?.id as string,
       jobId: job?.id as string,
       inviteId: invite.id,
+      disputeId: dispute?.id as string,
+      reportId: report?.id as string,
+      categoryId: category?.id as string,
+      unreportedVendorId: order?.vendor_id as string,
     };
 
     for (const [key, value] of Object.entries(subjects)) {
