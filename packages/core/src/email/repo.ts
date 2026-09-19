@@ -341,7 +341,14 @@ export async function recentSends(db: DbExecutor, limit: number): Promise<SentSu
       toEmail: sql<
         string | null
       >`case when count(*) = 1 then min(${emailSends.toEmail}) else null end`,
-      at: sql<Date>`max(${emailSends.createdAt})`,
+      // `mapWith` is not decoration. A raw aggregate is typed by its annotation
+      // and mapped by nothing, so this arrived as the driver's string while the
+      // compiler believed it was a `Date` — and `Intl.DateTimeFormat.format`
+      // throws `RangeError` on a string, which took the whole Email screen down
+      // the moment the platform had sent anything at all. The seed sends
+      // nothing, so the empty state hid it. Same reason the sums beside the
+      // money figures carry `.mapWith(BigInt)`.
+      at: sql<Date>`max(${emailSends.createdAt})`.mapWith(emailSends.createdAt),
       sent: sql<number>`count(*) filter (where ${emailSends.sentAt} is not null)::int`,
       delivered: sql<number>`count(*) filter (where ${emailSends.deliveredAt} is not null)::int`,
       opened: sql<number>`count(*) filter (where ${emailSends.openedAt} is not null)::int`,

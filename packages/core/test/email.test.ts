@@ -834,6 +834,42 @@ describe.skipIf(!url)("platform email", () => {
       const restricted = view.fields.filter((field) => field.restricted).map((field) => field.name);
       expect(restricted.sort()).toEqual(["card_last4", "payment_link"]);
     });
+
+    it("dates each entry in Recently sent with something a formatter can read", async () => {
+      // A raw aggregate is typed by its annotation and mapped by nothing, so
+      // `max(created_at)` came back as the driver's string while the compiler
+      // was satisfied it was a `Date`. `Intl.DateTimeFormat.format` throws on a
+      // string, and the Email screen rendered an error boundary from the first
+      // message the platform ever sent — while every test here passed, because
+      // the seed sends nothing and the log was always empty.
+      //
+      // So the assertion is on the runtime value, not on the type. A broadcast
+      // rather than a test send, because a test to oneself is deliberately not
+      // in the log and this is a claim about what the log renders.
+      await clearExpressConsent();
+      await setMarketingConsent(ctx, admin, idOf("ada.okafor@example.ca"), {
+        granted: true,
+        source: "test",
+      });
+      await sendBroadcast(ctx, admin, {
+        templateKey: "policy_update",
+        audience: "customers",
+        scope: { kind: "everyone" },
+        expectedCount: 1,
+        confirmedLarge: false,
+        values: POLICY_VALUES,
+      });
+
+      const view = await getEmailView(ctx, admin, {});
+      const [entry] = view.recent;
+
+      expect(entry, "a test send left nothing in Recently sent").toBeDefined();
+      expect(entry?.at).toBeInstanceOf(Date);
+      expect(Number.isNaN(Number(entry?.at))).toBe(false);
+      expect(() =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto" }).format(entry?.at),
+      ).not.toThrow();
+    });
   });
 
   describe("the lifecycle's own messages", () => {
