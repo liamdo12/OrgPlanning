@@ -91,8 +91,7 @@ function rate(numerator: number, denominator: number): Rate {
   return {
     numerator,
     denominator,
-    display:
-      denominator === 0 ? "—" : `${Number(((numerator / denominator) * 100).toFixed(1))}%`,
+    display: denominator === 0 ? "—" : `${Number(((numerator / denominator) * 100).toFixed(1))}%`,
   };
 }
 

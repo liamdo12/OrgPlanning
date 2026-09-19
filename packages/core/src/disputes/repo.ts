@@ -1,11 +1,5 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import {
-  disputeMessages,
-  disputes,
-  orders,
-  users,
-  vendors,
-} from "@occasion/db/schema";
+import { disputeMessages, disputes, orders, users, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
 import type { DisputeResolution, DisputeState } from "./transitions.js";
 
@@ -169,7 +163,9 @@ export async function loadForUpdate(
 
 /** The names behind `assigned_to_user_id`, in one query rather than per row. */
 async function withAssignees(db: DbExecutor, rows: DisputeRow[]): Promise<DisputeRow[]> {
-  const ids = [...new Set(rows.flatMap((row) => (row.assignedToUserId ? [row.assignedToUserId] : [])))];
+  const ids = [
+    ...new Set(rows.flatMap((row) => (row.assignedToUserId ? [row.assignedToUserId] : []))),
+  ];
   if (ids.length === 0) {
     return rows.map((row) => ({ ...row, assignedToName: null }));
   }

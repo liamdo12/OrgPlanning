@@ -62,11 +62,7 @@ import {
   startDisputeReview,
 } from "../src/disputes/service.js";
 import { decideReport, getReport, reportContent } from "../src/moderation/service.js";
-import {
-  deleteCategory,
-  moveCategory,
-  updateCategory,
-} from "../src/reference/service.js";
+import { deleteCategory, moveCategory, updateCategory } from "../src/reference/service.js";
 import { getEmailView, setMarketingConsent } from "../src/email/service.js";
 import { createDatabaseContext, ownerSql, resetDatabase, testDatabaseUrl } from "./harness.js";
 import { entityIds, exportedFunctions, takesActor } from "./surface.js";
@@ -378,7 +374,10 @@ const REGISTRY: readonly Entry[] = [
   {
     name: "assignDispute",
     allow: ADMIN,
-    call: (c, a, s) => assignDispute(c, a, s.disputeId, s.targetUserId),
+    // Assigned to nobody: the matrix asks who gets past the gate, and the
+    // domain refuses an assignee who is not an administrator — which would be a
+    // validation error arriving before the authority question was asked.
+    call: (c, a, s) => assignDispute(c, a, s.disputeId, null),
   },
   {
     name: "startDisputeReview",

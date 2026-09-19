@@ -111,6 +111,8 @@ type Subjects = {
   jobId: string;
   inviteId: string;
   disputeId: string;
+  /** The administrator's own id: a case is assigned to an administrator. */
+  adminUserId: string;
   reportId: string;
   categoryId: string;
   /** A category nothing is filed under, so deleting it is allowed. */
@@ -409,7 +411,7 @@ const CASES: readonly Case[] = [
     entityType: "dispute",
     entity: "disputeId",
     before: true,
-    run: (c, a, s) => assignDispute(c, a, s.disputeId, s.activeUserId),
+    run: (c, a, s) => assignDispute(c, a, s.disputeId, s.adminUserId),
   },
   {
     screen: "disputes",
@@ -594,12 +596,11 @@ describe.skipIf(!url)("audit coverage", () => {
         join app.planning_org_orders o on o.id = d.order_id
         where o.reference = 'TO-4188'
       `),
+      adminUserId: adminId,
       reportId: await one(
         sql`select id from app.planning_org_content_reports where target_type = 'vendor_profile'`,
       ),
-      categoryId: await one(
-        sql`select id from app.planning_org_categories where slug = 'flowers'`,
-      ),
+      categoryId: await one(sql`select id from app.planning_org_categories where slug = 'flowers'`),
       emptyCategoryId: await one(sql`
         insert into app.planning_org_categories (slug, name, sort_order)
         values ('audit-only', 'Audit only', 99)
@@ -614,6 +615,11 @@ describe.skipIf(!url)("audit coverage", () => {
   }, 180_000);
 
   afterAll(async () => {
+    // The one fixture row that is not demo data and is not rolled back:
+    // categories are reference data, so the demo reseed leaves them alone and
+    // this would otherwise accumulate a category per run on whatever database
+    // the suite is pointed at.
+    await sql?.unsafe(`delete from app.planning_org_categories where slug = 'audit-only'`);
     await database?.close();
     await sql?.end({ timeout: 5 });
   });

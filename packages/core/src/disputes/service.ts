@@ -3,6 +3,7 @@ import type { CoreContext, DbExecutor } from "../context.js";
 import { NotFoundError, ValidationError } from "../errors.js";
 import { isAuthenticated, type Actor } from "../identity/actor.js";
 import { assertCanActOnOrder } from "../identity/policies.js";
+import { loadIdentity } from "../identity/repo.js";
 import { requireAdmin } from "../identity/service.js";
 import { parties as orderParties, resolveIssue } from "../ordering/service.js";
 import { parseOrderState, type OrderState } from "../ordering/transitions.js";
@@ -224,6 +225,12 @@ export async function addDisputeNote(
  * Assignment is how two administrators avoid answering the same complaint
  * twice. It is recorded rather than inferred from who last touched it, because
  * reading a case is not the same as owning it.
+ *
+ * The assignee has to be an administrator. Nothing on the screen offers
+ * anything else, but the id arrives in a form field and a case assigned to the
+ * customer who complained is a queue entry that will never be worked — with
+ * that person's name on it, in a column an operator reads as "who is dealing
+ * with this".
  */
 export async function assignDispute(
   ctx: CoreContext,
@@ -233,6 +240,15 @@ export async function assignDispute(
 ): Promise<void> {
   requireAdmin(actor);
   await requireCase(ctx, actor, disputeId);
+
+  if (userId !== null) {
+    const assignee = await loadIdentity(ctx.db, userId);
+    if (!assignee || !assignee.roles.includes("admin")) {
+      throw new ValidationError("A case is assigned to an administrator.", {
+        userId: "not_admin",
+      });
+    }
+  }
 
   await ctx.db.transaction(async (tx) => {
     const before = await repo.loadForUpdate(tx, disputeId);
@@ -351,7 +367,12 @@ export async function resolveDispute(
       orderTo: "not_applicable",
     });
   }
-  if (orderTo !== undefined && orderTo !== "confirmed" && orderTo !== "fulfilled" && orderTo !== "cancelled") {
+  if (
+    orderTo !== undefined &&
+    orderTo !== "confirmed" &&
+    orderTo !== "fulfilled" &&
+    orderTo !== "cancelled"
+  ) {
     throw new ValidationError("An issue is resolved to confirmed, fulfilled or cancelled.", {
       orderTo: "illegal",
     });

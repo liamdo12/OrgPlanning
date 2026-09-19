@@ -789,8 +789,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       state: dispute.state,
       reason: dispute.reason,
       detail: dispute.detail,
-      assignedToUserId:
-        "assignTo" in dispute ? seedId(`user:${dispute.assignTo as string}`) : null,
+      assignedToUserId: "assignTo" in dispute ? seedId(`user:${dispute.assignTo as string}`) : null,
       createdAt: at(anchorAt, days(dispute.openedDaysAfterAnchor)),
     };
   });

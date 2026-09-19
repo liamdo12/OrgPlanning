@@ -20,6 +20,11 @@ const ADMIN_ROUTES = [
   "/admin/orders",
   "/admin/ops",
   "/admin/email",
+  "/admin/disputes",
+  "/admin/moderation",
+  "/admin/categories",
+  "/admin/analytics",
+  "/admin/settings",
 ] as const;
 
 test.describe("an anonymous visitor", () => {

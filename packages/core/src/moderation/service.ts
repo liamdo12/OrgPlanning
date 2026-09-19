@@ -66,10 +66,7 @@ export async function listReports(
   };
 }
 
-function summarise(
-  row: repo.ReportRow,
-  targets: Map<string, repo.TargetContent>,
-): ReportSummary {
+function summarise(row: repo.ReportRow, targets: Map<string, repo.TargetContent>): ReportSummary {
   const content = targets.get(`${row.targetType}:${row.targetId}`) as repo.TargetContent;
 
   return {

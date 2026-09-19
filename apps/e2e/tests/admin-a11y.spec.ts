@@ -20,6 +20,14 @@ const SCREENS = [
   { name: "orders", path: "/admin/orders" },
   { name: "automations", path: "/admin/ops" },
   { name: "email", path: "/admin/email" },
+  // The five the business proposal names, added with the screens rather than
+  // afterwards: an accessibility pass that covers the screens somebody
+  // remembered to list is a pass over whatever was easy.
+  { name: "disputes", path: "/admin/disputes" },
+  { name: "moderation", path: "/admin/moderation" },
+  { name: "categories", path: "/admin/categories" },
+  { name: "analytics", path: "/admin/analytics" },
+  { name: "settings", path: "/admin/settings" },
 ] as const;
 
 /**

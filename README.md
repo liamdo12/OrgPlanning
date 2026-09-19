@@ -73,6 +73,7 @@ strict environment mode and filters anything a task has not declared.
 
 ```
 apps/web/          Next.js App Router — UI, server actions, route handlers
+apps/e2e/          Playwright: the journey, the authorization walk, the axe pass
 packages/core/     domain logic; framework-free, env-free
 packages/db/       Drizzle schema, migrations, seed (see its README)
 packages/ui/       glass design system

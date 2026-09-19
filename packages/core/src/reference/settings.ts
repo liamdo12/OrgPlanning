@@ -125,7 +125,8 @@ export const SETTING_SPECS: readonly SettingSpec[] = [
     kind: "text",
     editable: false,
     description: "The only currency the platform prices in.",
-    source: "Fixed in the core context at boot. A second currency is a schema change, not a setting.",
+    source:
+      "Fixed in the core context at boot. A second currency is a schema change, not a setting.",
   },
 ];
 

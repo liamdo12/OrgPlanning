@@ -62,11 +62,7 @@ export async function loadCategory(
   return rows.find((row) => row.id === categoryId);
 }
 
-export async function slugTaken(
-  db: DbExecutor,
-  slug: string,
-  exceptId?: string,
-): Promise<boolean> {
+export async function slugTaken(db: DbExecutor, slug: string, exceptId?: string): Promise<boolean> {
   const [row] = await db
     .select({ id: categories.id })
     .from(categories)

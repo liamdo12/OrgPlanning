@@ -422,9 +422,9 @@ describe.skipIf(!url)("admin completeness", () => {
     it("refuses to move the first one up", async () => {
       const list = await listCategories(ctx, admin);
 
-      await expect(
-        moveCategory(ctx, admin, list[0]?.id as string, "up"),
-      ).rejects.toBeInstanceOf(ValidationError);
+      await expect(moveCategory(ctx, admin, list[0]?.id as string, "up")).rejects.toBeInstanceOf(
+        ValidationError,
+      );
     });
   });
 

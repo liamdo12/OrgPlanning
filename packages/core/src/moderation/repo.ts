@@ -36,10 +36,7 @@ export type ReportFilter = {
   targetType?: ContentTarget | undefined;
 };
 
-export async function listReports(
-  db: DbExecutor,
-  filter: ReportFilter = {},
-): Promise<ReportRow[]> {
+export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Promise<ReportRow[]> {
   const conditions = [
     ...(filter.open ? [isNull(contentReports.decidedAt)] : []),
     ...(filter.targetType ? [eq(contentReports.targetType, filter.targetType)] : []),
@@ -134,7 +131,9 @@ export async function loadForUpdate(
 }
 
 async function withDeciders(db: DbExecutor, rows: ReportRow[]): Promise<ReportRow[]> {
-  const ids = [...new Set(rows.flatMap((row) => (row.decidedByUserId ? [row.decidedByUserId] : [])))];
+  const ids = [
+    ...new Set(rows.flatMap((row) => (row.decidedByUserId ? [row.decidedByUserId] : []))),
+  ];
   if (ids.length === 0) return rows.map((row) => ({ ...row, decidedByName: null }));
 
   const found = await db
@@ -409,10 +408,7 @@ export async function applyDecision(
     return { before: before?.tagline ?? null, after: before?.tagline ?? null };
   }
 
-  await db
-    .update(vendors)
-    .set({ tagline: null, updatedAt: now })
-    .where(eq(vendors.id, targetId));
+  await db.update(vendors).set({ tagline: null, updatedAt: now }).where(eq(vendors.id, targetId));
 
   return { before: before?.tagline ?? null, after: null };
 }

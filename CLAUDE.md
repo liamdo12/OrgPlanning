@@ -173,6 +173,26 @@ are integer basis points. Never a float. The split is implemented in
 over the seeded orders. The canonical version belongs with the ordering
 service; delete the seed copy rather than let the two drift once it exists.
 
+**The rates come from the database, and `ctx.config` is the fallback.**
+`effectivePricing` reads `platform_settings` inside the checkout's own
+transaction, so a commission an administrator sets on `/admin/settings` is what
+the next booking is priced at and every order in one cart is priced alike. A
+key with no row falls back to the boot-validated value in `ctx.config`, which is
+why that field still exists — a database that has never been seeded must price
+at something somebody vetted, not at zero. The lifecycle's own offsets
+(auto-complete, grace) are deliberately _not_ settings: they are the
+specification in `ordering/transitions.ts`, and the settings screen shows them
+with a note saying where they really come from rather than offering a field
+that would do nothing.
+
+**A complaint is not an order state.** An order can be delivered and complained
+about at the same time, so `disputes` is its own record. The link to
+`orders.issue` runs both ways and each direction is one transaction: resolving
+a case can move the order out of `issue`, and the orders screen's own "resolve
+issue" closes the cases it just settled. Either half alone leaves a frozen
+booking with nothing left to explain it, or a queue entry about something
+already settled.
+
 **Tables are `app.planning_org_*`.** The prefix comes from `TABLE_PREFIX` in
 `packages/db/src/schema/common.ts` — `app.table(\`${TABLE_PREFIX}orders\`, …)`—
 so a new table picks it up by construction rather than by being remembered.`app.__migrations` is deliberately unprefixed: it is the migration runner's own

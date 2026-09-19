@@ -41,7 +41,9 @@ export async function listCategories(ctx: CoreContext, actor: Actor): Promise<Ad
 
 function describe(row: repo.CategoryRow): AdminCategory {
   const parts = [
-    ...(row.serviceCount > 0 ? [`${row.serviceCount} service${row.serviceCount === 1 ? "" : "s"}`] : []),
+    ...(row.serviceCount > 0
+      ? [`${row.serviceCount} service${row.serviceCount === 1 ? "" : "s"}`]
+      : []),
     ...(row.quoteRequestCount > 0
       ? [`${row.quoteRequestCount} quote request${row.quoteRequestCount === 1 ? "" : "s"}`]
       : []),
@@ -62,14 +64,16 @@ function describe(row: repo.CategoryRow): AdminCategory {
  * mirror. It is still editable afterwards; this is only the default.
  */
 export function slugify(name: string): string {
-  return name
-    .normalize("NFKD")
-    // Strip the accents rather than the letters: "Décor" becomes "decor", not
-    // "dcor".
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  return (
+    name
+      .normalize("NFKD")
+      // Strip the accents rather than the letters: "Décor" becomes "decor", not
+      // "dcor".
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+  );
 }
 
 export async function createCategory(

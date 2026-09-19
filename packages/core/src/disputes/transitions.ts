@@ -24,10 +24,9 @@ export const DISPUTE_RESOLUTIONS = ["refund_recorded", "vendor_warned", "dismiss
 export type DisputeResolution = (typeof DISPUTE_RESOLUTIONS)[number];
 
 /** Which state a resolution puts the case in. The pairing the database checks. */
-export function stateFor(resolution: DisputeResolution): Extract<
-  DisputeState,
-  "resolved" | "rejected"
-> {
+export function stateFor(
+  resolution: DisputeResolution,
+): Extract<DisputeState, "resolved" | "rejected"> {
   return resolution === "dismissed" ? "rejected" : "resolved";
 }
 
