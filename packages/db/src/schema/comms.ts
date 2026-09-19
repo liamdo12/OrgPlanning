@@ -1,6 +1,6 @@
 import { index, jsonb, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { app, timestamps, TABLE_PREFIX } from "./common.js";
-import { emailAudience, emailSendState } from "./enums.js";
+import { emailAudience, emailSendState, emailTemplateClass } from "./enums.js";
 import { users, vendors } from "./identity.js";
 import { orders } from "./ordering.js";
 import { quoteRequests } from "./quotes.js";
@@ -93,6 +93,13 @@ export const emailTemplates = app.table(`${TABLE_PREFIX}email_templates`, {
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   audience: emailAudience("audience").notNull(),
+  /**
+   * Whether consent is required and whether secrets are permitted.
+   *
+   * Separate from `audience`, which is only who it goes to. A marketing message
+   * addressed to vendors is still marketing.
+   */
+  class: emailTemplateClass("class").notNull(),
   /** What causes it to send, e.g. "Sends when a customer pays the deposit". */
   trigger: text("trigger"),
   /** Automatic templates fire from a job; manual ones an admin sends. */
@@ -111,6 +118,14 @@ export const emailSends = app.table(
     templateId: uuid("template_id").references(() => emailTemplates.id, {
       onDelete: "set null",
     }),
+    /**
+     * The send this row was part of, when it was part of one.
+     *
+     * A broadcast is one decision and many rows. Without a shared id the send
+     * log can only count messages, and "how did that policy email do" has no
+     * answer.
+     */
+    broadcastId: uuid("broadcast_id"),
     recipientUserId: uuid("recipient_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -123,7 +138,18 @@ export const emailSends = app.table(
     mergeValues: jsonb("merge_values"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
     bouncedAt: timestamp("bounced_at", { withTimezone: true }),
+    complainedAt: timestamp("complained_at", { withTimezone: true }),
+    /**
+     * The secret that unsubscribes this recipient.
+     *
+     * Commercial email must carry a working unsubscribe, and it has to work for
+     * somebody who is not signed in — so it is a per-send secret rather than a
+     * link naming the account, which would unsubscribe anyone who edited it.
+     * Null on transactional mail, which has nothing to unsubscribe from.
+     */
+    unsubscribeToken: text("unsubscribe_token").unique(),
     lastError: text("last_error"),
     ...timestamps,
   },
@@ -131,5 +157,7 @@ export const emailSends = app.table(
     index("email_sends_template_idx").on(table.templateId),
     index("email_sends_state_idx").on(table.state),
     index("email_sends_recipient_idx").on(table.recipientUserId),
+    index("email_sends_broadcast_idx").on(table.broadcastId),
+    index("email_sends_created_idx").on(table.createdAt.desc()),
   ],
 );
