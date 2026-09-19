@@ -91,9 +91,13 @@ export async function setCategoryActiveAction(
   return run(async () => {
     const active = readString(form, "active") === "true";
     await updateCategory(ctx, actor, readString(form, "categoryId"), { active });
+    // What is true today, not what the column is for. Nothing files a service
+    // under a category yet — that is the vendor catalogue screen — so this
+    // records the decision and says so rather than claiming an enforcement the
+    // platform does not have.
     return active
-      ? "Offered again. New listings can be filed under it."
-      : "Deactivated. The listings already filed under it keep it; nothing new can be.";
+      ? "Offered again."
+      : "Deactivated. The listings already filed under it keep it. Nothing files new ones yet — the listing editor will honour this when it lands.";
   });
 }
 

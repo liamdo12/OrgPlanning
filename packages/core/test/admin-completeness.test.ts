@@ -25,6 +25,7 @@ import {
   updateSetting,
 } from "../src/reference/service.js";
 import { getAnalytics, windowFor } from "../src/analytics/service.js";
+import { jobsOnEntering, type OrderState } from "../src/ordering/transitions.js";
 import { effectivePricing } from "../src/ordering/service.js";
 import { raiseIssue } from "../src/ordering/service.js";
 import { resolveOrderIssue } from "../src/ordering/admin-service.js";
@@ -81,6 +82,23 @@ describe.skipIf(!url)("admin completeness", () => {
       secondFactorVerified: true,
     });
     return getActor(ctx, {});
+  }
+
+  /**
+   * The lifecycle's own offset for one scheduled job, in hours.
+   *
+   * Read from the table rather than restated, which is the whole point: a
+   * restated number is a second copy of the thing the test exists to compare.
+   */
+  function offsetHours(from: OrderState, type: string): number {
+    const job = jobsOnEntering(from === "fulfilled" ? "confirmed" : "balance_due", from, {
+      hasBalance: true,
+    }).find((scheduled) => scheduled.type === type);
+
+    if (job?.offsetMinutes === undefined) {
+      throw new Error(`The lifecycle schedules no ${type} on entering ${from}.`);
+    }
+    return job.offsetMinutes / 60;
   }
 
   async function orderId(reference: string): Promise<string> {
@@ -169,9 +187,7 @@ describe.skipIf(!url)("admin completeness", () => {
       expect(order?.issue_note).toBeNull();
     });
 
-    it("refuses an order state the lifecycle would not allow, and closes nothing", async () => {
-      // The reason the order moves first inside the transaction: a refusal from
-      // the lifecycle must not leave a case marked settled.
+    it("refuses an order state it is not allowed to send a booking to", async () => {
       const id = await orderId("TO-4191");
       await raiseIssue(ctx, admin, id, "Second complaint.");
       const disputeId = await openDispute(ctx, admin, id, { reason: "Second complaint" });
@@ -192,6 +208,34 @@ describe.skipIf(!url)("admin completeness", () => {
       await resolveOrderIssue(ctx, admin, id, "confirmed", "Withdrawn.");
     });
 
+    it("decides whether the booking is held from the row, not from the form", async () => {
+      // The race the lock exists for: the drawer is drawn while the order is
+      // fine, somebody else flags it, and the button is pressed. A stale
+      // "not held" would close the case and leave the booking frozen with the
+      // record of why now closed.
+      const id = await orderId("TO-4181");
+      const disputeId = await openDispute(ctx, admin, id, { reason: "Raised before the flag" });
+
+      const stale = await getDispute(ctx, admin, disputeId);
+      expect(stale.orderInIssue).toBe(false);
+
+      // What the other administrator does between the read and the press.
+      await raiseIssue(ctx, admin, id, "Flagged after the drawer was drawn.");
+
+      await expect(
+        resolveDispute(ctx, admin, disputeId, { resolution: "dismissed", note: "nothing in it" }),
+      ).rejects.toThrow(/held on this complaint/);
+
+      const after = await getDispute(ctx, admin, disputeId);
+      expect(after.dispute.state).toBe("open");
+
+      await resolveDispute(ctx, admin, disputeId, {
+        resolution: "dismissed",
+        note: "nothing in it",
+        orderTo: "fulfilled",
+      });
+    });
+
     it("closes the open cases when the orders screen resolves the issue", async () => {
       // The other direction of the link. An administrator can take a booking
       // out of `issue` from the orders screen without ever opening the queue,
@@ -204,7 +248,35 @@ describe.skipIf(!url)("admin completeness", () => {
 
       const after = await getDispute(ctx, admin, disputeId);
       expect(after.dispute.state).toBe("resolved");
-      expect(after.dispute.resolution).toBe("refund_recorded");
+      // Not `refund_recorded`. The order was moved to `fulfilled` and nobody
+      // was refunded; a case file and an audit entry saying otherwise are a
+      // false statement about money in the two places somebody reads months
+      // later to find out what happened.
+      expect(after.dispute.resolution).toBe("settled_with_order");
+      expect(after.dispute.resolutionLabel).toBe("Settled with the booking");
+    });
+
+    it("closes the order's other cases when one of them frees the booking", async () => {
+      // The sibling half of the same rule. Two complaints, one booking: closing
+      // either of them takes the order out of `issue`, and the other can never
+      // move it again — so leaving it open is a queue entry nobody can action.
+      const id = await orderId("TO-4207");
+      await raiseIssue(ctx, admin, id, "Two complaints, one booking.");
+
+      const first = await openDispute(ctx, admin, id, { reason: "First complaint" });
+      const second = await openDispute(ctx, admin, id, { reason: "Second complaint" });
+
+      const result = await resolveDispute(ctx, admin, first, {
+        resolution: "vendor_warned",
+        note: "Dealt with.",
+        orderTo: "cancelled",
+      });
+
+      expect(result.siblingsClosed).toBe(1);
+
+      const sibling = await getDispute(ctx, admin, second);
+      expect(sibling.dispute.state).toBe("resolved");
+      expect(sibling.dispute.resolution).toBe("settled_with_order");
     });
 
     it("will not reopen a closed case", async () => {
@@ -219,7 +291,7 @@ describe.skipIf(!url)("admin completeness", () => {
     it("shows the reported words beside the report", async () => {
       const list = await listReports(ctx, admin, { open: true });
 
-      expect(list.open).toBeGreaterThan(0);
+      expect(list.counts.open).toBeGreaterThan(0);
       for (const row of list.rows) {
         expect(row.content).toBeDefined();
         expect(row.content.present).toBe(true);
@@ -501,6 +573,36 @@ describe.skipIf(!url)("admin completeness", () => {
         update app.planning_org_platform_settings set value = '1000'::jsonb
         where key = 'commission_bps'
       `;
+    });
+  });
+
+  describe("the numbers that exist twice", () => {
+    it("shows an uneditable setting the value its real source holds", async () => {
+      // `auto_complete_hours` and `balance_grace_hours` are rendered from
+      // `platform_settings` while the card says they come from the lifecycle
+      // table — which is true, and is why the two have to agree. Nothing else
+      // holds them together: the seed writes the row and `transitions.ts`
+      // writes the offset, and a change to one is invisible in the other.
+      const settings = await listSettings(ctx, admin);
+
+      const autoComplete = settings.find((setting) => setting.key === "auto_complete_hours");
+      const grace = settings.find((setting) => setting.key === "balance_grace_hours");
+
+      expect(autoComplete?.value).toBe(offsetHours("fulfilled", "auto_complete_order"));
+      expect(grace?.value).toBe(offsetHours("action_required", "balance_grace_expiry"));
+    });
+
+    it("prices at the rate the deployment was configured with", async () => {
+      // The other duplicate: `apps/web/src/lib/core.ts` holds the commission and
+      // HST the context boots with, and the seed writes rows for both. They are
+      // the same numbers today, and this is the assertion that notices when
+      // somebody changes one of them.
+      const settings = await listSettings(ctx, admin);
+
+      expect(settings.find((setting) => setting.key === "commission_bps")?.value).toBe(
+        ctx.config.commissionBps,
+      );
+      expect(settings.find((setting) => setting.key === "hst_bps")?.value).toBe(ctx.config.hstBps);
     });
   });
 

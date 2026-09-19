@@ -11,6 +11,7 @@ import {
 } from "@occasion/core";
 import { AdminPage } from "../../_components/admin-page";
 import { requireAdminPage } from "../../../../lib/auth-guard";
+import { entityIdOr } from "../../../../lib/entity-id";
 import { createRequestContext } from "../../../../lib/core";
 import { OrderFilters, type Choice } from "./_components/order-filters";
 import { orderColumns } from "./_components/order-columns";
@@ -73,7 +74,9 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
     search: first(params["q"]),
   };
   const cursor = first(params["cursor"]);
-  const openOrderId = first(params["order"]);
+  // Narrowed to a uuid first: Postgres refuses a malformed one with a driver
+  // error rather than "no such row", which the catch below cannot recognise.
+  const openOrderId = entityIdOr(first(params["order"]));
 
   const [list, vendors] = await Promise.all([
     listOrdersForAdmin(ctx, actor, {

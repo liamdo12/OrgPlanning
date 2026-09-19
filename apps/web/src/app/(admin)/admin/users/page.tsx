@@ -4,6 +4,7 @@ import { NotFoundError, getUserDetail, listUsersForAdmin, type UserFilter } from
 import { AdminPage } from "../../_components/admin-page";
 import { ClearSecondFactorForm } from "../../_components/clear-second-factor-form";
 import { requireAdminPage } from "../../../../lib/auth-guard";
+import { entityIdOr } from "../../../../lib/entity-id";
 import { createRequestContext } from "../../../../lib/core";
 import { UserFilters, type FilterChoice } from "./_components/user-filters";
 import { UserRow } from "./_components/user-row";
@@ -62,7 +63,9 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const filter = filterFrom(first(params["filter"]));
   const search = first(params["q"]);
   const cursor = first(params["cursor"]);
-  const openUserId = first(params["user"]);
+  // Narrowed to a uuid first: Postgres refuses a malformed one with a driver
+  // error rather than "no such row", which the catch below cannot recognise.
+  const openUserId = entityIdOr(first(params["user"]));
 
   const list = await listUsersForAdmin(ctx, actor, {
     filter,

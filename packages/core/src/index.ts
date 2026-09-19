@@ -332,6 +332,12 @@ export {
   type ReseedBlocker,
 } from "./jobs/admin-service.js";
 
+// `effectivePricing` is deliberately absent too, for a milder reason than the
+// rest: it takes no actor because it reads the platform's own rates rather than
+// anybody's row, and a server action has no use for it — the checkout reads it
+// for itself. On the barrel it would be a new ungated export earning its place
+// by being convenient in a test.
+
 // `expireQuoteRequest` is deliberately absent. It closes a quote request by id
 // and expires the offers standing against it, and it asks nobody's permission —
 // the actor it takes is there to sign the audit row, not to be checked. Its one
@@ -471,7 +477,7 @@ export {
   type ReportSummary,
 } from "./moderation/service.js";
 
-export type { ReportRow, TargetContent } from "./moderation/repo.js";
+export type { ReportCounts, ReportRow, TargetContent } from "./moderation/repo.js";
 
 export {
   SETTING_KEYS,
@@ -507,8 +513,6 @@ export {
   type PlatformAnalytics,
   type Rate as AnalyticsRate,
 } from "./analytics/service.js";
-
-export { effectivePricing, type EffectivePricing } from "./ordering/service.js";
 
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 

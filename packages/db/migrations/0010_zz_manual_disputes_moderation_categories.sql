@@ -13,7 +13,14 @@
 -- Vocabulary
 -- ---------------------------------------------------------------------------
 
-CREATE TYPE "app"."dispute_resolution" AS ENUM('refund_recorded', 'vendor_warned', 'dismissed');--> statement-breakpoint
+-- `settled_with_order` is the outcome of a case the orders screen closed by
+-- taking the booking out of `issue`: something was done about it, and it was
+-- not a refund. Without it that path had to borrow `refund_recorded`, which
+-- writes "the platform refunded this customer" into the case file and the audit
+-- log for a booking that was simply delivered.
+CREATE TYPE "app"."dispute_resolution" AS ENUM(
+  'refund_recorded', 'vendor_warned', 'dismissed', 'settled_with_order'
+);--> statement-breakpoint
 CREATE TYPE "app"."content_target" AS ENUM('review', 'message', 'vendor_profile');--> statement-breakpoint
 CREATE TYPE "app"."content_decision" AS ENUM('keep', 'hide', 'remove');--> statement-breakpoint
 
@@ -94,8 +101,12 @@ ALTER TABLE "app"."planning_org_content_reports"
 
 CREATE INDEX "content_reports_target_idx"
   ON "app"."planning_org_content_reports" USING btree ("target_type", "target_id");--> statement-breakpoint
+-- Partial, because the queue it serves is the undecided one. A plain index on
+-- `created_at` cannot answer "oldest thing still waiting" without reading the
+-- decided rows too, and those are the ones that accumulate.
 CREATE INDEX "content_reports_open_idx"
-  ON "app"."planning_org_content_reports" USING btree ("created_at");--> statement-breakpoint
+  ON "app"."planning_org_content_reports" USING btree ("created_at")
+  WHERE "decided_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "content_reports_reporter_idx"
   ON "app"."planning_org_content_reports" USING btree ("reporter_user_id");--> statement-breakpoint
 CREATE INDEX "content_reports_decided_by_idx"

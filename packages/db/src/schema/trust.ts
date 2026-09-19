@@ -160,7 +160,9 @@ export const contentReports = app.table(
   },
   (table) => [
     index("content_reports_target_idx").on(table.targetType, table.targetId),
-    index("content_reports_open_idx").on(table.createdAt),
+    index("content_reports_open_idx")
+      .on(table.createdAt)
+      .where(sql`${table.decidedAt} is null`),
     index("content_reports_reporter_idx").on(table.reporterUserId),
     index("content_reports_decided_by_idx").on(table.decidedByUserId),
     // A decision and the moment it was taken arrive together or not at all.

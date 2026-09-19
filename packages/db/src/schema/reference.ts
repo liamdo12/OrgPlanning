@@ -22,8 +22,14 @@ export const categories = app.table(`${TABLE_PREFIX}categories`, {
    * Whether the category is offered.
    *
    * Deactivating is the answer to "delete a category that has services": the
-   * listings keep the category they were filed under, and nothing new can be
-   * filed under it. A delete is only allowed when nothing points at it.
+   * listings keep the category they were filed under, and a delete is refused
+   * while anything points at it.
+   *
+   * **Nothing reads this yet.** The screen that files a service under a
+   * category is the vendor catalogue, which this milestone does not build, so
+   * the flag records the operator's decision and the listing editor is what
+   * will honour it. Recorded in `docs/design-gaps.md` rather than left as a
+   * column that looks enforced.
    */
   active: boolean("active").notNull().default(true),
   ...timestamps,

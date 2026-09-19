@@ -41,8 +41,11 @@ export function DisputeFilters({
   function select(value: string) {
     const next = new URLSearchParams(params.toString());
     // The case's own parameter is dropped: a record left open over a list that
-    // has just been refiltered may be showing a case no longer in it.
+    // has just been refiltered may be showing a case no longer in it. The page
+    // cursor goes with it — it names a row in the list that was, and carried
+    // into a different filter it starts the new one somewhere arbitrary.
     next.delete("case");
+    next.delete("after");
     if (value === "all") next.delete("state");
     else next.set("state", value);
 

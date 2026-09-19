@@ -8,7 +8,9 @@ import {
   type DisputeState,
 } from "@occasion/core";
 import { AdminPage } from "../../_components/admin-page";
+import { LoadMore } from "../../_components/load-more";
 import { requireAdminPage } from "../../../../lib/auth-guard";
+import { entityIdOr } from "../../../../lib/entity-id";
 import { createRequestContext } from "../../../../lib/core";
 import { DisputeFilters, type FilterChoice } from "./_components/dispute-filters";
 import { DisputeRow } from "./_components/dispute-row";
@@ -66,27 +68,29 @@ export default async function AdminDisputesPage({ searchParams }: { searchParams
 
   const params = await searchParams;
   const active = filterFrom(first(params["state"]));
-  const openCaseId = first(params["case"]);
+  // Narrowed to a uuid first: Postgres refuses a malformed one with a driver
+  // error rather than "no such row", which the catch below cannot recognise.
+  const openCaseId = entityIdOr(first(params["case"]));
+  const cursor = first(params["after"]);
 
   const list = await listDisputes(ctx, actor, {
     ...(active === "all" || active === "unassigned" ? {} : { state: active }),
     ...(active === "unassigned" ? { unassigned: true } : {}),
+    ...(cursor ? { cursor } : {}),
   });
-
-  // The unassigned count is what the chip shows, and it is a property of the
-  // whole queue rather than of the filtered view — so it is read from the same
-  // rows when nothing is filtered, and from a second small list when something
-  // is. Both are one query; neither is per row.
-  const unassigned =
-    active === "unassigned"
-      ? list.rows.length
-      : (await listDisputes(ctx, actor, { unassigned: true })).rows.length;
 
   const query = new URLSearchParams();
   if (active !== "all") query.set("state", active);
+  if (cursor) query.set("after", cursor);
 
-  // A case that has been removed, or an id somebody typed, closes the drawer
-  // rather than failing the page: the queue behind it is still useful.
+  // The filter travels with the cursor; the open case does not, because the
+  // next page is a different set of rows and the one on screen may not be in it.
+  const nextPage = new URLSearchParams(query);
+  if (list.nextCursor) nextPage.set("after", list.nextCursor);
+
+  // A case that has been removed closes the drawer rather than failing the
+  // page: the queue behind it is still useful. An id somebody typed is handled
+  // above, by not asking the database about it at all.
   const detail = openCaseId
     ? await getDispute(ctx, actor, openCaseId).catch((error: unknown) => {
         if (error instanceof NotFoundError) return null;
@@ -105,7 +109,7 @@ export default async function AdminDisputesPage({ searchParams }: { searchParams
           choices={FILTER_CHOICES}
           counts={list.counts}
           total={list.total}
-          unassigned={unassigned}
+          unassigned={list.unassigned}
         />
       }
     >
@@ -127,6 +131,8 @@ export default async function AdminDisputesPage({ searchParams }: { searchParams
           </ul>
         </GlassPanel>
       )}
+
+      {list.nextCursor ? <LoadMore href={`/admin/disputes?${nextPage.toString()}`} /> : null}
 
       {detail ? (
         <DisputeDrawer title={detail.dispute.reason}>

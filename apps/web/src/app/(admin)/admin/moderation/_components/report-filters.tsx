@@ -32,6 +32,9 @@ export function ReportFilters({
 
   function select(value: string) {
     const next = new URLSearchParams(params.toString());
+    // The cursor names a row in the list that was; carried into a different
+    // filter it starts the new one somewhere arbitrary.
+    next.delete("after");
     if (value === "open") next.delete("show");
     else next.set("show", value);
 

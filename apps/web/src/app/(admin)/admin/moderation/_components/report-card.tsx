@@ -52,8 +52,18 @@ export function ReportCard({ report }: { report: ReportSummary }) {
         </p>
       )}
 
-      {report.open && report.content.present ? (
-        <DecisionForm reportId={report.id} choices={report.choices} />
+      {report.open ? (
+        // Offered even when the content has gone. There is nothing to do *to*
+        // it, but the report is still an open queue entry: without a control it
+        // sits at the top of the waiting list and in its count for ever, which
+        // is the dead-control shape inverted.
+        <DecisionForm
+          reportId={report.id}
+          choices={report.content.present ? report.choices : ["keep"]}
+          {...(report.content.present
+            ? {}
+            : { hint: "The content is gone. Closing this only clears the queue entry." })}
+        />
       ) : null}
 
       {!report.open ? (

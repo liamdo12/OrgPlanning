@@ -20,10 +20,21 @@ export type DisputeState = (typeof DISPUTE_STATES)[number];
  * facts, and only the second answers a vendor asking why their payout was
  * reversed six weeks later.
  */
-export const DISPUTE_RESOLUTIONS = ["refund_recorded", "vendor_warned", "dismissed"] as const;
+export const DISPUTE_RESOLUTIONS = [
+  "refund_recorded",
+  "vendor_warned",
+  "dismissed",
+  "settled_with_order",
+] as const;
 export type DisputeResolution = (typeof DISPUTE_RESOLUTIONS)[number];
 
-/** Which state a resolution puts the case in. The pairing the database checks. */
+/**
+ * Which state a resolution puts the case in. The pairing the database checks.
+ *
+ * Only `dismissed` means "there was nothing to answer", so only it pairs with
+ * `rejected`; everything else, including a case settled by the booking moving,
+ * is a case something was done about.
+ */
 export function stateFor(
   resolution: DisputeResolution,
 ): Extract<DisputeState, "resolved" | "rejected"> {
@@ -96,5 +107,19 @@ export function disputeResolutionLabel(resolution: DisputeResolution): string {
       return "Vendor warned";
     case "dismissed":
       return "Dismissed";
+    case "settled_with_order":
+      return "Settled with the booking";
   }
 }
+
+/**
+ * The outcomes an administrator chooses between.
+ *
+ * `settled_with_order` is not among them: it is what the orders screen writes
+ * when resolving a booking's issue closes the cases against it, and offering it
+ * on the form would invite somebody to record "settled with the booking" for a
+ * booking they did not move.
+ */
+export const CHOSEN_RESOLUTIONS = DISPUTE_RESOLUTIONS.filter(
+  (resolution) => resolution !== "settled_with_order",
+);

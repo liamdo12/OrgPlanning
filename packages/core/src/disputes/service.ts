@@ -5,6 +5,7 @@ import { isAuthenticated, type Actor } from "../identity/actor.js";
 import { assertCanActOnOrder } from "../identity/policies.js";
 import { loadIdentity } from "../identity/repo.js";
 import { requireAdmin } from "../identity/service.js";
+import * as orderRepo from "../ordering/repo.js";
 import { parties as orderParties, resolveIssue } from "../ordering/service.js";
 import { parseOrderState, type OrderState } from "../ordering/transitions.js";
 import * as repo from "./repo.js";
@@ -18,6 +19,9 @@ import {
   type DisputeResolution,
   type DisputeState,
 } from "./transitions.js";
+
+/** Every entity id here is a uuid; a malformed one is not a lookup worth making. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Complaints, and what an administrator does about them.
@@ -43,8 +47,19 @@ export type DisputeSummary = repo.DisputeRow & {
 
 export type DisputeList = {
   rows: DisputeSummary[];
+  /** The last row of this page, when there is another. */
+  nextCursor?: string | undefined;
   counts: Record<DisputeState, number>;
   total: number;
+  /**
+   * Open cases nobody has picked up.
+   *
+   * On the list rather than left to the caller, because it is a property of the
+   * whole queue and the screen shows it on a chip whatever the queue is
+   * filtered to — and a caller computing it from the rows it was handed would
+   * get the filtered answer.
+   */
+  unassigned: number;
 };
 
 export type DisputeFilter = repo.DisputeFilter;
@@ -71,15 +86,18 @@ export async function listDisputes(
 ): Promise<DisputeList> {
   requireAdmin(actor);
 
-  const [rows, counts] = await Promise.all([
+  const [page, counts, unassigned] = await Promise.all([
     repo.listForAdmin(ctx.db, filter),
     repo.countByState(ctx.db),
+    repo.countUnassigned(ctx.db),
   ]);
 
   return {
-    rows: rows.map(summarise),
+    rows: page.rows.map(summarise),
+    ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
     counts,
     total: counts.open + counts.under_review + counts.resolved + counts.rejected,
+    unassigned,
   };
 }
 
@@ -242,7 +260,11 @@ export async function assignDispute(
   await requireCase(ctx, actor, disputeId);
 
   if (userId !== null) {
-    const assignee = await loadIdentity(ctx.db, userId);
+    // Narrowed before the lookup. The id arrives in a form field, and Postgres
+    // answers a malformed uuid with a driver error rather than "no such row" —
+    // which would reach the administrator as a blank error page instead of the
+    // refusal below.
+    const assignee = UUID.test(userId) ? await loadIdentity(ctx.db, userId) : undefined;
     if (!assignee || !assignee.roles.includes("admin")) {
       throw new ValidationError("A case is assigned to an administrator.", {
         userId: "not_admin",
@@ -327,6 +349,8 @@ export type ResolveDisputeResult = {
   resolution: DisputeResolution;
   /** The state the order was moved to, when it was in `issue`. */
   orderState: OrderState | null;
+  /** Other open cases against the same booking, settled by the same move. */
+  siblingsClosed: number;
 };
 
 /**
@@ -345,7 +369,9 @@ export async function resolveDispute(
 ): Promise<ResolveDisputeResult> {
   requireAdmin(actor);
 
-  const dispute = await requireCase(ctx, actor, disputeId);
+  // The gate, before anything is read or written. The order state this used to
+  // take from here is now read under lock inside the transaction.
+  await requireCase(ctx, actor, disputeId);
 
   const resolution = parseDisputeResolution(input.resolution);
   const note = input.note.trim();
@@ -353,20 +379,8 @@ export async function resolveDispute(
     throw new ValidationError("Say how the complaint was resolved.", { note: "required" });
   }
 
-  const inIssue = dispute.orderState === "issue";
   const orderTo = input.orderTo === undefined ? undefined : parseOrderState(input.orderTo);
 
-  if (inIssue && orderTo === undefined) {
-    throw new ValidationError(
-      "The order is held on this complaint. Say where it goes once the case is closed.",
-      { orderTo: "required" },
-    );
-  }
-  if (!inIssue && orderTo !== undefined) {
-    throw new ValidationError("That order is not waiting on this complaint.", {
-      orderTo: "not_applicable",
-    });
-  }
   if (
     orderTo !== undefined &&
     orderTo !== "confirmed" &&
@@ -387,12 +401,39 @@ export async function resolveDispute(
 
     assertTransition(before.state, state);
 
+    // **Whether the booking is held is decided here, under the lock, not from
+    // the read that drew the form.** An administrator can open this drawer
+    // while the order is fine and press the button after somebody else has
+    // flagged it, and a stale `false` would close the case and leave the
+    // booking frozen with the record of why now closed — which is the one thing
+    // this module exists to prevent.
+    //
+    // The order is locked after the case, which is the order the queue's own
+    // comment documents: taking the two the other way round is how two
+    // administrators closing two cases on one booking deadlock.
+    const order = await orderRepo.loadForUpdate(tx, before.orderId);
+    if (!order) throw new NotFoundError("No such order.");
+
+    const inIssue = order.state === "issue";
+
+    if (inIssue && orderTo === undefined) {
+      throw new ValidationError(
+        "The order is held on this complaint. Say where it goes once the case is closed.",
+        { orderTo: "required" },
+      );
+    }
+    if (!inIssue && orderTo !== undefined) {
+      throw new ValidationError("That order is not waiting on this complaint.", {
+        orderTo: "not_applicable",
+      });
+    }
+
     // The order first. It is the write that can be refused on grounds this
     // module does not know about — a state the lifecycle will not allow — and
     // discovering that after the case is closed would mean rolling back a
     // resolution somebody has already been told about.
+    const scoped: CoreContext = { ...ctx, db: tx as unknown as CoreContext["db"] };
     if (orderTo !== undefined) {
-      const scoped: CoreContext = { ...ctx, db: tx as unknown as CoreContext["db"] };
       await resolveIssue(scoped, actor, before.orderId, orderTo, note);
     }
 
@@ -403,6 +444,14 @@ export async function resolveDispute(
       resolvedAt: now,
       now,
     });
+
+    // The booking has left `issue`, so every other open case against it is
+    // settled by the same move — and none of them could move it again, because
+    // it is no longer held. Left open they are queue entries nobody can action.
+    const siblings =
+      orderTo === undefined
+        ? 0
+        : await closeDisputesForOrder(scoped, actor, before.orderId, note, tx, disputeId);
 
     await record(
       ctx,
@@ -417,12 +466,13 @@ export async function resolveDispute(
           resolution,
           note: note.slice(0, 2000),
           orderState: orderTo ?? null,
+          ...(siblings > 0 ? { siblingsClosed: siblings } : {}),
         },
       },
       tx,
     );
 
-    return { state, resolution, orderState: orderTo ?? null };
+    return { state, resolution, orderState: orderTo ?? null, siblingsClosed: siblings };
   });
 }
 
@@ -445,8 +495,19 @@ export async function closeDisputesForOrder(
   orderId: string,
   note: string,
   db: DbExecutor,
+  /**
+   * A case the caller is closing itself.
+   *
+   * Excluded rather than closed twice: `resolveDispute` closes the case it was
+   * asked about with the outcome an administrator chose, and calls this for the
+   * order's *other* cases — which are settled by the same move and would
+   * otherwise be left open against a booking nothing can free again.
+   */
+  except?: string,
 ): Promise<number> {
-  const open = await repo.listOpenForOrder(db, orderId);
+  const open = (await repo.listOpenForOrder(db, orderId)).filter(
+    (dispute) => dispute.id !== except,
+  );
   if (open.length === 0) return 0;
 
   const now = ctx.clock.now();
@@ -454,7 +515,13 @@ export async function closeDisputesForOrder(
   for (const dispute of open) {
     await repo.setState(db, dispute.id, {
       state: "resolved",
-      resolution: "refund_recorded",
+      // Not `refund_recorded`. This path runs for every target the orders
+      // screen offers, including `confirmed` and `fulfilled`, where no money
+      // moved at all — and a case file and an audit entry that say the platform
+      // refunded a customer who was not refunded is a false statement about
+      // money in the two places somebody reads months later to find out what
+      // happened.
+      resolution: "settled_with_order",
       resolutionNote: note.slice(0, 2000),
       resolvedAt: now,
       now,
@@ -470,7 +537,7 @@ export async function closeDisputesForOrder(
         before: { state: dispute.state, resolution: null },
         after: {
           state: "resolved",
-          resolution: "refund_recorded",
+          resolution: "settled_with_order",
           note: note.slice(0, 2000),
           // Named, because this row was not written by somebody opening the
           // case: it is the order screen closing what it settled.

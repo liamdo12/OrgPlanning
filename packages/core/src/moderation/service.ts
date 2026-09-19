@@ -15,6 +15,16 @@ import {
 } from "./targets.js";
 
 /**
+ * Postgres's unique-violation code.
+ *
+ * Matched on the driver's `code` rather than the message, which is localised
+ * and carries the index name in a shape that changes between versions.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+}
+
+/**
  * Reported content, and what an administrator decides about it.
  *
  * The queue is administrative: a report is about the platform's own content
@@ -38,8 +48,10 @@ export type ReportSummary = repo.ReportRow & {
 
 export type ReportList = {
   rows: ReportSummary[];
-  open: number;
-  total: number;
+  /** The last row of this page, when there is another. */
+  nextCursor?: string | undefined;
+  /** The whole queue's numbers, not the filtered view's. */
+  counts: repo.ReportCounts;
 };
 
 export type ReportFilter = repo.ReportFilter;
@@ -52,17 +64,17 @@ export async function listReports(
 ): Promise<ReportList> {
   requireAdmin(actor);
 
-  const [rows, open] = await Promise.all([
+  const [page, counts] = await Promise.all([
     repo.listReports(ctx.db, filter),
-    repo.countOpen(ctx.db),
+    repo.countReports(ctx.db),
   ]);
 
-  const targets = await repo.loadTargets(ctx.db, rows);
+  const targets = await repo.loadTargets(ctx.db, page.rows);
 
   return {
-    rows: rows.map((row) => summarise(row, targets)),
-    open,
-    total: rows.length,
+    rows: page.rows.map((row) => summarise(row, targets)),
+    ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+    counts,
   };
 }
 
@@ -147,14 +159,25 @@ export async function reportContent(
   const now = ctx.clock.now();
 
   return ctx.db.transaction(async (tx) => {
-    const reportId = await repo.insertReport(tx, {
-      targetType,
-      targetId: input.targetId,
-      reporterUserId: actor.userId,
-      reason: reason.slice(0, 200),
-      detail: input.detail?.trim().slice(0, 2000) ?? null,
-      now,
-    });
+    // The partial unique index is what actually refuses a duplicate — reading
+    // first and inserting second lets two submissions of the same form both
+    // find nothing. Translated here because the caller is a person pressing a
+    // button, and a driver error reaches them as a blank error page.
+    const reportId = await repo
+      .insertReport(tx, {
+        targetType,
+        targetId: input.targetId,
+        reporterUserId: actor.userId,
+        reason: reason.slice(0, 200),
+        detail: input.detail?.trim().slice(0, 2000) ?? null,
+        now,
+      })
+      .catch((error: unknown) => {
+        if (isUniqueViolation(error)) {
+          throw new ValidationError("You have already reported this.", { report: "duplicate" });
+        }
+        throw error;
+      });
 
     await record(
       ctx,

@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { disputeMessages, disputes, orders, users, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
+import { PAGE_SIZE, decodeCursor, encodeCursor } from "../paging.js";
 import type { DisputeResolution, DisputeState } from "./transitions.js";
 
 /**
@@ -32,9 +33,20 @@ export type DisputeRow = {
   resolvedAt: Date | null;
   createdAt: Date;
   noteCount: number;
+  /**
+   * The database's own rendering of `created_at`, for the page cursor.
+   *
+   * Text rather than the `Date` beside it: `timestamptz` keeps microseconds and
+   * a `Date` does not, so a cursor built from the `Date` names an instant no
+   * row holds. See `paging.ts`.
+   */
+  cursorAt: string;
 };
 
 const customers = users;
+
+/** The two states in which a case is still somebody's to deal with. */
+const OPEN_STATES = ["open", "under_review"] as const satisfies readonly DisputeState[];
 
 /**
  * The queue, with everything a row shows.
@@ -44,6 +56,10 @@ const customers = users;
  * fetching those per case is the N+1 the render budget forbids.
  */
 function disputesWithContext(db: DbExecutor) {
+  // A correlated subquery, and safe here: the outer query has joins, so Drizzle
+  // qualifies both columns with their tables. The same fragment in a
+  // single-table query would resolve both names against the inner table and
+  // return zero — see the rule in `reference/repo.ts`.
   const notes = sql<number>`(
     select count(*)::int from ${disputeMessages}
     where ${disputeMessages.disputeId} = ${disputes.id}
@@ -69,6 +85,7 @@ function disputesWithContext(db: DbExecutor) {
       resolvedAt: disputes.resolvedAt,
       createdAt: disputes.createdAt,
       noteCount: notes,
+      cursorAt: sql<string>`${disputes.createdAt}::text`,
     })
     .from(disputes)
     .innerJoin(orders, eq(orders.id, disputes.orderId))
@@ -78,26 +95,62 @@ function disputesWithContext(db: DbExecutor) {
 
 export type DisputeFilter = {
   state?: DisputeState | undefined;
-  /** Only cases nobody has picked up. */
+  /**
+   * Only open cases nobody has picked up.
+   *
+   * Open, not merely unassigned: a closed case has nobody working it by
+   * definition, and counting those would put every dismissed complaint the
+   * platform has ever had behind a chip whose whole meaning is "these still
+   * need somebody".
+   */
   unassigned?: boolean | undefined;
+  /** The last row of the previous page. See `paging.ts`. */
+  cursor?: string | undefined;
+};
+
+export type DisputePage = {
+  rows: DisputeRow[];
+  /** Present when there is another page; absent when this is the last. */
+  nextCursor?: string | undefined;
 };
 
 export async function listForAdmin(
   db: DbExecutor,
   filter: DisputeFilter = {},
-): Promise<DisputeRow[]> {
+): Promise<DisputePage> {
+  const after = filter.cursor ? decodeCursor(filter.cursor) : undefined;
+
   const conditions = [
     ...(filter.state ? [eq(disputes.state, filter.state)] : []),
-    ...(filter.unassigned ? [sql`${disputes.assignedToUserId} is null`] : []),
+    ...(filter.unassigned
+      ? [inArray(disputes.state, OPEN_STATES), sql`${disputes.assignedToUserId} is null`]
+      : []),
+    // A row comparison rather than two branches joined by `or`: one expression
+    // with the same meaning and no way to get the tiebreak's polarity wrong.
+    // `>` because this list runs oldest first.
+    ...(after
+      ? [
+          sql`(${disputes.createdAt}, ${disputes.id}) > (${after.at}::timestamptz, ${after.id}::uuid)`,
+        ]
+      : []),
   ];
 
-  const rows = await disputesWithContext(db)
+  const found = await disputesWithContext(db)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     // Oldest first: a queue is worked from the front, and the complaint that
     // has been waiting longest is the one somebody is most annoyed about.
-    .orderBy(asc(disputes.createdAt));
+    .orderBy(asc(disputes.createdAt), asc(disputes.id))
+    // One more than a page, so "is there another page" is answered by what came
+    // back rather than by a second count over the same predicate.
+    .limit(PAGE_SIZE + 1);
 
-  return withAssignees(db, rows as DisputeRow[]);
+  const page = (found as DisputeRow[]).slice(0, PAGE_SIZE);
+  const last = page[page.length - 1];
+
+  return {
+    rows: await withAssignees(db, page),
+    ...(found.length > PAGE_SIZE && last ? { nextCursor: encodeCursor(last) } : {}),
+  };
 }
 
 export async function countByState(db: DbExecutor): Promise<Record<DisputeState, number>> {
@@ -114,6 +167,24 @@ export async function countByState(db: DbExecutor): Promise<Record<DisputeState,
   };
   for (const row of rows) counts[row.state] = row.total;
   return counts;
+}
+
+/**
+ * How many open cases nobody has picked up.
+ *
+ * A count rather than a list the caller measures. The chip showing it is a
+ * property of the whole queue, so it has to be read even when the screen is
+ * filtered to something else — and fetching every unassigned case, with its
+ * joins and its assignee names, to call `.length` on the result is the shape
+ * that turns a chip into the most expensive thing on the page.
+ */
+export async function countUnassigned(db: DbExecutor): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(disputes)
+    .where(and(inArray(disputes.state, OPEN_STATES), sql`${disputes.assignedToUserId} is null`));
+
+  return row?.total ?? 0;
 }
 
 export async function load(db: DbExecutor, disputeId: string): Promise<DisputeRow | undefined> {
@@ -296,7 +367,7 @@ export async function listOpenForOrder(
   return db
     .select({ id: disputes.id, state: disputes.state })
     .from(disputes)
-    .where(and(eq(disputes.orderId, orderId), inArray(disputes.state, ["open", "under_review"])))
+    .where(and(eq(disputes.orderId, orderId), inArray(disputes.state, OPEN_STATES)))
     .orderBy(asc(disputes.createdAt));
 }
 

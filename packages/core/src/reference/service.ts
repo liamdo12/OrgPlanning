@@ -8,6 +8,7 @@ import * as repo from "./repo.js";
 import {
   SETTING_SPECS,
   formatSettingValue,
+  isRenderableTone,
   parseSettingValue,
   specFor,
   type SettingKey,
@@ -76,6 +77,26 @@ export function slugify(name: string): string {
   );
 }
 
+/**
+ * A tile colour, refused if it is something that could fetch.
+ *
+ * Blank is a colour of its own — "no tone", which renders as the hairline — so
+ * it comes back as `null` rather than an error.
+ */
+function parseTone(value: string | undefined): string | null {
+  const tone = value?.trim();
+  if (!tone) return null;
+
+  if (!isRenderableTone(tone)) {
+    throw new ValidationError(
+      "A tile colour is a hex colour or a gradient over hex colours, e.g. linear-gradient(140deg, #EADFD1, #D6BFA8).",
+      { tone: "not_renderable" },
+    );
+  }
+
+  return tone;
+}
+
 export async function createCategory(
   ctx: CoreContext,
   actor: Actor,
@@ -91,6 +112,7 @@ export async function createCategory(
     throw new ValidationError("That name does not produce a usable slug.", { slug: "empty" });
   }
 
+  const tone = parseTone(input.tone);
   const now = ctx.clock.now();
 
   return ctx.db.transaction(async (tx) => {
@@ -101,7 +123,7 @@ export async function createCategory(
     const categoryId = await repo.insertCategory(tx, {
       slug,
       name: name.slice(0, 80),
-      tone: input.tone?.trim() || null,
+      tone,
       sortOrder: (await repo.maxSortOrder(tx)) + 1,
       now,
     });
@@ -135,6 +157,7 @@ export async function updateCategory(
 ): Promise<void> {
   requireAdmin(actor);
 
+  const tone = input.tone === undefined ? undefined : parseTone(input.tone);
   const now = ctx.clock.now();
 
   await ctx.db.transaction(async (tx) => {
@@ -146,7 +169,12 @@ export async function updateCategory(
       throw new ValidationError("A category needs a name.", { name: "required" });
     }
 
-    const slug = input.slug?.trim();
+    // Blank means "leave it", not "set it to nothing". The form posts every
+    // field on every save and a cleared optional input arrives as `""`, so
+    // without this an administrator who empties the Slug box writes an empty
+    // slug — and the second one to do it hits the unique index as a driver
+    // error, several layers below the button.
+    const slug = input.slug?.trim() || undefined;
     if (slug && (await repo.slugTaken(tx, slug, categoryId))) {
       throw new ValidationError(`There is already a category at ${slug}.`, { slug: "taken" });
     }
@@ -154,7 +182,7 @@ export async function updateCategory(
     await repo.updateCategory(tx, categoryId, {
       ...(name === undefined ? {} : { name: name.slice(0, 80) }),
       ...(slug === undefined ? {} : { slug: slug.slice(0, 60) }),
-      ...(input.tone === undefined ? {} : { tone: input.tone.trim() || null }),
+      ...(tone === undefined ? {} : { tone }),
       ...(input.active === undefined ? {} : { active: input.active }),
       now,
     });
@@ -170,7 +198,7 @@ export async function updateCategory(
         after: {
           name: name ?? before.name,
           slug: slug ?? before.slug,
-          tone: input.tone === undefined ? before.tone : input.tone.trim() || null,
+          tone: tone === undefined ? before.tone : tone,
           active: input.active ?? before.active,
         },
       },
@@ -207,9 +235,10 @@ export async function moveCategory(
 
     const target = direction === "up" ? index - 1 : index + 1;
     if (target < 0 || target >= rows.length) {
-      throw new ValidationError("That category is already at the end of the list.", {
-        direction: "at_edge",
-      });
+      throw new ValidationError(
+        direction === "up" ? "That category is already first." : "That category is already last.",
+        { direction: "at_edge" },
+      );
     }
 
     const ordered = [...rows];
@@ -253,9 +282,11 @@ export async function deleteCategory(
   requireAdmin(actor);
 
   await ctx.db.transaction(async (tx) => {
-    // Read inside the transaction: a listing filed under this category between
-    // the check and the delete would otherwise slip through, and the answer
-    // would be a foreign-key error several layers below the button.
+    // The read is what produces the *message*; the foreign key is what makes
+    // the guarantee. `services.category_id` references this row `ON DELETE
+    // RESTRICT`, so a listing filed between this check and the delete is
+    // refused by the database — as a driver error rather than the sentence
+    // below, which is the trade for not locking the whole catalogue here.
     const before = await repo.loadCategory(tx, categoryId);
     if (!before) throw new NotFoundError("No such category.");
 

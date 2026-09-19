@@ -194,6 +194,7 @@ export const disputeResolution = app.enum("dispute_resolution", [
   "refund_recorded",
   "vendor_warned",
   "dismissed",
+  "settled_with_order",
 ]);
 
 /**

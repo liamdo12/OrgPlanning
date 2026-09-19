@@ -197,3 +197,30 @@ export function formatSettingValue(key: SettingKey, value: unknown): string {
       return String(value);
   }
 }
+
+/**
+ * Whether a category's tile colour is something we are willing to render.
+ *
+ * The value goes straight into a `background`, and a `background` can fetch:
+ * `url(https://…)` in one is an outbound request from every render of the
+ * screen — from an administrator's browser today and from a public discovery
+ * page later. An administrator is trusted, but "trusted" is not the same as
+ * "should be able to point every visitor's browser at a third party by typing
+ * in a text box".
+ *
+ * So: a hex colour, or a CSS gradient over hex colours, which is exactly what
+ * the prototype's own six are. Anything else is refused with the shape it
+ * wanted, rather than silently stripped.
+ */
+const HEX = String.raw`#[0-9a-fA-F]{3,8}`;
+const TONE = new RegExp(`^(?:${HEX}|(?:linear|radial|conic)-gradient\\(\\s*[^()]*\\))$`, "u");
+
+export function isRenderableTone(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 200) return false;
+  // No nesting and no functions inside: `url(...)`, `image-set(...)` and
+  // `var(--x, url(...))` all need a second set of brackets to say anything, so
+  // refusing them is refusing everything that can fetch.
+  if (/url\(|image-set|element\(|@import/i.test(trimmed)) return false;
+  return TONE.test(trimmed);
+}

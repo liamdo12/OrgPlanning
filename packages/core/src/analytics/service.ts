@@ -57,9 +57,9 @@ export function periodLabel(period: Period): string {
  * implicit.
  */
 export function windowFor(period: Period, now: Date): repo.Window {
-  // A day past the end, so "today" is included: the column is a timestamp and a
-  // strict upper bound at this instant drops everything booked in the last
-  // fraction of a second.
+  // A second past the end, so "now" is included: the bound is strict and a
+  // timestamp equal to this instant would otherwise fall outside the window it
+  // was just written into.
   const to = new Date(now.getTime() + 1_000);
 
   const days = (count: number) => new Date(to.getTime() - count * 86_400_000);

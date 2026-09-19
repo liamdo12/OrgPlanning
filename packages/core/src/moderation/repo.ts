@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { contentReports, messages, reviews, users, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
+import { PAGE_SIZE, decodeCursor, encodeCursor } from "../paging.js";
 import { REMOVED_TEXT, type ContentDecision, type ContentTarget } from "./targets.js";
 
 /**
@@ -26,6 +27,8 @@ export type ReportRow = {
   decidedAt: Date | null;
   decisionNote: string | null;
   createdAt: Date;
+  /** The database's own rendering of `created_at`, for the page cursor. */
+  cursorAt: string;
 };
 
 const reporters = users;
@@ -34,12 +37,26 @@ export type ReportFilter = {
   /** Only what nobody has decided yet. */
   open?: boolean | undefined;
   targetType?: ContentTarget | undefined;
+  /** The last row of the previous page. See `paging.ts`. */
+  cursor?: string | undefined;
 };
 
-export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Promise<ReportRow[]> {
+export type ReportPage = {
+  rows: ReportRow[];
+  nextCursor?: string | undefined;
+};
+
+export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Promise<ReportPage> {
+  const after = filter.cursor ? decodeCursor(filter.cursor) : undefined;
+
   const conditions = [
     ...(filter.open ? [isNull(contentReports.decidedAt)] : []),
     ...(filter.targetType ? [eq(contentReports.targetType, filter.targetType)] : []),
+    ...(after
+      ? [
+          sql`(${contentReports.createdAt}, ${contentReports.id}) > (${after.at}::timestamptz, ${after.id}::uuid)`,
+        ]
+      : []),
   ];
 
   const rows = await db
@@ -56,24 +73,68 @@ export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Pr
       decidedAt: contentReports.decidedAt,
       decisionNote: contentReports.decisionNote,
       createdAt: contentReports.createdAt,
+      cursorAt: sql<string>`${contentReports.createdAt}::text`,
     })
     .from(contentReports)
     .leftJoin(reporters, eq(reporters.id, contentReports.reporterUserId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    // Undecided first and oldest first inside that: a queue is worked from the
-    // front, and something reported a week ago and still up is the problem.
-    .orderBy(asc(sql`${contentReports.decidedAt} is not null`), asc(contentReports.createdAt));
+    // Oldest first, and nothing else: a queue is worked from the front, and
+    // something reported a week ago and still up is the problem. The undecided
+    // ones are not sorted to the top because the default chip already shows
+    // only those — and a compound sort key is a compound cursor, which is a
+    // page boundary with three ways to be wrong instead of one.
+    .orderBy(asc(contentReports.createdAt), asc(contentReports.id))
+    .limit(PAGE_SIZE + 1);
 
-  return withDeciders(db, rows as ReportRow[]);
+  const page = (rows as ReportRow[]).slice(0, PAGE_SIZE);
+  const last = page[page.length - 1];
+
+  return {
+    rows: await withDeciders(db, page),
+    ...(rows.length > PAGE_SIZE && last ? { nextCursor: encodeCursor(last) } : {}),
+  };
 }
 
-export async function countOpen(db: DbExecutor): Promise<number> {
-  const [row] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(contentReports)
-    .where(isNull(contentReports.decidedAt));
+export type ReportCounts = {
+  open: number;
+  total: number;
+  /** How many reports there are about each kind of content, decided or not. */
+  byTarget: Record<ContentTarget, number>;
+};
 
-  return row?.total ?? 0;
+/**
+ * Every number the chips show, in one grouped query.
+ *
+ * Grouped rather than counted from the rows: the chips describe the whole queue
+ * and the rows are whatever the filter returned, so counting those would make
+ * each chip agree only with itself. Reading the table a second time to count it
+ * would be the same cost as rendering it twice.
+ */
+export async function countReports(db: DbExecutor): Promise<ReportCounts> {
+  const rows = await db
+    .select({
+      targetType: contentReports.targetType,
+      total: sql<number>`count(*)::int`,
+      open: sql<number>`count(*) filter (where ${contentReports.decidedAt} is null)::int`,
+    })
+    .from(contentReports)
+    .groupBy(contentReports.targetType);
+
+  const byTarget: Record<ContentTarget, number> = {
+    review: 0,
+    message: 0,
+    vendor_profile: 0,
+  };
+  let open = 0;
+  let total = 0;
+
+  for (const row of rows) {
+    byTarget[row.targetType] = row.total;
+    open += row.open;
+    total += row.total;
+  }
+
+  return { open, total, byTarget };
 }
 
 export async function load(db: DbExecutor, reportId: string): Promise<ReportRow | undefined> {
@@ -91,6 +152,7 @@ export async function load(db: DbExecutor, reportId: string): Promise<ReportRow 
       decidedAt: contentReports.decidedAt,
       decisionNote: contentReports.decisionNote,
       createdAt: contentReports.createdAt,
+      cursorAt: sql<string>`${contentReports.createdAt}::text`,
     })
     .from(contentReports)
     .leftJoin(reporters, eq(reporters.id, contentReports.reporterUserId))
@@ -378,13 +440,16 @@ export async function applyDecision(
       .for("update")
       .limit(1);
 
-    const body = decision === "remove" ? REMOVED_TEXT : (before?.body ?? REMOVED_TEXT);
+    // `null` when the row has gone, the same as the review branch above, so the
+    // caller's "did the words change" answer is false rather than a claim that
+    // something was removed from a row that no longer exists.
+    const body = decision === "remove" ? REMOVED_TEXT : (before?.body ?? null);
 
     await db
       .update(messages)
       .set({
         moderation: decision === "keep" ? "approved" : "rejected",
-        body,
+        ...(body === null ? {} : { body }),
         moderatedByUserId: moderatorUserId,
         moderatedAt: now,
         updatedAt: now,
@@ -433,6 +498,7 @@ export async function listForTarget(
       decidedAt: contentReports.decidedAt,
       decisionNote: contentReports.decisionNote,
       createdAt: contentReports.createdAt,
+      cursorAt: sql<string>`${contentReports.createdAt}::text`,
     })
     .from(contentReports)
     .leftJoin(reporters, eq(reporters.id, contentReports.reporterUserId))

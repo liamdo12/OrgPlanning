@@ -8,6 +8,7 @@ import {
 } from "@occasion/core";
 import { AdminPage } from "../../_components/admin-page";
 import { requireAdminPage } from "../../../../lib/auth-guard";
+import { entityIdOr } from "../../../../lib/entity-id";
 import { createRequestContext } from "../../../../lib/core";
 import { VendorFilters, type FilterChoice } from "./_components/vendor-filters";
 import { VendorRow } from "./_components/vendor-row";
@@ -68,7 +69,9 @@ export default async function AdminVendorsPage({ searchParams }: { searchParams:
   const params = await searchParams;
   const status = statusFrom(first(params["status"]));
   const search = first(params["q"]);
-  const openVendorId = first(params["vendor"]);
+  // Narrowed to a uuid first: Postgres refuses a malformed one with a driver
+  // error rather than "no such row", which the catch below cannot recognise.
+  const openVendorId = entityIdOr(first(params["vendor"]));
 
   const list = await listVendorsForAdmin(ctx, actor, {
     ...(status === "all" ? {} : { status }),

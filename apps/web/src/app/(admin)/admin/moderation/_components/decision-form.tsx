@@ -28,9 +28,11 @@ const LABELS: Record<string, { label: string; intent: "primary" | "secondary" | 
 export function DecisionForm({
   reportId,
   choices,
+  hint,
 }: {
   reportId: string;
   choices: readonly string[];
+  hint?: string;
 }) {
   const router = useRouter();
   const [reported, setReported] = useState<ModerationActionState | null>(null);
@@ -58,7 +60,7 @@ export function DecisionForm({
           id={`note-${reportId}`}
           name="note"
           label="Why"
-          hint="Kept with the decision and on the audit trail."
+          hint={hint ?? "Kept with the decision and on the audit trail."}
           {...(state.error ? { error: state.error } : {})}
         />
 

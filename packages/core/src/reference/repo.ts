@@ -22,13 +22,12 @@ export type CategoryRow = {
 };
 
 export async function listCategories(db: DbExecutor): Promise<CategoryRow[]> {
-  // Joined and counted `distinct`, not a correlated subquery. Drizzle renders a
-  // column inside a raw `sql` fragment without its table prefix, so the
-  // subquery form compiles to `where "category_id" = "id"` — both of which
-  // resolve against the *inner* table, comparing a service's category to its
-  // own id and returning zero for every row. It is the failure mode the vendor
-  // queue already documents, and it is silent: the numbers look plausible and
-  // the delete guard opens.
+  // Joined and counted `distinct`, not a correlated subquery. Drizzle qualifies a column inside a raw `sql` fragment
+  // with its table **only when the query has a join**. In a single-table query
+  // the subquery form compiles to `where "category_id" = "id"` — both of which
+  // then resolve against the *inner* table, comparing a service's category to
+  // its own id and returning zero for every row. It is silent: the numbers look
+  // plausible and the delete guard opens.
   //
   // `distinct` is what makes the two joins safe together: without it each
   // child's rows multiply the other's.

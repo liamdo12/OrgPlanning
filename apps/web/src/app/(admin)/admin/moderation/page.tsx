@@ -6,6 +6,7 @@ import {
   type ContentTarget,
 } from "@occasion/core";
 import { AdminPage } from "../../_components/admin-page";
+import { LoadMore } from "../../_components/load-more";
 import { requireAdminPage } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
 import { ReportFilters, type FilterChoice } from "./_components/report-filters";
@@ -63,26 +64,31 @@ export default async function AdminModerationPage({
 
   const params = await searchParams;
   const show = showFrom(first(params["show"]));
+  const cursor = first(params["after"]);
 
   const list = await listReports(ctx, actor, {
     ...(show === "open" ? { open: true } : {}),
     ...(show !== "open" && show !== "all" ? { targetType: show } : {}),
+    ...(cursor ? { cursor } : {}),
   });
 
-  // The chip counts come from one unfiltered read rather than a query per chip.
-  // Four counts and four round trips is the shape that becomes an N+1 the first
-  // time somebody adds a fifth kind of content.
-  const everything = show === "all" ? list : await listReports(ctx, actor, {});
+  const nextPage = new URLSearchParams();
+  if (show !== "open") nextPage.set("show", show);
+  if (list.nextCursor) nextPage.set("after", list.nextCursor);
 
+  // The chips describe the whole queue, so their numbers come from one grouped
+  // aggregate that the list returns alongside its rows — not from the rows,
+  // which are whatever the filter matched, and not from a second read of the
+  // table, which is the cost of rendering the page twice.
   const choices: readonly FilterChoice[] = [
-    { value: "open", label: "Waiting", count: everything.open },
-    { value: "all", label: "All", count: everything.total },
+    { value: "open", label: "Waiting", count: list.counts.open },
+    { value: "all", label: "All", count: list.counts.total },
     ...CONTENT_TARGETS.map((target) => ({
       value: target,
       // "a review" is how the domain phrases it in a sentence; a chip is a
       // heading, so the article comes off and the first letter goes up.
       label: sentenceCase(contentTargetLabel(target).replace(/^an? /, "")),
-      count: everything.rows.filter((row) => row.targetType === target).length,
+      count: list.counts.byTarget[target],
     })),
   ];
 
@@ -108,6 +114,8 @@ export default async function AdminModerationPage({
           ))}
         </div>
       )}
+
+      {list.nextCursor ? <LoadMore href={`/admin/moderation?${nextPage.toString()}`} /> : null}
     </AdminPage>
   );
 }
