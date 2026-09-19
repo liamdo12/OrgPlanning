@@ -47,21 +47,56 @@ export async function inviteAdmin(
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
   const token = mintToken(32);
 
-  const [row] = await ctx.db
-    .insert(adminInvites)
-    .values({
-      email: normalised,
-      token: hashToken(token),
-      invitedByUserId: admin.userId,
-      expiresAt,
-    })
-    .returning({ id: adminInvites.id });
+  // One address, one live invitation. Inviting the same person twice is what a
+  // double-submitted form does and what an administrator does when the first
+  // link went astray, and both used to leave two working tokens behind: revoke
+  // the one you can see and the other still grants the admin role. The
+  // superseded row is revoked rather than deleted, so the log and the table
+  // still show that an invitation was sent and when it stopped working.
+  //
+  // The revoke below is not what enforces this, and cannot be. Under
+  // `read committed` two concurrent requests each revoke against a snapshot
+  // without the other's row and both insert; the partial unique index
+  // `admin_invites_one_live_per_email` is what actually refuses the second, and
+  // this transaction exists so that its refusal takes the revoke with it. The
+  // caller sees a conflict, which for a double-submitted form is the right
+  // answer: one invitation was created and the second press did nothing.
+  const [row] = await ctx.db.transaction(async (tx) => {
+    const superseded = await tx
+      .update(adminInvites)
+      .set({ revokedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(adminInvites.email, normalised),
+          isNull(adminInvites.acceptedAt),
+          isNull(adminInvites.revokedAt),
+        ),
+      )
+      .returning({ id: adminInvites.id });
 
-  await record(ctx, actor, {
-    action: "identity.admin.invite",
-    entityType: "admin_invite",
-    entityId: row?.id,
-    after: { email: normalised, expiresAt },
+    const inserted = await tx
+      .insert(adminInvites)
+      .values({
+        email: normalised,
+        token: hashToken(token),
+        invitedByUserId: admin.userId,
+        expiresAt,
+      })
+      .returning({ id: adminInvites.id });
+
+    await record(
+      ctx,
+      actor,
+      {
+        action: "identity.admin.invite",
+        entityType: "admin_invite",
+        entityId: inserted[0]?.id,
+        after: { email: normalised, expiresAt, superseded: superseded.length },
+      },
+      tx,
+    );
+
+    return inserted;
   });
 
   return { id: row?.id as string, email: normalised, token, expiresAt };
@@ -160,14 +195,39 @@ export async function revokeAdminInvite(
   requireAdmin(actor);
   const now = ctx.clock.now();
 
-  await ctx.db
+  // Deliberately blind rather than a read-then-write: revoking twice is what a
+  // double-submitted button does, and the second press should be a no-op rather
+  // than an error. `acceptedAt` is the one case that must not be touched — an
+  // invitation already redeemed is a role somebody holds, and taking it back is
+  // `revokeRoleFromUser`, not this.
+  const revoked = await ctx.db
     .update(adminInvites)
     .set({ revokedAt: now, updatedAt: now })
-    .where(and(eq(adminInvites.id, inviteId), isNull(adminInvites.acceptedAt)));
+    .where(
+      and(
+        eq(adminInvites.id, inviteId),
+        isNull(adminInvites.acceptedAt),
+        isNull(adminInvites.revokedAt),
+      ),
+    )
+    .returning({ id: adminInvites.id });
+
+  // With the id alone, two entries a minute apart are indistinguishable, and
+  // neither says whether anything actually changed — a revoke against an
+  // already-accepted invitation reads exactly like one that withdrew a live
+  // invitation seconds before it was used.
+  //
+  // `before` is only claimed when there was one. Recording `{revokedAt: null}`
+  // unconditionally would assert a prior state nothing read, and would be false
+  // in exactly the case this entry exists to tell apart: an invitation that was
+  // already revoked, or already accepted.
+  const changed = revoked.length > 0;
 
   await record(ctx, actor, {
     action: "identity.admin.invite.revoke",
     entityType: "admin_invite",
     entityId: inviteId,
+    ...(changed ? { before: { revokedAt: null } } : {}),
+    after: changed ? { revokedAt: now.toISOString() } : { changed: false },
   });
 }

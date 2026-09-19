@@ -149,4 +149,57 @@ describe.skipIf(!url)("database constraints", () => {
       `,
     ).rejects.toThrow(/stripe_events_event_id_unique|duplicate key/i);
   });
+
+  describe("one live admin invitation per address", () => {
+    async function invite(email: string, token: string) {
+      const [admin] = await sql<{ id: string }[]>`
+        select id from app.planning_org_users where email = 'admin@occasion.test'
+      `;
+      return sql`
+        insert into app.planning_org_admin_invites (email, token, invited_by_user_id, expires_at)
+        values (${email}, ${token}, ${admin?.id as string}, now() + interval '3 days')
+      `;
+    }
+
+    it("refuses a second live invitation to the same address", async () => {
+      // The service revokes any outstanding invitation before it writes a new
+      // one, and under `read committed` two concurrent requests both do that
+      // against snapshots missing each other's row. So the service cannot be
+      // what enforces this, and the index has to be.
+      await invite("one.live@occasion.test", "hash-one");
+
+      await expect(invite("one.live@occasion.test", "hash-two")).rejects.toThrow(
+        /admin_invites_one_live_per_email|duplicate key/i,
+      );
+    });
+
+    it("allows a new invitation once the first is revoked", async () => {
+      // Partial, so the uniqueness is about invitations still in play. An
+      // address that was invited and revoked can be invited again, and both
+      // rows stay in the table as the history of what was sent.
+      await invite("revoked.then@occasion.test", "hash-three");
+      await sql`
+        update app.planning_org_admin_invites set revoked_at = now()
+        where email = 'revoked.then@occasion.test'
+      `;
+
+      await expect(invite("revoked.then@occasion.test", "hash-four")).resolves.toBeDefined();
+
+      const [count] = await sql<{ total: number }[]>`
+        select count(*)::int as total from app.planning_org_admin_invites
+        where email = 'revoked.then@occasion.test'
+      `;
+      expect(count?.total).toBe(2);
+    });
+
+    it("allows a new invitation once the first is accepted", async () => {
+      await invite("accepted.then@occasion.test", "hash-five");
+      await sql`
+        update app.planning_org_admin_invites set accepted_at = now()
+        where email = 'accepted.then@occasion.test'
+      `;
+
+      await expect(invite("accepted.then@occasion.test", "hash-six")).resolves.toBeDefined();
+    });
+  });
 });

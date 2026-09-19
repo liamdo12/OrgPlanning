@@ -595,6 +595,62 @@ describe.skipIf(!url)("identity service", () => {
       expect(rows[0]?.token).toMatch(/^[0-9a-f]{64}$/);
     });
 
+    it("leaves one live invitation when the same address is invited twice", async () => {
+      signInAs("admin@occasion.test");
+      const admin = await getActor(ctx);
+
+      const invitee = await signUp(ctx, {
+        email: "twice@occasion.test",
+        fullName: "Invited Twice",
+        role: "customer",
+        emailVerified: true,
+      });
+
+      const first = await inviteAdmin(ctx, admin, "twice@occasion.test");
+      const second = await inviteAdmin(ctx, admin, "twice@occasion.test");
+
+      expect(second.token).not.toBe(first.token);
+
+      const live = await sql<{ id: string }[]>`
+        select id from app.planning_org_admin_invites
+        where email = 'twice@occasion.test' and revoked_at is null and accepted_at is null
+      `;
+      // Two working tokens would mean revoking the one an administrator can
+      // see leaves the other still granting the admin role.
+      expect(live).toHaveLength(1);
+
+      // And the one that was superseded is genuinely dead, not merely hidden.
+      await expect(acceptAdminInvite(ctx, first.token, invitee)).rejects.toThrow();
+      await acceptAdminInvite(ctx, second.token, invitee);
+    });
+
+    it("refuses the second of two simultaneous invitations to one address", async () => {
+      signInAs("admin@occasion.test");
+      const admin = await getActor(ctx);
+
+      // Not the same claim as the case above. Sequentially, the revoke inside
+      // `inviteAdmin` is what keeps it to one. Concurrently it cannot be:
+      // `read committed` gives each request a snapshot without the other's
+      // row, so both revoke nothing and both insert, and the partial unique
+      // index is what refuses the second.
+      //
+      // This asserts the outcome through the service. That the index is what
+      // produces it is asserted where it can be isolated, in
+      // `packages/db/test/constraints.test.ts`.
+      const results = await Promise.allSettled([
+        inviteAdmin(ctx, admin, "racing@occasion.test"),
+        inviteAdmin(ctx, admin, "racing@occasion.test"),
+      ]);
+
+      const live = await sql<{ id: string }[]>`
+        select id from app.planning_org_admin_invites
+        where email = 'racing@occasion.test' and revoked_at is null and accepted_at is null
+      `;
+
+      expect(live).toHaveLength(1);
+      expect(results.filter((one) => one.status === "fulfilled")).toHaveLength(1);
+    });
+
     it("refuses a non-admin inviting an admin", async () => {
       signInAs("sarah@example.ca");
       const actor = await getActor(ctx);
