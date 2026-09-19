@@ -55,9 +55,14 @@ export function UserRow({
               <span className="capitalize">{user.status}</span>
             </StatusBadge>
 
-            {/* Line 1684: every row can start an email, whatever its status. */}
+            {/* Line 1684: every row can start an email, whatever its status.
+                `to` carries the account, so the email screen opens with this
+                person selected rather than with the whole customer list — the
+                prototype's button navigates and forgets who it came from. The
+                screen resolves the id through the same filters as any send, so
+                an account that cannot be mailed does not appear selected. */}
             <Link
-              href="/admin/email"
+              href={`/admin/email?to=${user.id}`}
               className="oc-button oc-button--ghost oc-button--sm"
               aria-label={`Email ${user.fullName}`}
             >

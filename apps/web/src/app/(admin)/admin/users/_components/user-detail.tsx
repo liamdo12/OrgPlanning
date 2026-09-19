@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Avatar, StatusBadge } from "@occasion/ui";
 import type { UserDetail } from "@occasion/core";
+import { ConsentControl } from "./consent-control";
 import { RoleControls } from "./role-controls";
 import { StatusActionButton } from "./status-action-button";
 import { toneFor } from "./status-tone";
@@ -71,7 +72,10 @@ export function UserDetailPanel({ detail, isSelf }: { detail: UserDetail; isSelf
           ) : (
             <>
               <StatusActionButton userId={user.id} name={user.fullName} action={user.action} />
-              <Link href="/admin/email" className="oc-button oc-button--ghost oc-button--sm">
+              <Link
+                href={`/admin/email?to=${user.id}`}
+                className="oc-button oc-button--ghost oc-button--sm"
+              >
                 Email
               </Link>
             </>
@@ -109,6 +113,8 @@ export function UserDetailPanel({ detail, isSelf }: { detail: UserDetail; isSelf
           />
         )}
       </section>
+
+      <ConsentControl userId={user.id} consent={detail.marketingConsent} />
 
       <section>
         <h3 className="m-0 mb-2 text-[15px] font-bold">Businesses ({memberships.length})</h3>
