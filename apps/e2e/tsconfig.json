@@ -1,0 +1,12 @@
+{
+  "extends": "@occasion/config/tsconfig/node-library.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // The suite runs in Node and evaluates code *in the browser*, through
+    // `page.evaluate`. Those callbacks are ordinary TypeScript in this file and
+    // ordinary DOM code at runtime, so both libraries have to be here.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["fixtures/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
+}
