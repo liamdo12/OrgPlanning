@@ -95,6 +95,15 @@ export type ProviderPaymentIntent = {
   clientSecret: string | null;
   /** The saved card this intent may be charged against again. */
   paymentMethodId: string | null;
+  /**
+   * The last four digits of the card, when the provider reports them.
+   *
+   * The one detail about a payment instrument this domain keeps, and it is here
+   * because a customer whose balance failed has to be told which card to fix.
+   * Null is an ordinary answer — a declined off-session charge does not always
+   * come back with a card attached — and the message says "your card" then.
+   */
+  cardLast4: string | null;
   /** Why it failed, in the provider's words. Never shown raw to a customer. */
   failureCode: string | null;
   failureMessage: string | null;

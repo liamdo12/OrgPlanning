@@ -1,7 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { quoteOffers, quoteRequests } from "@occasion/db/schema";
+import { events, quoteOffers, quoteRequests } from "@occasion/db/schema";
 import { record } from "../audit/service.js";
 import type { CoreContext } from "../context.js";
+import { formatDay, formatShortDay } from "../email/order-facts.js";
+import { queueTransactional } from "../email/service.js";
 import { NotFoundError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 
@@ -44,8 +46,19 @@ export async function expireQuoteRequest(
   quoteRequestId: string,
 ): Promise<QuoteExpiry> {
   return ctx.db.transaction(async (tx) => {
+    // The lock is taken on this row alone, with no join. `for update` may not be
+    // applied to the nullable side of an outer join, and naming the table to
+    // lock instead puts a schema-qualified name where Postgres accepts only a
+    // relation name. The event is read separately, below, where no lock is
+    // wanted anyway — the message quotes it, nothing decides on it.
     const [request] = await tx
-      .select({ id: quoteRequests.id, state: quoteRequests.state })
+      .select({
+        id: quoteRequests.id,
+        state: quoteRequests.state,
+        userId: quoteRequests.userId,
+        eventId: quoteRequests.eventId,
+        expiresAt: quoteRequests.expiresAt,
+      })
       .from(quoteRequests)
       .where(eq(quoteRequests.id, quoteRequestId))
       .limit(1)
@@ -77,6 +90,33 @@ export async function expireQuoteRequest(
         ),
       )
       .returning({ id: quoteOffers.id });
+
+    const [event] = request.eventId
+      ? await tx
+          .select({ name: events.name, eventDate: events.eventDate, isDemo: events.isDemo })
+          .from(events)
+          .where(eq(events.id, request.eventId))
+          .limit(1)
+      : [];
+
+    // The customer is told their request has closed, in the same transaction
+    // that closed it. `event_date` is a calendar date read back in Toronto, so
+    // it is parsed at noon UTC and cannot land on the day before.
+    await queueTransactional(ctx, tx, {
+      templateKey: "quote_expiring",
+      userId: request.userId,
+      values: {
+        event_name: event?.name ?? "your request",
+        event_date: event?.eventDate
+          ? formatDay(new Date(`${event.eventDate}T12:00:00.000Z`))
+          : formatDay(request.expiresAt),
+        quote_expiry: formatShortDay(request.expiresAt),
+        city: "Toronto",
+      },
+      about: quoteRequestId,
+      isDemo: event?.isDemo ?? false,
+      now: ctx.clock.realNow(),
+    });
 
     await record(
       ctx,

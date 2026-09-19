@@ -153,6 +153,10 @@ export type VendorCore = {
   id: string;
   name: string;
   status: VendorStatus;
+  /** Where the business works, which its approval email names. */
+  baseArea: string | null;
+  /** Whether it is demo data, which decides who may deliver its email. */
+  isDemo: boolean;
 };
 
 /**
@@ -168,7 +172,13 @@ export async function loadForUpdate(
   vendorId: string,
 ): Promise<VendorCore | undefined> {
   const [row] = await db
-    .select({ id: vendors.id, name: vendors.name, status: vendors.status })
+    .select({
+      id: vendors.id,
+      name: vendors.name,
+      status: vendors.status,
+      baseArea: vendors.baseArea,
+      isDemo: vendors.isDemo,
+    })
     .from(vendors)
     .where(eq(vendors.id, vendorId))
     .limit(1)

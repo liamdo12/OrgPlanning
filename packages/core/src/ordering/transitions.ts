@@ -207,6 +207,88 @@ export function jobsOnEntering(
 }
 
 /**
+ * The message the customer gets when an order moves, if any.
+ *
+ * The `Email` column of `lifecycle.md`, as a function of the **edge** rather
+ * than the destination — because the destination alone is not enough to know
+ * what to say. `confirmed` is entered three ways, and "your booking is
+ * confirmed" is only true of the first: sending it again fourteen days before
+ * the event, when what actually happened is that a card was charged, buries the
+ * one fact the customer needs under a duplicate of one they already have.
+ *
+ * `action_required` is deliberately absent, and its absence is load-bearing.
+ * That message carries a single-use payment link, which exists only in memory
+ * at the moment the link is minted — a hash is what the database keeps. So it
+ * is queued by the balance path that mints it, and listing it here as well
+ * would send a second copy with an empty link.
+ *
+ * Returning `null` is an ordinary answer. Most moves say nothing: an order
+ * entering `balance_due` is the platform starting a charge, and a customer does
+ * not need an email every time software begins something.
+ */
+export function emailOnEntering(
+  from: OrderState,
+  to: OrderState,
+  shape: OrderShape,
+): EmailOnTransition | null {
+  switch (to) {
+    case "confirmed":
+      // Named edge by edge, never "everything else". `confirmed` is entered
+      // five ways and only three of them are news.
+      //
+      // `issue → confirmed` is the one that makes this a list rather than a
+      // default: resolving a delivery complaint moves the order back, and a
+      // rule of "anything that is not a first deposit is a balance capture"
+      // told that customer their balance had been charged when no money had
+      // moved — and burned the dedupe key, so the real capture a fortnight
+      // later said nothing at all.
+      if (from === "pending_payment") {
+        // `shape` decides which confirmation, for the same reason it decides
+        // whether a balance charge is scheduled: a short-notice or small
+        // booking is paid in full at checkout, and the ordinary confirmation
+        // promises a balance date that such an order does not have.
+        return shape.hasBalance ? "order_confirmed" : "order_confirmed_in_full";
+      }
+      if (from === "balance_due" || from === "action_required") return "balance_charged";
+      return null;
+    case "completed":
+      return "order_completed";
+    case "cancelled":
+      // An abandoned checkout is not a cancellation anybody needs telling
+      // about. Nothing was paid, so the message would say a booking they never
+      // completed is off and that zero dollars are on their way back to a card
+      // that was never charged.
+      return from === "pending_payment" ? null : "order_cancelled";
+    case "refunded":
+      // A cancelled order has already been told, by a message that named the
+      // amount. The refund path moves `cancelled → refunded` in the same
+      // breath, so sending here as well is two emails seconds apart saying the
+      // same thing, which reads as a malfunction at exactly the moment a
+      // customer is least inclined to give the platform the benefit of the
+      // doubt. `completed → refunded` is the case with nothing said yet.
+      return from === "cancelled" ? null : "refund_issued";
+    default:
+      return null;
+  }
+}
+
+/**
+ * The template keys the lifecycle names.
+ *
+ * Kept as a literal union rather than imported from the email package, so that
+ * this module stays what its header says it is: pure, with no context, no
+ * database and no dependency on anything that sends. `email/templates` asserts
+ * the other direction — that every key here exists in the library.
+ */
+export type EmailOnTransition =
+  | "order_confirmed"
+  | "order_confirmed_in_full"
+  | "balance_charged"
+  | "order_completed"
+  | "order_cancelled"
+  | "refund_issued";
+
+/**
  * Whether entering this state cancels the order's queued work.
  *
  * Every ending, including `completed`: an auto-complete job that fires against

@@ -1,5 +1,7 @@
 import { record } from "../audit/service.js";
 import type { CoreContext, DbExecutor } from "../context.js";
+import { formatShortDay, orderEmailFacts } from "../email/order-facts.js";
+import { queueTransactional } from "../email/service.js";
 import { NotFoundError, ValidationError } from "../errors.js";
 import { ANONYMOUS, isAuthenticated, type Actor } from "../identity/actor.js";
 import { assertCanActOnOrder, assertCanPayOrder } from "../identity/policies.js";
@@ -292,7 +294,8 @@ export async function chargeBalance(
     // The card the deposit was taken on is the card the balance is charged to,
     // and the provider is the only place it lives. Without it there is nothing
     // to charge off-session, so the customer is asked instead.
-    return handOffToLink(ctx, actor, order, null);
+    // Nothing to charge, and nothing to name in the message either.
+    return handOffToLink(ctx, actor, order, null, saved?.cardLast4 ?? null);
   }
 
   // An attempt that is still `pending` is one whose outcome this platform never
@@ -344,7 +347,7 @@ export async function chargeBalance(
     now: ctx.clock.realNow(),
   });
 
-  return handOffToLink(ctx, actor, order, attempt.id);
+  return handOffToLink(ctx, actor, order, attempt.id, intent.cardLast4 ?? saved.cardLast4);
 }
 
 /**
@@ -359,6 +362,7 @@ async function handOffToLink(
   actor: Actor,
   order: { id: string; balanceAmount: bigint; currency: string; state: string },
   paymentId: string | null,
+  cardLast4: string | null,
 ): Promise<BalanceResult> {
   const { token, digest } = mintPaymentLinkToken();
 
@@ -380,7 +384,20 @@ async function handOffToLink(
     const existing = await ordering.load(ctx.db, order.id);
     const expiresAt =
       existing?.graceExpiresAt ?? new Date(ctx.clock.now().getTime() + GRACE_HOURS * 3_600_000);
-    await mintLink(ctx.db, expiresAt);
+
+    await ctx.db.transaction(async (tx) => {
+      await mintLink(tx, expiresAt);
+      await queueBalanceFailedEmail(ctx, tx, order.id, {
+        token,
+        expiresAt,
+        cardLast4,
+        // A second decline is a second message, with the new link in it. The
+        // attempt distinguishes them; without it the first email's dedupe key
+        // would swallow the one carrying the link that still works.
+        about: `${order.id}:${paymentId ?? expiresAt.getTime()}`,
+      });
+    });
+
     return { outcome: "action_required", paymentId: paymentId ?? "", link: { token, expiresAt } };
   }
 
@@ -393,10 +410,61 @@ async function handOffToLink(
       // from the same instant rather than from two readings of the clock.
       expiresAt = dates.graceExpiresAt ?? expiresAt;
       await mintLink(tx, expiresAt);
+
+      // Queued here rather than from the lifecycle's own table, because this is
+      // the only place the plaintext token exists — the row keeps a hash. The
+      // deadline in the message is `dates.graceExpiresAt`, the same instant the
+      // `balance_grace_expiry` job will act on, so the email cannot promise
+      // time the order does not have.
+      await queueBalanceFailedEmail(ctx, tx, order.id, {
+        token,
+        expiresAt,
+        cardLast4,
+        about: `${order.id}:${paymentId ?? expiresAt.getTime()}`,
+      });
     },
   });
 
   return { outcome: "action_required", paymentId: paymentId ?? "", link: { token, expiresAt } };
+}
+
+/**
+ * The one message on the platform that carries a bearer credential.
+ *
+ * The link is passed in rather than read back, because only its hash is
+ * stored — by design, so that reading the table gives you links you cannot use.
+ * That also means this is the single moment it can be put in an email, and a
+ * failure here must not undo the state move: the order genuinely is waiting for
+ * payment whether or not the customer was told. So it runs in the same
+ * transaction, where a database failure rolls both back, and the provider is
+ * never called on this path at all — the job does that, later, and retries.
+ */
+async function queueBalanceFailedEmail(
+  ctx: CoreContext,
+  tx: DbExecutor,
+  orderId: string,
+  input: { token: string; expiresAt: Date; cardLast4: string | null; about: string },
+): Promise<void> {
+  const facts = await orderEmailFacts(tx, orderId);
+  if (!facts) return;
+
+  await queueTransactional(ctx, tx, {
+    templateKey: "balance_failed",
+    userId: facts.userId,
+    values: {
+      ...facts.values,
+      grace_deadline: formatShortDay(input.expiresAt),
+      // The provider is the only place a card's last four digits live, and a
+      // declined off-session charge does not always report them. "your card"
+      // is honest where the digits are unknown; leaving the field empty would
+      // refuse the send, and this message is the customer's only way back.
+      card_last4: input.cardLast4 ? `\u2022\u2022\u2022\u2022 ${input.cardLast4}` : "your card",
+      payment_link: new URL(`/pay/${input.token}`, ctx.config.appUrl).toString(),
+    },
+    about: input.about,
+    isDemo: facts.isDemo,
+    now: ctx.clock.realNow(),
+  });
 }
 
 /** The deposit, or the single full payment for a short-notice booking. */
@@ -850,12 +918,19 @@ export async function refundWithinCoolingWindow(
     refunds.push({ id: attempt.id, amount: payment.amount });
   }
 
+  const returned = refunds.reduce((sum, refund) => sum + refund.amount, 0n);
+
+  // The cancellation email is read to find out what happens to the money, so it
+  // has to carry the figure that actually went back rather than the order's own
+  // zero default. The move to `refunded` immediately afterwards sends nothing —
+  // this message has already said the refund is on its way, and two emails
+  // seconds apart saying the same thing is how a booking cancellation reads as
+  // a malfunction.
   await applyTransition(ctx, actor, orderId, "cancelled", {
     action: "order.cancel_within_window",
+    emailValues: { refund_amount: formatMoney(returned, settled[0]?.currency ?? "CAD") },
   });
   await applyTransition(ctx, actor, orderId, "refunded", { action: "payment.refunded" });
-
-  const returned = refunds.reduce((sum, refund) => sum + refund.amount, 0n);
 
   return {
     refundId: refunds[0]?.id as string,
@@ -937,10 +1012,21 @@ export async function recordExternalRefund(
 
   const full = input.amount >= captured;
   if (full && order.state !== "refunded") {
+    const refunded = { refund_amount: formatMoney(input.amount, order.currency) };
+
     if (order.state !== "cancelled") {
-      await applyTransition(ctx, actor, orderId, "cancelled", { action: "order.cancel_refunded" });
+      await applyTransition(ctx, actor, orderId, "cancelled", {
+        action: "order.cancel_refunded",
+        emailValues: refunded,
+      });
     }
-    await applyTransition(ctx, actor, orderId, "refunded", { action: "payment.refunded" });
+    // Only one of the two moves sends anything — whichever the order had not
+    // already been told about. A booking refunded after it completed gets the
+    // refund message; one that was already cancelled was told at the time.
+    await applyTransition(ctx, actor, orderId, "refunded", {
+      action: "payment.refunded",
+      emailValues: refunded,
+    });
   }
 
   return {

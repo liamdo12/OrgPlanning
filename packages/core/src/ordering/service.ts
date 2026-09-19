@@ -13,6 +13,8 @@ import { isAuthenticated } from "../identity/actor.js";
 import { computeOrderMoney } from "../payments/money.js";
 import { buildPaymentPlan } from "../payments/plan.js";
 import * as repo from "./repo.js";
+import { orderEmailFacts } from "../email/order-facts.js";
+import { queueTransactional } from "../email/service.js";
 import {
   DEFAULT_TIMEZONE,
   dueAt,
@@ -23,6 +25,7 @@ import {
 import {
   assertTransition,
   cancelsQueuedJobs,
+  emailOnEntering,
   jobsCancelledOnLeaving,
   jobsOnEntering,
   releasesCapacity,
@@ -376,6 +379,14 @@ export type TransitionOptions = {
    * milliseconds out.
    */
   also?: (tx: DbExecutor, order: repo.OrderRow, dates: TransitionDates) => Promise<void>;
+  /**
+   * Merge values for the move's email that the order row cannot supply.
+   *
+   * A refund amount, for one: the order records what was charged, and how much
+   * of it is going back is the refunding caller's answer. Merged over the facts
+   * read from the row, so a caller can also correct one.
+   */
+  emailValues?: Record<string, string>;
 };
 
 /**
@@ -478,6 +489,34 @@ export async function applyTransition(
       graceExpiresAt: grace?.runAfter ?? null,
       autoCompleteAt: autoComplete?.runAfter ?? null,
     });
+
+    // What the customer is told, queued in the same transaction as the move it
+    // describes. Outside it, a rolled-back confirmation still sends a
+    // confirmation email — and an email is the one thing here that cannot be
+    // undone afterwards.
+    //
+    // Read after `also` has run, so the facts are the post-move ones: a
+    // cancellation quotes the refund the move recorded, not the state before
+    // it.
+    const template = emailOnEntering(order.state, to, {
+      hasBalance: order.balanceAmount > 0n,
+    });
+    if (template) {
+      const facts = await orderEmailFacts(tx, orderId);
+      if (facts) {
+        await queueTransactional(ctx, tx, {
+          templateKey: template,
+          userId: facts.userId,
+          values: { ...facts.values, ...options.emailValues },
+          // The order and the move, so re-entering `confirmed` after an issue
+          // is resolved is a message of its own, while a replayed webhook for
+          // the same move is not.
+          about: `${orderId}:${to}`,
+          isDemo: facts.isDemo,
+          now: ctx.clock.realNow(),
+        });
+      }
+    }
 
     await record(
       ctx,

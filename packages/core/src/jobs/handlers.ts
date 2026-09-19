@@ -5,6 +5,7 @@ import * as ordering from "../ordering/repo.js";
 import { autoComplete, cancelOrder } from "../ordering/service.js";
 import { chargeBalance, transferShare } from "../payments/service.js";
 import { expireQuoteRequest } from "../quotes/service.js";
+import { deliverSend } from "../email/service.js";
 import { isTerminal } from "../ordering/transitions.js";
 import { orderIdOf, type JobRow, type JobType } from "./repo.js";
 
@@ -221,36 +222,38 @@ const expireQuote: JobHandler = async (ctx, actor, job) => {
 /**
  * One queued message.
  *
- * The transactional emails themselves belong to the phase that writes them;
- * this is the delivery step they will queue against, and it calls the port
- * rather than pretending to send. On a deployment with no email adapter
- * configured the port throws and the job retries, which is the honest outcome:
- * the message has not been sent.
+ * The payload carries the rendered message rather than the ingredients for it,
+ * because rendering happened inside the transaction that decided to send: a
+ * confirmation email says what the order was when it was confirmed, not what it
+ * has become by the time the queue gets to it. It also carries the only copy of
+ * anything secret — a single-use payment link — which is why the `email_sends`
+ * row this points at holds the open merge values and nothing else.
+ *
+ * On a deployment with no email adapter configured the port throws, the send is
+ * marked failed and the job retries. That is the honest outcome: the message
+ * has not been sent, and both the queue and the screen say so.
  */
 const sendEmail: JobHandler = async (ctx, _actor, job) => {
-  const { to, subject, html } = job.payload as {
+  const { sendId, to, subject, html } = job.payload as {
+    sendId?: unknown;
     to?: unknown;
     subject?: unknown;
     html?: unknown;
   };
 
-  if (typeof to !== "string" || typeof subject !== "string" || typeof html !== "string") {
-    throw new ValidationError("An email job needs a recipient, a subject and a body.", {
+  if (
+    typeof sendId !== "string" ||
+    typeof to !== "string" ||
+    typeof subject !== "string" ||
+    typeof html !== "string"
+  ) {
+    throw new ValidationError("An email job needs a send, a recipient, a subject and a body.", {
       payload: "invalid",
     });
   }
 
-  const sent = await ctx.email.send({
-    to,
-    subject,
-    html,
-    // The job's dedupe key, which is derived from what the message is about
-    // rather than from when it was queued — so a retry after a timeout asks the
-    // provider to finish the send it already started instead of sending twice.
-    idempotencyKey: job.dedupeKey,
-  });
-
-  return done(`Sent to ${to} (${sent.providerMessageId}).`);
+  const result = await deliverSend(ctx, { sendId, to, subject, html });
+  return done(result.detail);
 };
 
 export const HANDLERS: Record<JobType, JobHandler> = {

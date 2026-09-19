@@ -51,6 +51,51 @@ cancelled       → refunded           the refund settles
 
 `refunded` is the end. Nothing leaves it.
 
+## The Email column, by edge
+
+The table above names a message per state, which is not quite enough:
+`confirmed` is entered three ways and only the first of them is a new booking.
+`emailOnEntering(from, to, shape)` in `transitions.ts` is the exact rule, and
+these are the edges that send anything.
+
+```
+pending_payment → confirmed          order_confirmed          (order has a balance)
+pending_payment → confirmed          order_confirmed_in_full  (paid in full at checkout)
+balance_due     → confirmed          balance_charged
+action_required → confirmed          balance_charged
+issue           → confirmed          —                        (nothing was charged)
+fulfilled       → completed          order_completed          "review unlocked"
+pending_payment → cancelled          —                        (nothing was paid)
+confirmed       → cancelled          order_cancelled          (names the refund amount)
+balance_due     → cancelled          order_cancelled
+action_required → cancelled          order_cancelled
+issue           → cancelled          order_cancelled
+cancelled       → refunded           —                        (already said, with the amount)
+completed       → refunded           refund_issued
+```
+
+Every other edge sends nothing. An order entering `balance_due` is the platform
+starting a charge, and a customer does not need an email each time software
+begins something.
+
+**`cancelled → refunded` is one of those silent edges**, although the state
+table gives `refunded` a message. The refund path moves an order through both in
+the same breath, and the cancellation message already named the amount going
+back — so sending again is two emails seconds apart saying the same thing.
+`completed → refunded` is the case where nothing has been said yet.
+
+**`action_required` is not in that list, and its absence is load-bearing.** Its
+message carries a single-use payment link, which exists in plaintext only at the
+moment it is minted — the database keeps a hash. So `handOffToLink` in
+`payments/service.ts` queues it, inside the same transaction that mints the link
+and starts the grace window, and the deadline in the message is the instant the
+`balance_grace_expiry` job will act on rather than a second reading of the
+clock. Listing it here as well would send a second copy with an empty link.
+
+Every one of these is queued **inside the transaction that made the move**, so
+the message and the fact it describes commit together. A send queued outside it
+is a confirmation email for an order that rolled back.
+
 ## Why the edges that are missing are missing
 
 **No `confirmed → pending_payment`.** Money that has been captured is not
