@@ -273,14 +273,37 @@ export async function markHeld(
  * and re-queueing one would be a second charge or a second payout. Answers
  * whether it moved, so a caller can tell a refusal from a no-op.
  */
-export async function requeue(db: DbExecutor, jobId: string, now: Date): Promise<boolean> {
+/** What the job looked like before it was put back, or undefined if it was not. */
+export type Requeued = { status: JobStatus; heldReason: string | null; attempts: number };
+
+export async function requeue(
+  db: DbExecutor,
+  jobId: string,
+  now: Date,
+): Promise<Requeued | undefined> {
+  // `returning` reports the row as it is *after* the update, so the state being
+  // left behind is read first. It is the only copy: re-queueing clears
+  // `held_reason`, and without this the answer to "why was this parked" is gone
+  // the moment somebody acts on it — from the row and from the log alike.
+  //
+  // Locked, and therefore only correct inside a transaction — which is why the
+  // caller opens one. Unlocked, the runner can move the job between this read
+  // and the update below: the update still succeeds, because `failed` is also
+  // re-queueable, and the entry then records a reason that was already stale
+  // when it was written.
+  const [before] = await db
+    .select({ status: jobs.status, heldReason: jobs.heldReason, attempts: jobs.attempts })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .for("update");
+
   const moved = await db
     .update(jobs)
     .set({ status: "queued", heldReason: null, attempts: 0, runAfter: now, updatedAt: now })
     .where(and(eq(jobs.id, jobId), inArray(jobs.status, ["held", "failed"])))
     .returning({ id: jobs.id });
 
-  return moved.length === 1;
+  return moved.length === 1 ? before : undefined;
 }
 
 /**
