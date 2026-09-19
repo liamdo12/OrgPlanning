@@ -27,6 +27,21 @@ export type CoreConfig = {
   /** Ontario HST, in basis points. Follows the vendor as supplier. */
   hstBps: number;
   currency: "CAD";
+  /**
+   * What the platform calls itself in a message to somebody outside it.
+   *
+   * Configuration rather than a constant because it is the `{{brand_name}}`
+   * merge field, and a merge field with no value refuses the send.
+   */
+  brandName: string;
+  /**
+   * The absolute origin emailed links are built against.
+   *
+   * A relative path is unusable in an email, and a link built from a request
+   * header is built from something the requester controls — which is how a
+   * password-reset link ends up pointing at somebody else's host.
+   */
+  appUrl: string;
 };
 
 /**
@@ -107,6 +122,22 @@ export function createCoreContext(deps: CoreContext): CoreContext {
 
   assertBps("commissionBps", config.commissionBps);
   assertBps("hstBps", config.hstBps);
+
+  if (config.brandName.trim().length === 0) {
+    throw new CoreContextError("brandName must not be empty; it is a merge field in every email.");
+  }
+
+  // Parsed rather than pattern-matched, and required to be absolute: a link in
+  // an email has no page to be relative to.
+  let origin: URL;
+  try {
+    origin = new URL(config.appUrl);
+  } catch {
+    throw new CoreContextError(`appUrl must be an absolute URL, got ${config.appUrl}.`);
+  }
+  if (origin.protocol !== "http:" && origin.protocol !== "https:") {
+    throw new CoreContextError(`appUrl must be http or https, got ${origin.protocol}.`);
+  }
 
   return { ...deps, config: Object.freeze({ ...config }) };
 }

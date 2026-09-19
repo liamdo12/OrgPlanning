@@ -327,6 +327,73 @@ export {
 
 export { expireQuoteRequest, type QuoteExpiry } from "./quotes/service.js";
 
+export {
+  SECOND_CONFIRMATION_ABOVE,
+  getEmailView,
+  listTemplates,
+  liveTemplate,
+  previewTemplate,
+  recordDeliveryEvent as recordEmailDeliveryEvent,
+  marketingConsentFor,
+  saveTemplate,
+  sendBroadcast,
+  setMarketingConsent,
+  sendTest,
+  setAutoSend,
+  unsubscribe,
+  type BroadcastInput,
+  type BroadcastResult,
+  type EmailView,
+  type LiveTemplate,
+  type MarketingConsent,
+  type Preview,
+  type SaveTemplateInput,
+  type SentSummary,
+} from "./email/service.js";
+
+// `queueTransactional` and `deliverSend` are deliberately absent. The first is
+// how the lifecycle attaches a message to a move and takes no actor at all —
+// reachable from a server action, it is a way to send any template to any
+// account with no authority check. The second is the job's delivery step and
+// calls the provider. Both are reachable from `email/service.js` inside this
+// package, which is where their callers are.
+
+export {
+  ACTIVE_WINDOW_DAYS,
+  audienceLabel,
+  describeScope,
+  parseAudience,
+  type Audience,
+  type Recipient,
+  type Scope,
+} from "./email/audience.js";
+
+export {
+  MERGE_FIELDS,
+  isRestricted,
+  mergeField,
+  parseFieldName,
+  sampleValues,
+  type FieldClass,
+  type MergeField,
+} from "./email/fields.js";
+
+export {
+  TEMPLATE_CLASSES,
+  classLabel,
+  parseTemplateAudience,
+  parseTemplateClass,
+  type EmailTemplate,
+  type TemplateAudience,
+  type TemplateClass,
+} from "./email/template.js";
+
+export { builtInTemplate, builtInTemplates, type TemplateKey } from "./email/templates/index.js";
+
+export { escapeHtml, templateHash, type RenderedEmail } from "./email/render.js";
+
+export { emailOnEntering, type EmailOnTransition } from "./ordering/transitions.js";
+
 export { record as recordAudit, type AuditEntry } from "./audit/service.js";
 
 // `createTestCoreContext` is intentionally absent: it lives at

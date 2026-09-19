@@ -7,6 +7,7 @@ import { requireAdmin } from "./service.js";
 import * as repo from "./repo.js";
 import * as adminRepo from "./admin-repo.js";
 import { formatMoney } from "../payments/money.js";
+import { marketingConsentFor, type MarketingConsent } from "../email/repo.js";
 
 /**
  * Account management.
@@ -100,6 +101,15 @@ export type UserDetail = {
   /** Which roles this administrator may still change on this account. */
   grantableRoles: RoleName[];
   revocableRoles: RoleName[];
+  /**
+   * What this account has agreed to receive, or nothing if it never said.
+   *
+   * On the account screen because this is where "why did this person not get
+   * the email" is asked, and because consent is a record with a basis and a
+   * lifetime rather than a flag — so the answer is which of three reasons it
+   * was, not merely yes or no.
+   */
+  marketingConsent: MarketingConsent | null;
 };
 
 /**
@@ -121,11 +131,12 @@ export async function getUserDetail(
   const row = await adminRepo.loadForAdmin(ctx, userId);
   if (!row) throw new NotFoundError("No such account.");
 
-  const [memberships, events, orders, audit] = await Promise.all([
+  const [memberships, events, orders, audit, marketingConsent] = await Promise.all([
     adminRepo.listMemberships(ctx, userId),
     adminRepo.listEvents(ctx, userId),
     adminRepo.listOrders(ctx, userId),
     adminRepo.listAudit(ctx, userId),
+    marketingConsentFor(ctx.db, userId),
   ]);
 
   // `vendor` and `admin` only. Nobody is granted `customer` by an
@@ -143,6 +154,7 @@ export async function getUserDetail(
     audit,
     grantableRoles: manageable.filter((role) => !row.roles.includes(role)),
     revocableRoles: manageable.filter((role) => row.roles.includes(role)),
+    marketingConsent: marketingConsent ?? null,
   };
 }
 
