@@ -1,7 +1,7 @@
 import { record } from "../audit/service.js";
 import * as catalog from "../catalog/repo.js";
 import type { CoreContext, DbExecutor } from "../context.js";
-import { NotFoundError, ValidationError } from "../errors.js";
+import { NotFoundError, UnauthenticatedError, ValidationError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 import {
   assertCanActOnOrder,
@@ -121,8 +121,13 @@ export async function createCheckout(
   request: CheckoutRequest,
   policy: OrderingPolicy = DEFAULT_ORDERING_POLICY,
 ): Promise<CheckoutResult> {
+  // Not a validation failure: there is nothing wrong with what was sent, and a
+  // caller that cannot tell the two apart shows "a booking needs somebody to
+  // belong to" beside the quantity field instead of sending the person to sign
+  // in. `assertCanReadEvent` below is still what refuses an account that exists
+  // but may not act.
   if (!isAuthenticated(actor)) {
-    throw new ValidationError("A booking needs somebody to belong to.", { actor: "anonymous" });
+    throw new UnauthenticatedError();
   }
   if (request.lines.length === 0) {
     throw new ValidationError("A checkout needs at least one service.", { lines: "empty" });

@@ -171,9 +171,17 @@ export {
   shiftCalendarDays,
 } from "./ordering/schedule.js";
 
+// `applyTransition` is deliberately absent, for the same reason `enqueue` is.
+// It is the only function that writes an order state, and it decides nothing:
+// it takes the move it is given, queues the work that move implies, sends the
+// message that move sends, and signs the audit row with whichever actor it was
+// handed. Every legitimate caller has already run a policy on the order before
+// reaching it, and it is reachable from `ordering/service.js` inside this
+// package, where those callers are. On the barrel it would be one import away
+// from a server action that could walk any order to any state.
+
 export {
   DEFAULT_ORDERING_POLICY,
-  applyTransition,
   autoComplete,
   cancelOrder,
   createCheckout,
@@ -184,7 +192,6 @@ export {
   type CheckoutLine,
   type CheckoutRequest,
   type CheckoutResult,
-  type OrderChange,
   type OrderDetail,
   type OrderingPolicy,
 } from "./ordering/service.js";
@@ -325,7 +332,12 @@ export {
   type ReseedBlocker,
 } from "./jobs/admin-service.js";
 
-export { expireQuoteRequest, type QuoteExpiry } from "./quotes/service.js";
+// `expireQuoteRequest` is deliberately absent. It closes a quote request by id
+// and expires the offers standing against it, and it asks nobody's permission —
+// the actor it takes is there to sign the audit row, not to be checked. Its one
+// caller is the `quote_expiry` job handler, inside this package. Exported, it
+// would let any signed-in account close any other customer's open request and
+// withdraw a vendor's live offers, with that account's name on the entry.
 
 export {
   SECOND_CONFIRMATION_ABOVE,
@@ -334,7 +346,6 @@ export {
   liveTemplate,
   previewTemplate,
   recordDeliveryEvent as recordEmailDeliveryEvent,
-  marketingConsentFor,
   saveTemplate,
   sendBroadcast,
   setMarketingConsent,
@@ -351,12 +362,14 @@ export {
   type SentSummary,
 } from "./email/service.js";
 
-// `queueTransactional` and `deliverSend` are deliberately absent. The first is
-// how the lifecycle attaches a message to a move and takes no actor at all —
-// reachable from a server action, it is a way to send any template to any
-// account with no authority check. The second is the job's delivery step and
-// calls the provider. Both are reachable from `email/service.js` inside this
-// package, which is where their callers are.
+// `queueTransactional`, `deliverSend` and `marketingConsentFor` are
+// deliberately absent. The first is how the lifecycle attaches a message to a
+// move and takes no actor at all — reachable from a server action, it is a way
+// to send any template to any account with no authority check. The second is
+// the job's delivery step and calls the provider. The third reads one account's
+// consent record by id and asks nobody's permission; the screen that shows it
+// gets it from `getUserDetail`, which does. All three are reachable from
+// `email/service.js` inside this package, which is where their callers are.
 
 export {
   ACTIVE_WINDOW_DAYS,
