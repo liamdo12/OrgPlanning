@@ -15,6 +15,21 @@ const booleanish = z
   .transform((value) => value === "true");
 
 /**
+ * The same thing, for a variable a deployment may leave out entirely.
+ *
+ * The order matters and is not cosmetic. `booleanish.default("false")` attaches
+ * the default *after* the transform, so an absent variable parses to the string
+ * `"false"` — which is truthy, and would turn every `if (!flag)` gate into a
+ * gate that never closes. Defaulting before the transform feeds the literal
+ * through it and yields a real `false`.
+ */
+const booleanishDefaulting = (fallback: "true" | "false") =>
+  z
+    .union([z.literal("true"), z.literal("false")])
+    .default(fallback)
+    .transform((value) => value === "true");
+
+/**
  * A value that has to be filled in, not copied.
  *
  * `.env.example` ships `replace-me` for the keys only the running stack can
@@ -89,6 +104,17 @@ const envSchema = z
      * already committed to it.
      */
     AUTH_GOOGLE_ENABLED: booleanish,
+
+    /**
+     * Whether anybody may create their own account.
+     *
+     * Closed by default, and closed in the server action rather than only at
+     * the provider: `signUpAction` writes the domain row *before* it calls the
+     * provider, so a provider-side refusal still leaves rows behind — and the
+     * Google path reaches `completeProfileAction`, which is a second way in
+     * that the provider's email toggle does not cover.
+     */
+    AUTH_SIGNUP_OPEN: booleanishDefaulting("false"),
 
     /** Whether an admin may set a clock override at all. */
     ALLOW_CLOCK_OVERRIDE: booleanish,
