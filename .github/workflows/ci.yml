@@ -6,7 +6,10 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded pull-request runs are worth cancelling. A run on the default
+  # branch is not: it ends in a deploy, and cancelling that halfway leaves the
+  # release in whatever state it had reached.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
@@ -237,3 +240,37 @@ jobs:
             exit 1
           fi
           echo "$output" | grep -q "EMAIL_SANDBOX_RECIPIENT"
+
+  deploy:
+    name: deploy to Fly
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Only the default branch, only a real push, and only once everything that
+    # can fail cheaply already has. A red build must never reach the demo.
+    needs: [verify, docker]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    # The deployment is a single machine, so two releases must not overlap.
+    # Queued rather than cancelled: the later commit is the one that should win,
+    # and it should win by being deployed after, not by interrupting.
+    concurrency:
+      group: deploy-planning-org
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # `--remote-only` builds on Fly's builder rather than this runner, so the
+      # image that ships is built the same way whoever deploys it.
+      #
+      # This does not carry secrets: `fly secrets` already holds them, and the
+      # boot gate refuses a machine whose configuration is incomplete. A release
+      # that cannot boot fails here rather than reporting success, because
+      # `fly.toml` declares a health check — without one Fly creates the machine,
+      # watches it restart forever, and calls that a successful deploy.
+      - name: fly deploy
+        run: flyctl deploy --remote-only --ha=false
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
