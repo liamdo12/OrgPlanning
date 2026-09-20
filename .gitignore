@@ -35,3 +35,8 @@ design/
 docs/
 business-proposal.md
 Planning Org App - Fall 2026.pdf
+stripe_info.md
+
+# Editor local-history snapshots. They mirror whatever was open, including
+# ignored files, so an untracked copy of a secret ends up here.
+.history/

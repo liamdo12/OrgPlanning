@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "./client.js";
-import { users, vendors } from "./schema/identity.js";
+import { userRoles, users, vendors } from "./schema/identity.js";
 
 /**
  * Support for giving seeded accounts provider logins.
@@ -111,4 +111,91 @@ export async function setDemoConnectedAccount(
       stripePayoutsEnabled: null,
     })
     .where(eq(vendors.id, vendorId));
+}
+
+/** Why a rebind was refused, so the caller can say something useful. */
+export class RebindRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RebindRefused";
+  }
+}
+
+/**
+ * Points a seeded demo identity at a real person's address.
+ *
+ * An invited tester wants a demo with something in it — orders, events, a
+ * history — which means landing on a seeded row rather than an empty one. That
+ * is a privileged write, so it lives here with the other guarded ones rather
+ * than in a script, and it refuses three things:
+ *
+ * **A row that is not demo data.** A real person's account is not a seat to be
+ * handed out.
+ *
+ * **A row that holds a role nobody may give themselves.** Every seeded row
+ * carries a role, so refusing all of them would refuse every identity worth
+ * inheriting. What matters is *which* role: `customer` and `vendor` are the two
+ * a person picks for themselves at signup, so landing on one grants nothing
+ * they could not have taken. `admin` is the opposite — handing somebody
+ * `admin@occasion.test` is a platform-administrator grant with no token, no
+ * typed confirmation and no audit entry. Anything outside the self-assignable
+ * pair is refused, and privileged roles are granted through the audited invite
+ * flow or not at all.
+ *
+ * **An address already in use.** `email` is unique; a collision would surface
+ * as a constraint error from somewhere far less clear.
+ *
+ * Clearing the provider binding is the caller's responsibility to earn: delete
+ * the provider account for the row's *current* address first. A binding cleared
+ * while its account still exists leaves two live provider identities resolving
+ * to one row, and whichever binds first wins while the other is silently
+ * nobody.
+ */
+export async function rebindDemoAccountEmail(
+  db: Db,
+  input: { userId: string; email: string },
+): Promise<{ id: string; previousEmail: string; email: string }> {
+  const email = input.email.trim().toLowerCase();
+
+  const [row] = await db
+    .select({ id: users.id, email: users.email, isDemo: users.isDemo })
+    .from(users)
+    .where(eq(users.id, input.userId))
+    .limit(1);
+
+  if (!row) throw new RebindRefused(`No user ${input.userId}.`);
+  if (!row.isDemo) throw new RebindRefused(`${row.email} is not demo data.`);
+
+  const roles = await db
+    .select({ role: userRoles.role })
+    .from(userRoles)
+    .where(eq(userRoles.userId, row.id));
+
+  // Kept in step with `SELF_ASSIGNABLE_ROLES` in the domain, which this package
+  // may not import. The pair is small and the consequence of drifting is loud:
+  // a role that becomes self-assignable and is not added here only makes this
+  // function stricter than it needs to be, never laxer.
+  const selfAssignable = new Set(["customer", "vendor"]);
+  const privileged = roles.map((r) => r.role).filter((role) => !selfAssignable.has(role));
+
+  if (privileged.length > 0) {
+    throw new RebindRefused(
+      `${row.email} holds ${privileged.join(", ")}, which nobody may give themselves. ` +
+        "Grant a privileged role through the audited invite flow, never by handing somebody a row that already has one.",
+    );
+  }
+
+  const [taken] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+
+  if (taken && taken.id !== row.id) {
+    throw new RebindRefused(`${email} already belongs to another account.`);
+  }
+
+  await db.update(users).set({ email, authProviderSub: null }).where(eq(users.id, row.id));
+
+  return { id: row.id, previousEmail: row.email, email };
 }

@@ -53,11 +53,18 @@ the single place where access decisions are made — which is also what the
 eventual move off this host needs, since there is no provider-specific policy
 language to port.
 
-**`BYPASSRLS` needs superuser to grant, and not every managed Postgres allows
-it.** Where it is refused, the migration **fails** with a hint rather than
-continuing: an application role that is neither `BYPASSRLS` nor a member of
-`app_owner` reads zero rows from every table, and that surfaces as "every admin
-screen is empty" with no error anywhere.
+**Granting `BYPASSRLS` does not need a superuser, and the migration no longer
+asks for one.** From PostgreSQL 16 a role with `CREATEROLE` may grant any
+attribute it holds itself, so a non-superuser administrator that has
+`BYPASSRLS` can pass it on — which is what managed hosts provide in place of a
+superuser. Asking `rolsuper` refused hosts that were perfectly capable, so the
+migration now attempts the `ALTER ROLE` and treats a refusal as the answer.
+
+Where it genuinely is refused — an older major, or a host that withholds the
+attribute — the migration **fails** with a hint rather than continuing: an
+application role that is neither `BYPASSRLS` nor a member of `app_owner` reads
+zero rows from every table, and that surfaces as "every admin screen is empty"
+with no error anywhere.
 
 The remedy the hint names is `GRANT app_owner TO app_rw` before migrating,
 which exempts `app_rw` by ownership. That also hands the application role DDL
@@ -65,6 +72,15 @@ over the schema, which is a real trade-off — so it is an explicit operator
 decision, not something a migration does quietly on your behalf. Verified on a
 non-superuser Postgres with `BYPASSRLS` unavailable: the migration refuses, and
 after the grant it completes and `app_rw` reads normally.
+
+Also verified on PostgreSQL 17, from a cold start with neither role present, as
+a role with `NOSUPERUSER CREATEROLE BYPASSRLS` — the attributes a managed host
+gives its administrator: all twelve migrations apply, `app_rw` ends up holding
+`BYPASSRLS` directly rather than by membership, and a table created afterwards
+by the migrating role inherits `app_rw`'s DML through `ALTER DEFAULT
+PRIVILEGES`. It does **not** inherit row-level security, which every migration
+that adds a table must enable for itself; `test/rls.test.ts` is what catches
+forgetting.
 
 `test/rls.test.ts` enumerates `pg_tables` rather than a fixed list, so a future
 migration that adds a table without a grant fails there. Note what it does

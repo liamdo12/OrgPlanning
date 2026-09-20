@@ -8,8 +8,11 @@ node_modules
 
 .git
 .github
-.env
-.env.*
+# Anchored recursively on purpose: a bare `.env.*` matches only the context
+# root, so `apps/web/.env.local` would be copied into the build layer — and into
+# the remote builder's cache, where rotating the values is the only remedy.
+**/.env
+**/.env.*
 !.env.example
 
 # Reference material and planning records — not part of the image.

@@ -183,6 +183,13 @@ export async function completeProfileAction(
   _previous: AuthActionState,
   form: FormData,
 ): Promise<AuthActionState> {
+  // The other way in: a provider round trip that finds no bound row lands on
+  // /welcome, and this is what it posts to. Closing the email form alone would
+  // leave it open.
+  if (signupClosed()) {
+    return { error: "This deployment is invitation only." };
+  }
+
   const ctx = createRequestContext();
   const next = safeRedirectPath(readString(form, "next"), "/");
   const supabase = await createSupabaseServerClient();
@@ -263,10 +270,29 @@ export async function switchRoleAction(form: FormData): Promise<void> {
   revalidatePath("/", "layout");
 }
 
+/**
+ * Whether account creation is open on this deployment.
+ *
+ * An authorization decision, not a matter of what the screen offers. Both ways
+ * in are gated on it and both gate *first*: `signUpAction` commits the domain
+ * row before it reaches the provider, so refusing later still leaves rows
+ * behind — unbounded, since neither path consumes a rate-limit bucket — and
+ * `signUp` adopts any unverified row with no provider subject, which deletes
+ * that row's roles. A closed deployment must therefore never reach either.
+ */
+function signupClosed(): boolean {
+  return !getEnv().AUTH_SIGNUP_OPEN;
+}
+
 export async function signUpAction(
   _previous: AuthActionState,
   form: FormData,
 ): Promise<AuthActionState> {
+  // Before anything is read, and long before anything is written.
+  if (signupClosed()) {
+    return { error: "This deployment is invitation only." };
+  }
+
   const ctx = createRequestContext();
   const email = readString(form, "email").trim().toLowerCase();
   const password = readString(form, "password");

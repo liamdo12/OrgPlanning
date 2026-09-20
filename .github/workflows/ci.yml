@@ -98,6 +98,7 @@ jobs:
       # provider, because the container is only asked to boot and serve a page.
       BASE_ENV: >-
         -e AUTH_GOOGLE_ENABLED=false
+        -e AUTH_SIGNUP_OPEN=false
         -e DATABASE_URL=postgresql://u:p@127.0.0.1:5432/postgres
         -e SUPABASE_URL=http://127.0.0.1:54321
         -e SUPABASE_ANON_KEY=ci-anon

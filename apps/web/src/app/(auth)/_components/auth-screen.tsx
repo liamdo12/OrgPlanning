@@ -53,11 +53,18 @@ export function AuthScreen({
   mode,
   next,
   googleEnabled,
+  signupOpen = true,
   notice,
 }: {
   mode: "login" | "signup";
   next: string;
   googleEnabled: boolean;
+  /**
+   * Whether this deployment lets anybody create an account. Courtesy only —
+   * the refusal lives in the server action, so a form posted from a stale page
+   * or by hand is refused just the same.
+   */
+  signupOpen?: boolean;
   /** Why the person was sent back here, when something sent them. */
   notice?: string | undefined;
 }) {
@@ -68,6 +75,7 @@ export function AuthScreen({
     INITIAL,
   );
   const copy = COPY[mode];
+  const closed = mode === "signup" && !signupOpen;
 
   return (
     <main className="mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-4 py-12 desk:grid-cols-2 desk:gap-16">
@@ -147,7 +155,14 @@ export function AuthScreen({
           </>
         ) : null}
 
-        <form action={formAction} className="grid gap-4">
+        {closed ? (
+          <p className="text-row text-body">
+            Accounts on this deployment are created by invitation. If you are expecting one, it
+            arrives by email with a link that signs you in.
+          </p>
+        ) : null}
+
+        <form action={formAction} className="grid gap-4" hidden={closed}>
           <input type="hidden" name="next" value={next} />
 
           {mode === "signup" ? <RoleChoice error={state.fieldErrors?.["role"]} /> : null}

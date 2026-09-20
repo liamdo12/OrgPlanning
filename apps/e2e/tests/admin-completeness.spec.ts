@@ -148,7 +148,10 @@ test("the analytics screen answers the operator's questions", async ({ page }) =
   // The period is in the URL, so a view somebody is looking at has a link.
   await page.getByRole("button", { name: "All time" }).click();
   await expect(page).toHaveURL(/period=all/);
-  await expect(page.getByText("all time")).toBeVisible();
+  // The freshness line, not a bare "all time": that phrase also appears on the
+  // chip and on every card heading, so matching it loosely resolves to several
+  // elements and asserts nothing about which period was actually rendered.
+  await expect(page.getByText(/^As of .+· all time$/)).toBeVisible();
 });
 
 test("a rate an administrator sets is the rate that is in force", async ({ page }) => {
