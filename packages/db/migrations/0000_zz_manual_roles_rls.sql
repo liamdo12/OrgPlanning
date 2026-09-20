@@ -94,14 +94,30 @@ $$;
 GRANT "app_owner" TO CURRENT_USER;
 
 -- app_rw must be exempt from the deny-all policy set, or the application reads
--- nothing. BYPASSRLS needs superuser to grant; where it is unavailable the
--- alternative is to make app_rw a member of app_owner, which also hands the
--- application role DDL over the schema. That is a real trade-off and not one a
--- migration should make silently, so this fails and says so instead.
+-- nothing. The exemption is BYPASSRLS; the alternative is to make app_rw a
+-- member of app_owner, which also hands the application role DDL over the
+-- schema. That is a real trade-off and not one a migration should make
+-- silently, so a host that can do neither fails and says so instead.
+--
+-- Granting BYPASSRLS does not require superuser. From PostgreSQL 16 a role with
+-- CREATEROLE may grant any attribute it holds itself, so a non-superuser
+-- administrator that has BYPASSRLS can pass it on — which is what managed hosts
+-- provide instead of a superuser. Asking `rolsuper` therefore refuses a host
+-- that is perfectly capable, so ask the only question that settles it: try it.
+-- Before 16, and on any host that withholds the attribute, the ALTER raises
+-- insufficient_privilege and the membership branch below is the answer.
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolsuper) THEN
+  BEGIN
     ALTER ROLE "app_rw" BYPASSRLS;
+  EXCEPTION WHEN insufficient_privilege OR feature_not_supported THEN
+    -- Not fatal here. The branches below decide whether an exemption exists by
+    -- some other route, and only then give up.
+    NULL;
+  END;
+
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_rw' AND rolbypassrls) THEN
+    RAISE NOTICE 'app_rw holds BYPASSRLS and is exempt from RLS';
   ELSIF EXISTS (
     SELECT 1 FROM pg_auth_members m
     JOIN pg_roles owner ON owner.oid = m.roleid AND owner.rolname = 'app_owner'
@@ -112,7 +128,7 @@ BEGIN
     RAISE EXCEPTION USING
       MESSAGE = 'cannot grant BYPASSRLS to app_rw and app_rw is not a member of app_owner',
       DETAIL  = 'Row-level security is deny-all. Without an exemption the application reads zero rows from every table.',
-      HINT    = 'Run as a superuser, or GRANT app_owner TO app_rw before migrating and accept that the application role gains DDL over the app schema.';
+      HINT    = 'Migrate as a role that holds BYPASSRLS on PostgreSQL 16 or later, or GRANT app_owner TO app_rw before migrating and accept that the application role gains DDL over the app schema.';
   END IF;
 END
 $$;
