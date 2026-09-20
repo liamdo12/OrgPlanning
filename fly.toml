@@ -16,10 +16,14 @@ primary_region = "sjc"
   internal_port = 3000
   force_https = true
   min_machines_running = 0
-  # auto_stop_machines / auto_start_machines are deliberately left at Fly's
-  # defaults. The platform timer decides them: a five-minute tick keeps the
-  # machine permanently awake, in which case stopping saves nothing and only
-  # buys a cold start on every tick.
+
+  # The platform timer calls this app every five minutes, so the machine is
+  # never idle for long enough for stopping to save anything — it would simply
+  # stop and be woken again, paying a measured 5.8s cold start each time, and
+  # handing that same delay to whichever tester happened to arrive first.
+  # Started, and left started.
+  auto_stop_machines = "off"
+  auto_start_machines = true
 
   # Without this, a release that cannot boot still deploys "successfully": the
   # machine is created, the process exits 1, Fly restarts it forever, and the
