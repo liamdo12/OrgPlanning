@@ -1,0 +1,38 @@
+# The demo deployment. One machine, one region, no secrets in this file —
+# everything sensitive is set with `fly secrets set` and arrives as an
+# environment variable at run time.
+
+app = "planning-org"
+
+# Co-located with the Supabase project in us-west-2. Not Toronto: an
+# authenticated render makes three indexed queries before it draws anything, so
+# the app belongs next to its database rather than next to its audience.
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  min_machines_running = 0
+  # auto_stop_machines / auto_start_machines are deliberately left at Fly's
+  # defaults. The platform timer decides them: a five-minute tick keeps the
+  # machine permanently awake, in which case stopping saves nothing and only
+  # buys a cold start on every tick.
+
+  # Without this, a release that cannot boot still deploys "successfully": the
+  # machine is created, the process exits 1, Fly restarts it forever, and the
+  # app is simply down while `fly deploy` reports success. Measured on a
+  # throwaway app. A check makes the release wait for a machine that answers.
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval = "30s"
+    timeout = "5s"
+    method = "GET"
+    path = "/"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
