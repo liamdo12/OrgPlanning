@@ -359,13 +359,18 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     reviewCount: service.reviews,
     toneStart: service.tone[0],
     toneEnd: service.tone[1],
+    policyTemplateId: seedId(`policy:${service.policyTier}`),
   }));
   await db
     .insert(s.services)
     .values(serviceRows)
     .onConflictDoUpdate({
       target: s.services.id,
-      set: { title: sql`excluded.title`, basePrice: sql`excluded.base_price` },
+      set: {
+        title: sql`excluded.title`,
+        basePrice: sql`excluded.base_price`,
+        policyTemplateId: sql`excluded.policy_template_id`,
+      },
     });
   counts["services"] = serviceRows.length;
 

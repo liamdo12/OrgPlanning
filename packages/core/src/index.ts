@@ -24,6 +24,7 @@ export type {
 
 export {
   AppError,
+  CapacityConflictError,
   ForbiddenError,
   NotFoundError,
   RateLimitedError,
@@ -88,6 +89,7 @@ export {
 export type { UserFilter } from "./identity/admin-repo.js";
 
 export {
+  assertCanActOnEvent,
   assertCanActOnOrder,
   assertCanActOnUser,
   assertCanActOnVendor,

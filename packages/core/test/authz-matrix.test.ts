@@ -454,6 +454,7 @@ const REGISTRY: readonly Entry[] = [
  * is a label on a row rather than a row it reads.
  */
 const NOT_IN_MATRIX: Readonly<Record<string, string>> = {
+  assertCanActOnEvent: "A policy. Asserted directly in policies.test.ts.",
   assertCanActOnOrder: "A policy. Asserted directly in policies.test.ts.",
   assertCanActOnUser: "A policy. Asserted directly in policies.test.ts.",
   assertCanActOnVendor: "A policy. Asserted directly in policies.test.ts.",
