@@ -6,17 +6,17 @@ restating it. Four defects were traced to the lifecycle living as prose
 fragments in several places at once, so `transitions.ts` is generated from this
 table by hand and asserted against it in `transitions.test.ts`.
 
-| State             | Entered when                                      | Capacity            | Jobs enqueued                                                  | Email                                | Money                         |
-| ----------------- | ------------------------------------------------- | ------------------- | -------------------------------------------------------------- | ------------------------------------ | ----------------------------- |
-| `pending_payment` | checkout created                                  | held (soft, 30 min) | `expire_unpaid` (+30m)                                         | —                                    | deposit PaymentIntent created |
-| `confirmed`       | webhook `payment_intent.succeeded`                | **locked**          | `cooling_window_transfer` (+48h), `charge_balance` (event−14d) | order confirmed                      | deposit captured              |
-| `balance_due`     | balance job starts                                | locked              | —                                                              | —                                    | off-session charge attempted  |
-| `action_required` | balance charge declined / needs 3DS               | locked              | `balance_grace_expiry` (+72h)                                  | balance failed **with payment link** | none                          |
-| `issue`           | customer or admin flags a problem                 | locked              | transfers **paused**                                           | —                                    | payouts held                  |
-| `fulfilled`       | admin or vendor marks done                        | consumed            | `auto_complete_order` (event_end + 72h)                        | —                                    | none                          |
-| `completed`       | auto-complete job                                 | consumed            | —                                                              | review unlocked                      | balance share transferred     |
-| `cancelled`       | 48h cooling-window cancel, grace expiry, or admin | **released**        | pending jobs cancelled                                         | cancellation                         | refund per §8.3               |
-| `refunded`        | refund settles                                    | released            | pending jobs cancelled                                         | refund issued                        | refund recorded               |
+| State             | Entered when                                      | Capacity            | Jobs enqueued                                                     | Email                                | Money                         |
+| ----------------- | ------------------------------------------------- | ------------------- | ----------------------------------------------------------------- | ------------------------------------ | ----------------------------- |
+| `pending_payment` | checkout created                                  | held (soft, 30 min) | `expire_unpaid` (+30m)                                            | —                                    | deposit PaymentIntent created |
+| `confirmed`       | webhook `payment_intent.succeeded`                | **locked**          | `cooling_window_transfer` (+48h), `charge_balance` (event − lead) | order confirmed                      | deposit captured              |
+| `balance_due`     | balance job starts                                | locked              | —                                                                 | —                                    | off-session charge attempted  |
+| `action_required` | balance charge declined / needs 3DS               | locked              | `balance_grace_expiry` (+72h)                                     | balance failed **with payment link** | none                          |
+| `issue`           | customer or admin flags a problem                 | locked              | transfers **paused**                                              | —                                    | payouts held                  |
+| `fulfilled`       | admin or vendor marks done                        | consumed            | `auto_complete_order` (event_end + 72h)                           | —                                    | none                          |
+| `completed`       | auto-complete job                                 | consumed            | —                                                                 | review unlocked                      | balance share transferred     |
+| `cancelled`       | 48h cooling-window cancel, grace expiry, or admin | **released**        | pending jobs cancelled                                            | cancellation                         | refund per §8.3               |
+| `refunded`        | refund settles                                    | released            | pending jobs cancelled                                            | refund issued                        | refund recorded               |
 
 ## The moves, and only these
 
@@ -135,19 +135,27 @@ order is a date the vendor can never sell again.
 
 Enqueued on entering, with the anchor each offset is measured from:
 
-| Job                       | Enqueued on entering                     | Due                        |
-| ------------------------- | ---------------------------------------- | -------------------------- |
-| `expire_unpaid`           | `pending_payment`                        | now + 30 minutes           |
-| `cooling_window_transfer` | `confirmed`, from `pending_payment` only | deposit capture + 48 hours |
-| `charge_balance`          | `confirmed`, from `pending_payment` only | event − 14 calendar days   |
-| `balance_grace_expiry`    | `action_required`                        | now + 72 hours             |
-| `auto_complete_order`     | `fulfilled`                              | event end + 72 hours       |
+| Job                       | Enqueued on entering                     | Due                                       |
+| ------------------------- | ---------------------------------------- | ----------------------------------------- |
+| `expire_unpaid`           | `pending_payment`                        | now + 30 minutes                          |
+| `cooling_window_transfer` | `confirmed`, from `pending_payment` only | deposit capture + 48 hours                |
+| `charge_balance`          | `confirmed`, from `pending_payment` only | event − `balance_lead_days` calendar days |
+| `balance_grace_expiry`    | `action_required`                        | now + 72 hours                            |
+| `auto_complete_order`     | `fulfilled`                              | event end + 72 hours                      |
+
+`balance_lead_days` is a platform setting, not a constant: an administrator
+edits it on the settings screen, and the offset above is read from it at the
+moment the job is scheduled. The order's own `balance_due_at` is written from
+that same reading, which is what stops a booking promising a date no queued job
+is working to. The other offsets in this table are **not** settings — they are
+the specification, and the settings screen says so rather than offering a field
+that would do nothing.
 
 `charge_balance` is enqueued only when the order **has** a balance. A
 short-notice or small booking is paid in full at checkout, and scheduling a
-balance charge for one is not merely redundant: its due date is `event − 14
-days`, which for a short-notice booking is already in the past, so the job is
-immediately due and fails every time the runner picks it up.
+balance charge for one is not merely redundant: its due date is that many days
+before the event, which for a short-notice booking is already in the past, so
+the job is immediately due and fails every time the runner picks it up.
 
 `cooling_window_transfer` and `charge_balance` are enqueued only on the first
 entry into `confirmed` — the one from `pending_payment`. Coming back from
