@@ -26,6 +26,20 @@ const componentsCss = read("components.css");
  * utilities` is declared by `@import "tailwindcss"`.
  */
 
+/**
+ * The declarations of one rule, by its exact selector.
+ *
+ * Whitespace-insensitive on the selector and returned verbatim, so a case can
+ * say which declaration is missing rather than "the file does not contain this
+ * string" — which is what a `toContain` on the whole stylesheet says, and it
+ * says it identically whether the rule is absent or merely different.
+ */
+function declarationsOf(css: string, selector: string): string | undefined {
+  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[},])\\s*${escaped}\\s*\\{([^}]*)\\}`, "m").exec(withoutComments)?.[2];
+}
+
 /** Strips comments, then walks braces to find rules at depth 0. */
 function unlayeredRules(css: string): string[] {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -66,6 +80,37 @@ describe("design system stylesheets", () => {
     const css = componentsCss;
     expect(css).toContain("@layer components {");
     expect(unlayeredRules(css)).toEqual([]);
+  });
+
+  /**
+   * The disabled primary button, read off the stylesheet rather than computed.
+   *
+   * `contrast.test.ts` can only say that two hexes clear AA. It never opens
+   * this file, so it would go on passing over a pair the rendered button does
+   * not use — and it would be a pair the button does not use, because
+   * `.oc-button:disabled` sets `opacity: 0.55` on every variant and composites
+   * any colour written under it back down. The pair at 0.55 is 2.61:1, which is
+   * no better than the 2.32:1 it replaced.
+   *
+   * So the ratio is asserted there and the rule is asserted here, and it takes
+   * both to mean anything.
+   */
+  it("gives a disabled primary button its own colours and stops fading it", () => {
+    const rule = declarationsOf(componentsCss, ".oc-button--primary:disabled");
+
+    expect(rule, "no rule for a disabled primary button").toBeDefined();
+    expect(rule).toMatch(/background:\s*var\(--color-disabled-bg\)/);
+    expect(rule).toMatch(/color:\s*var\(--color-disabled-fg\)/);
+    expect(rule).toMatch(/opacity:\s*1\s*;/);
+  });
+
+  it("still fades every other disabled button, which is what the reset is for", () => {
+    // If this ever stops being true the reset above is dead weight rather than
+    // load-bearing, and whoever removes it should have to notice.
+    const base = declarationsOf(componentsCss, ".oc-button:disabled");
+
+    expect(base).toBeDefined();
+    expect(base).toMatch(/opacity:\s*0?\.\d+/);
   });
 
   it("never writes component styles into the utilities layer", () => {

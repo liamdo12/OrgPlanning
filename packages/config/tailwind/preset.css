@@ -40,6 +40,8 @@
   --color-chip: rgb(255 255 255 / 0.5);
   /** Hairlines between rows. Line 920. */
   --color-hairline: rgb(31 42 36 / 0.06);
+  /** The unfilled part of a progress bar — the event hub's budget. Line 895. */
+  --color-track: #efe9df;
   /** Scrollbar thumb. Line 210. */
   --color-scrollbar: #dcd4c7;
 
@@ -79,6 +81,55 @@
   --color-role-hover: #2e5127;
   --color-role-tint: #f2f7ec;
 
+  /**
+   * Secondary text on a role-coloured fill. Line 577.
+   *
+   * One value where the prototype has three. Its other two — `#C3D9AE` on the
+   * hero eyebrow (line 575) and `#CDDEBB` on the payment labels (lines
+   * 924–927) — measure 4.13:1 and 4.40:1 on the customer fill, both under AA
+   * at the sizes they are set in. This one is 4.91:1, and it is what they
+   * collapse into rather than a fourth colour invented to replace them.
+   *
+   * It is a **customer-surface** value despite the name: on the vendor fill it
+   * measures 4.18:1 and does not clear AA, so a vendor screen wanting muted
+   * text on a role fill needs its own measurement rather than this.
+   */
+  --color-on-role-muted: #dce8ce;
+
+  /* --- marks ----------------------------------------------------------- */
+
+  /**
+   * The save heart on a service card. Line 2277.
+   *
+   * Numerically the vendor role primary, and deliberately not that variable: a
+   * customer screen is themed `customer`, so reading `--color-role` there would
+   * draw a green heart, and reading the vendor theme's value from a customer
+   * surface is a coincidence waiting to be broken by a rebrand.
+   */
+  --color-save: #c2374b;
+
+  /* --- disabled -------------------------------------------------------- */
+
+  /*
+   * A disabled primary button. Line 2432, where the prototype draws the
+   * checkout's Pay button before the agreement is ticked.
+   *
+   * A pair, like the status colours, because the two are only legible together:
+   * the foreground happens to equal `--color-body` today and they are still two
+   * tokens, since one is secondary text on the page and the other is a label on
+   * a fill, and collapsing them would let a change to body text move a ratio
+   * `packages/ui/test/contrast.test.ts` asserts by its own number.
+   *
+   * These exist because the blanket `opacity: 0.55` renders a primary button's
+   * label at 2.32:1 — under even the 3:1 graphics floor — and the checkout's
+   * Pay button is disabled on arrival, which makes it the most-seen disabled
+   * control in the product. `.oc-button--primary:disabled` also resets the
+   * opacity; composited at 0.55 this pair is 2.61:1 and no better than what it
+   * replaced.
+   */
+  --color-disabled-bg: #dde3df;
+  --color-disabled-fg: #3c4a43;
+
   /* --- status ---------------------------------------------------------- */
 
   /*
@@ -99,6 +150,14 @@
 
   /** Pills, chips and avatars. Line 227. */
   --radius-pill: 999px;
+  /**
+   * Small tinted blocks: a where-suggestion row, a category tone, a detail
+   * thumbnail. Lines 309, 475, 615.
+   *
+   * Not a step on the scale — it sits between the pill and the card — but it is
+   * used in three places, which is one more than a literal survives.
+   */
+  --radius-tile: 14px;
   /** Inputs, small cards, secondary buttons. Line 263. */
   --radius-card: 16px;
   /** Primary buttons. Line 474. */
@@ -146,15 +205,36 @@
   --text-badge: 11.5px;
   /** Bottom-tab labels. Line 230. */
   --text-tab: 10.5px;
+  /**
+   * Uppercase field labels, in both forms, the search panel and the booked
+   * strip. Line 982.
+   *
+   * Size only. The canvas tracks these at `0.06em` in some places and `0.08em`
+   * in others, so the tracking stays where it is set rather than becoming a
+   * token that is wrong half the time.
+   */
+  --text-label: 12px;
+  /** A panel heading inside a card. Lines 918, 1148, 1170. */
+  --text-subhead: 17px;
+  /** An `h2` on the detail and hub screens. Lines 784, 798, 804, 898. */
+  --text-section: 19px;
+  /** The detail aside's headline price. Line 816. */
+  --text-price: 22px;
 
   /* --- layout ---------------------------------------------------------- */
 
   /*
-   * The prototype has exactly one breakpoint: `S.vw < 860` is mobile and
-   * everything else is desktop (line 1989). Reproducing that as a single
-   * `desk:` variant keeps our layouts switching where the prototype's do.
+   * Two breakpoints, and only two.
+   *
+   * `S.vw < 860` is the prototype's mobile/desktop switch (line 1989), and the
+   * `desk:` variant reproduces it so our layouts change where the prototype's
+   * do. The header's search control adds a third layout state at a second
+   * width: the pill shows at `S.vw >= 1080` and the compact button below it
+   * (lines 2320–2321), which `desk:` cannot express. Without the token that
+   * number is a literal in every shell file that has to agree with it.
    */
   --breakpoint-desk: 860px;
+  --breakpoint-wide: 1080px;
 
   /* --- motion ---------------------------------------------------------- */
 

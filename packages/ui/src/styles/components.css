@@ -91,6 +91,26 @@
     color: var(--color-surface);
   }
 
+  /*
+   * A disabled primary button takes a colour pair rather than being faded.
+   *
+   * Fading is what the rule above does to every other variant, and on this one
+   * it renders the label at 2.32:1 — under even the 3:1 graphics floor. The
+   * checkout's Pay button is disabled until the agreement is ticked (line
+   * 2432), which makes it the most-seen disabled control in the product.
+   *
+   * `opacity: 1` is the load-bearing half. Setting colours does not override
+   * the base rule, it composites through it: this pair at 0.55 measures 2.61:1,
+   * the same failure in a different colour. The stylesheet test reads this rule
+   * for all three declarations precisely because the two tokens look like the
+   * whole fix and are not.
+   */
+  .oc-button--primary:disabled {
+    background: var(--color-disabled-bg);
+    color: var(--color-disabled-fg);
+    opacity: 1;
+  }
+
   .oc-button--primary:hover:not(:disabled) {
     background: var(--color-role-hover);
   }
@@ -257,6 +277,20 @@
   .oc-section-link[aria-current="page"] {
     border-bottom-color: var(--color-role);
     color: var(--color-ink);
+  }
+
+  /*
+   * A section that is named but not built yet. It keeps its place in the row so
+   * the navigation does not rearrange when it arrives, and it stays focusable
+   * so that its `title` — the only statement of *why* — is reachable without a
+   * mouse. Hover must not promise anything.
+   */
+  .oc-section-link[aria-disabled="true"],
+  .oc-section-link[aria-disabled="true"]:hover {
+    cursor: not-allowed;
+    color: var(--color-body);
+    opacity: 0.55;
+    border-bottom-color: transparent;
   }
 
   /* --- avatar ------------------------------------------------------------ */

@@ -21,6 +21,15 @@ export type SectionItem = {
   /** A count beside the label, e.g. a pending queue. */
   badge?: ReactNode;
   onSelect?: () => void;
+  /**
+   * Shown, and inert. The desktop half of the same rule `TabBarItem` carries:
+   * a destination the product names but does not have yet is visibly deferred
+   * rather than omitted, and never a link to a 404. A disabled item does not
+   * render as a link whatever `href` says.
+   */
+  disabled?: boolean;
+  /** Why, in words. Required with `disabled`: dimmed with no reason is a bug. */
+  title?: string;
 };
 
 export function SectionNav({
@@ -47,7 +56,7 @@ export function SectionNav({
   return (
     <nav aria-label={label} className={cx("flex flex-wrap gap-1", className)}>
       {items.map((item) => {
-        const current = item.id === activeId;
+        const current = item.id === activeId && !item.disabled;
         const body = (
           <>
             {item.label}
@@ -59,6 +68,25 @@ export function SectionNav({
           className: "oc-section-link",
           ...(current ? { "aria-current": "page" as const } : {}),
         };
+
+        if (item.disabled) {
+          return (
+            <button
+              key={item.id}
+              type="button"
+              // `aria-disabled` rather than the attribute, for the reason
+              // `BottomTabBar` gives: a disabled button leaves the tab order
+              // and its `title` goes with it, so the one group that cannot see
+              // the dimming would get no explanation at all.
+              aria-disabled="true"
+              title={item.title}
+              onClick={(event) => event.preventDefault()}
+              {...props}
+            >
+              {body}
+            </button>
+          );
+        }
 
         if (item.href) {
           return renderLink ? (

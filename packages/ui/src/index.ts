@@ -34,7 +34,15 @@ export {
 export { ListRow, ListStack } from "./components/list-row.js";
 export { PageHeader, Toolbar } from "./components/page-header.js";
 export { SectionNav, type SectionItem, type LinkProps } from "./components/section-nav.js";
-export { Dialog, Sheet } from "./components/overlay.js";
+export { Dialog, Sheet, useDismissable } from "./components/overlay.js";
+export {
+  SearchPill,
+  SearchButton,
+  SearchPanelGroup,
+  SearchOption,
+  type SearchSegment,
+} from "./components/search-field.js";
+export { Stepper } from "./components/stepper.js";
 export {
   Input,
   Textarea,
