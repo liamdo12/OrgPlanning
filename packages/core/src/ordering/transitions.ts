@@ -238,9 +238,10 @@ export function jobsOnEntering(
  * The `Email` column of `lifecycle.md`, as a function of the **edge** rather
  * than the destination — because the destination alone is not enough to know
  * what to say. `confirmed` is entered three ways, and "your booking is
- * confirmed" is only true of the first: sending it again fourteen days before
- * the event, when what actually happened is that a card was charged, buries the
- * one fact the customer needs under a duplicate of one they already have.
+ * confirmed" is only true of the first: sending it again when the balance is
+ * taken, weeks later, when what actually happened is that a card was charged,
+ * buries the one fact the customer needs under a duplicate of one they already
+ * have.
  *
  * `action_required` is deliberately absent, and its absence is load-bearing.
  * That message carries a single-use payment link, which exists only in memory

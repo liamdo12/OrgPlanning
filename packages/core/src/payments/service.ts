@@ -245,11 +245,12 @@ export type BalanceResult = {
 /**
  * Charges the balance with nobody present.
  *
- * Runs from the `charge_balance` job, fourteen days before the event. A decline
- * here is an ordinary answer rather than an error: the order moves to
- * `action_required`, a single-use link is minted for the email, and the
- * seventy-two hour grace window starts. Treating it as a failure would leave
- * the order in `balance_due` with nothing scheduled to move it and nobody told.
+ * Runs from the `charge_balance` job, which falls due ahead of the event by
+ * whatever `balance_lead_days` is set to. A decline here is an ordinary answer
+ * rather than an error: the order moves to `action_required`, a single-use link
+ * is minted for the email, and the seventy-two hour grace window starts.
+ * Treating it as a failure would leave the order in `balance_due` with nothing
+ * scheduled to move it and nobody told.
  */
 export async function chargeBalance(
   ctx: CoreContext,
