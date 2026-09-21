@@ -213,6 +213,12 @@ export async function setState(
     issueNote?: string | null;
     graceExpiresAt?: Date | null;
     autoCompleteAt?: Date | null;
+    /**
+     * Mirrors the queued `charge_balance` job, exactly as the two above mirror
+     * theirs. Written from the same computation as the job's `run_after`, so a
+     * screen cannot show a balance date nothing is working to.
+     */
+    balanceDueAt?: Date | null;
   },
 ): Promise<void> {
   await db
@@ -225,6 +231,7 @@ export async function setState(
       ...("issueNote" in input ? { issueNote: input.issueNote ?? null } : {}),
       ...("graceExpiresAt" in input ? { graceExpiresAt: input.graceExpiresAt ?? null } : {}),
       ...("autoCompleteAt" in input ? { autoCompleteAt: input.autoCompleteAt ?? null } : {}),
+      ...("balanceDueAt" in input ? { balanceDueAt: input.balanceDueAt ?? null } : {}),
       updatedAt: input.now,
     })
     .where(eq(orders.id, orderId));
@@ -452,12 +459,17 @@ export async function completeCheckout(
  * the free-cancellation window are what the customer agreed to — a template
  * edited afterwards must not change the terms of a booking already made.
  */
+export type PolicyTerms = {
+  id: string;
+  tier: string;
+  depositBps: number;
+  freeCancellationHours: number;
+};
+
 export async function loadPolicyTemplate(
   db: DbExecutor,
   templateId: string,
-): Promise<
-  { id: string; tier: string; depositBps: number; freeCancellationHours: number } | undefined
-> {
+): Promise<PolicyTerms | undefined> {
   const [row] = await db
     .select({
       id: policyTemplates.id,

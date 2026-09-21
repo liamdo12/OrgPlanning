@@ -24,6 +24,15 @@ export type PricedLine = {
   description: string;
   unitPrice: bigint;
   currency: string;
+  /**
+   * The cancellation policy this service is sold under, or null for none.
+   *
+   * Read here rather than taken from the checkout request for the same reason
+   * the price is: the deposit rate and the free-cancellation window are terms
+   * the business selling the date set, and a caller that could name a template
+   * could name a cheaper one. Null prices at the platform's own deposit rate.
+   */
+  policyTemplateId: string | null;
 };
 
 /**
@@ -45,6 +54,7 @@ export async function priceServices(
       title: services.title,
       basePrice: services.basePrice,
       currency: services.currency,
+      policyTemplateId: services.policyTemplateId,
       vendorId: vendors.id,
       vendorName: vendors.name,
       vendorStatus: vendors.status,
@@ -67,6 +77,7 @@ export async function priceServices(
         description: row.title,
         unitPrice: row.basePrice,
         currency: row.currency,
+        policyTemplateId: row.policyTemplateId,
       },
     ]),
   );

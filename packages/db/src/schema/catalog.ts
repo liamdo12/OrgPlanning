@@ -13,7 +13,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { app, currency, money, timestamps, tstzrange, TABLE_PREFIX } from "./common.js";
 import { bookingMode, priceUnit } from "./enums.js";
-import { categories, neighbourhoods } from "./reference.js";
+import { categories, neighbourhoods, policyTemplates } from "./reference.js";
 import { users, vendors } from "./identity.js";
 
 /** What a vendor sells. Source: the services list, lines 1950–1961. */
@@ -53,11 +53,26 @@ export const services = app.table(
      * date is a string waiting to be compared as one.
      */
     publishedAt: timestamp("published_at", { withTimezone: true }),
+    /**
+     * The cancellation policy this service is sold under.
+     *
+     * The deposit rate and the free-cancellation window are part of what the
+     * business selling the date offers, so the attachment lives here and
+     * checkout reads it off the priced line. A request naming its own template
+     * could name a foreign one and hold a C$5,000 date for a 10% deposit.
+     *
+     * Null is an ordinary answer: the service then prices at
+     * `platform_settings.deposit_bps`, which is what that setting is for.
+     */
+    policyTemplateId: uuid("policy_template_id").references(() => policyTemplates.id, {
+      onDelete: "set null",
+    }),
     ...timestamps,
   },
   (table) => [
     index("services_vendor_idx").on(table.vendorId),
     index("services_category_idx").on(table.categoryId),
+    index("services_policy_template_idx").on(table.policyTemplateId),
   ],
 );
 

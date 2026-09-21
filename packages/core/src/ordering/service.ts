@@ -118,18 +118,19 @@ export type CheckoutLine = {
   quantity: number;
 };
 
+/**
+ * What a customer is buying, and nothing about what it costs.
+ *
+ * The cancellation policy is deliberately absent. It is a term of sale, set by
+ * the business selling the date and attached to the service, so it is read off
+ * the priced line here rather than named by the caller: a request that could
+ * name a template could name a foreign one and hold a C$5,000 date for a 10%
+ * deposit the business never offered. A field that must always equal a
+ * server-derived value is a field with no reason to exist.
+ */
 export type CheckoutRequest = {
   eventId: string;
   lines: readonly CheckoutLine[];
-  /**
-   * The cancellation policy the booking is made under.
-   *
-   * An id, and only an id. The deposit rate and the free-cancellation window
-   * are read from the template it names — a request that could state its own
-   * deposit could state a one-cent one, and lock a vendor's date for a C$5,000
-   * booking with fifty cents.
-   */
-  policyTemplateId?: string | undefined;
 };
 
 export type CheckoutResult = {
@@ -213,20 +214,6 @@ export async function createCheckout(
     // event ids exist.
     assertCanReadEvent(actor, { id: event.id, ownerUserId: event.ownerUserId });
 
-    // The terms, read from the policy the booking names rather than taken from
-    // the request. `flexible` is 10%, `moderate` 20%, `strict` 30%, and each
-    // carries its own free-cancellation window.
-    const template = request.policyTemplateId
-      ? await repo.loadPolicyTemplate(tx, request.policyTemplateId)
-      : undefined;
-
-    if (request.policyTemplateId && !template) {
-      throw new NotFoundError("No such cancellation policy.");
-    }
-
-    const depositBps = template?.depositBps ?? terms.defaultDepositBps;
-    const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
-
     const timeZone = event.timezone || DEFAULT_TIMEZONE;
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
     const eventEnd = eventEndInstant(event.eventDate, timeZone);
@@ -272,6 +259,20 @@ export async function createCheckout(
       byVendor.set(service.vendorId, group);
     }
 
+    // The terms, read from the policy each service is sold under rather than
+    // taken from the request. `flexible` is 10%, `moderate` 20%, `strict` 30%,
+    // and each carries its own free-cancellation window.
+    //
+    // One query per distinct template rather than one per line: a cart of six
+    // services under the same policy is six round trips otherwise.
+    const templates = new Map<string, repo.PolicyTerms>();
+    for (const templateId of new Set(
+      [...priced.values()].map((line) => line.policyTemplateId).filter((id) => id !== null),
+    )) {
+      const template = await repo.loadPolicyTemplate(tx, templateId);
+      if (template) templates.set(templateId, template);
+    }
+
     const checkout = await repo.insertCheckout(tx, {
       userId: actor.userId,
       eventId: request.eventId,
@@ -305,6 +306,22 @@ export async function createCheckout(
         throw new ValidationError("A booking cannot mix currencies.", { currency: "mixed" });
       }
 
+      // An order carries one `policy_template_id`, so the lines under it have
+      // to agree on the terms. Picking the first line's, or the cheapest, takes
+      // a deposit on a cancellation policy the customer was never shown — and
+      // records terms on the order that half its services were not sold under.
+      if (group.some(({ priced: line }) => line.policyTemplateId !== first.policyTemplateId)) {
+        throw new ValidationError("A booking cannot mix cancellation policies.", {
+          policy: "mixed",
+        });
+      }
+
+      // Absent is an ordinary answer: a service with no policy attached is sold
+      // at the platform's own deposit rate, which is what that setting is for.
+      const template = first.policyTemplateId ? templates.get(first.policyTemplateId) : undefined;
+      const depositBps = template?.depositBps ?? terms.defaultDepositBps;
+      const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
+
       const money = computeOrderMoney({
         subtotal,
         vendorHstRegistered: first.vendorHstRegistered,
@@ -336,7 +353,9 @@ export async function createCheckout(
         depositAmount: plan.depositAmount,
         balanceAmount: plan.balanceAmount,
         currency: first.currency,
-        policyTemplateId: request.policyTemplateId ?? null,
+        // The template the lines were actually priced under, so the order's
+        // record of its own terms cannot disagree with the deposit it charged.
+        policyTemplateId: template?.id ?? null,
         coolingWindowEndsAt: plan.coolingWindowEndsAt,
         balanceDueAt: plan.balanceDueAt,
         isDemo: false,
@@ -360,6 +379,7 @@ export async function createCheckout(
       // vendor's date for ever, and no other job would ever free it.
       for (const job of jobsOnEntering("pending_payment", "pending_payment", {
         hasBalance: plan.balanceAmount > 0n,
+        balanceLeadDays: terms.balanceLeadDays,
       })) {
         await repo.enqueue(tx, {
           type: job.type,
@@ -478,8 +498,14 @@ export async function applyTransition(
     assertTransition(order.state, to);
 
     const anchors = await anchorsFor(tx, ctx, order);
+    // Read inside this transaction, for the same reason checkout reads it
+    // inside its own: how far before the event a balance is charged is a
+    // setting an administrator can change, and the job and the order's own
+    // column must be computed from one reading of it.
+    const pricing = await effectivePricing(ctx, tx);
     const scheduled = jobsOnEntering(order.state, to, {
       hasBalance: order.balanceAmount > 0n,
+      balanceLeadDays: pricing.policy.balanceLeadDays,
     }).map((job) => ({ job, runAfter: dueAt(job, anchors) }));
 
     // The order's own date columns are the scheduled work, mirrored. Computing
@@ -487,12 +513,14 @@ export async function applyTransition(
     // grace deadline that no job is actually working to.
     const grace = scheduled.find(({ job }) => job.type === "balance_grace_expiry");
     const autoComplete = scheduled.find(({ job }) => job.type === "auto_complete_order");
+    const balance = scheduled.find(({ job }) => job.type === "charge_balance");
 
     await repo.setState(tx, orderId, to, {
       now: ctx.clock.now(),
       ...(options.issueNote === undefined ? {} : { issueNote: options.issueNote }),
       ...(grace ? { graceExpiresAt: grace.runAfter } : {}),
       ...(autoComplete ? { autoCompleteAt: autoComplete.runAfter } : {}),
+      ...(balance ? { balanceDueAt: balance.runAfter } : {}),
       // Leaving `action_required` means the deadline it was racing is over.
       ...(order.state === "action_required" && to !== "action_required"
         ? { graceExpiresAt: null }

@@ -8,6 +8,14 @@
  * `docs/design-gaps.md`.
  *
  * Prices are in cents.
+ *
+ * `policyTier` names the cancellation policy each service is sold under, which
+ * is what the deposit and the free-cancellation window are read from at
+ * checkout. Three tiers appear, so the demo shows a policy that varies by
+ * listing rather than one constant nobody chose — but every service a seeded
+ * order was written against stays `moderate`, because those orders record
+ * `policy:moderate` and their money is derived at that deposit rate. Moving one
+ * of them would leave an order whose terms disagree with its own deposit.
  */
 
 export const SERVICES = [
@@ -20,6 +28,7 @@ export const SERVICES = [
     basePrice: 9_500n,
     priceUnit: "bouquet",
     bookingMode: "book_now",
+    policyTier: "moderate",
     badge: "Popular",
     areaLabel: "Serves Downtown & West End",
     rating: "4.9",
@@ -44,6 +53,7 @@ export const SERVICES = [
     basePrice: 45_000n,
     priceUnit: "event",
     bookingMode: "book_now",
+    policyTier: "moderate",
     badge: "Book now",
     areaLabel: "Serves all of Toronto",
     rating: "4.8",
@@ -61,6 +71,7 @@ export const SERVICES = [
     basePrice: 3_800n,
     priceUnit: "guest",
     bookingMode: "quote",
+    policyTier: "moderate",
     badge: "Quotes",
     areaLabel: "Serves Downtown & Midtown",
     rating: "4.8",
@@ -78,6 +89,7 @@ export const SERVICES = [
     basePrice: 18_000n,
     priceUnit: "cake",
     bookingMode: "book_now",
+    policyTier: "moderate",
     badge: "Pickup",
     areaLabel: "Pickup in Leslieville · 4.1 km",
     rating: "4.9",
@@ -95,6 +107,7 @@ export const SERVICES = [
     basePrice: 62_000n,
     priceUnit: "event",
     bookingMode: "quote",
+    policyTier: "flexible",
     badge: "Quotes",
     areaLabel: "Serves all of Toronto",
     rating: "4.7",
@@ -112,6 +125,7 @@ export const SERVICES = [
     basePrice: 34_000n,
     priceUnit: "install",
     bookingMode: "quote",
+    policyTier: "moderate",
     badge: "Quotes",
     areaLabel: "Serves West End",
     rating: "4.9",
@@ -129,6 +143,7 @@ export const SERVICES = [
     basePrice: 39_000n,
     priceUnit: "event",
     bookingMode: "book_now",
+    policyTier: "flexible",
     badge: "Book now",
     areaLabel: "Serves Downtown & East End",
     rating: "4.6",
@@ -146,6 +161,7 @@ export const SERVICES = [
     basePrice: 2_200n,
     priceUnit: "guest",
     bookingMode: "quote",
+    policyTier: "moderate",
     badge: "New",
     areaLabel: "Serves North York & Midtown",
     rating: "4.9",
@@ -163,6 +179,7 @@ export const SERVICES = [
     basePrice: 52_000n,
     priceUnit: "arch",
     bookingMode: "quote",
+    policyTier: "strict",
     badge: "Quotes",
     areaLabel: "Serves all of Toronto",
     rating: "4.7",
@@ -180,6 +197,7 @@ export const SERVICES = [
     basePrice: 26_000n,
     priceUnit: "table",
     bookingMode: "book_now",
+    policyTier: "flexible",
     badge: "Book now",
     areaLabel: "Delivery across Toronto",
     rating: "4.8",
@@ -197,6 +215,7 @@ export const SERVICES = [
     basePrice: 90_000n,
     priceUnit: "event",
     bookingMode: "quote",
+    policyTier: "strict",
     badge: "Top rated",
     areaLabel: "Serves all of Toronto",
     rating: "5.0",
@@ -214,6 +233,7 @@ export const SERVICES = [
     basePrice: 48_000n,
     priceUnit: "package",
     bookingMode: "book_now",
+    policyTier: "moderate",
     badge: "Book now",
     areaLabel: "Delivery across Toronto",
     rating: "4.5",
