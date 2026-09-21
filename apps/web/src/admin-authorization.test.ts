@@ -1,8 +1,16 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  APP_ROOT,
+  actionsUnder,
+  defaultExportedFunction,
+  firstStatement,
+  label,
+  pagesUnder,
+  parse,
+  walk,
+} from "./authorization-registry.js";
 
 /**
  * Every admin surface gates itself, and the gate is the first thing it does.
@@ -20,95 +28,14 @@ import { describe, expect, it } from "vitest";
  * added next week is in scope the moment it exists. "First statement" is meant
  * literally — a gate below a database read has already leaked the row it was
  * meant to protect.
- */
-
-const appRoot = fileURLToPath(new URL("..", import.meta.url));
-const adminRoot = join(appRoot, "src/app/(admin)");
-
-function walk(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    return entry.isDirectory() ? walk(path) : [path];
-  });
-}
-
-function parse(path: string): ts.SourceFile {
-  return ts.createSourceFile(
-    path,
-    readFileSync(path, "utf8"),
-    ts.ScriptTarget.ESNext,
-    true,
-    path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
-}
-
-function isExported(node: ts.FunctionDeclaration | ts.VariableStatement): boolean {
-  return node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
-}
-
-/**
- * Every exported function in a file, however it was written.
  *
- * Both shapes, because the rule is about what a browser can POST to and not
- * about syntax: `export const approveThing = async () => {…}` is as much a
- * server action as `export async function approveThing() {…}`, and a check that
- * only walked declarations would let the arrow form in ungated while the count
- * below still looked healthy.
+ * The walker itself is shared with the customer registry. A second copy would
+ * be a second thing to teach about a syntax it has not seen.
  */
-function exportedFunctions(source: ts.SourceFile): Array<{ name: string; body?: ts.Block }> {
-  const found: Array<{ name: string; body?: ts.Block }> = [];
 
-  for (const statement of source.statements) {
-    if (ts.isFunctionDeclaration(statement) && isExported(statement)) {
-      found.push({
-        name: statement.name?.getText() ?? "(anonymous)",
-        ...(statement.body ? { body: statement.body } : {}),
-      });
-      continue;
-    }
+const adminRoot = join(APP_ROOT, "src/app/(admin)");
 
-    if (!ts.isVariableStatement(statement) || !isExported(statement)) continue;
-
-    for (const declaration of statement.declarationList.declarations) {
-      const initialiser = declaration.initializer;
-      if (!initialiser) continue;
-      if (!ts.isArrowFunction(initialiser) && !ts.isFunctionExpression(initialiser)) continue;
-
-      found.push({
-        name: declaration.name.getText(),
-        ...(ts.isBlock(initialiser.body) ? { body: initialiser.body } : {}),
-      });
-    }
-  }
-
-  return found;
-}
-
-/** The text of a function's first statement, or "" when it has no body. */
-function firstStatement(body: ts.Block | undefined): string {
-  const statement = body?.statements[0];
-  return statement ? statement.getText() : "";
-}
-
-/**
- * A route file, as Next.js decides it.
- *
- * A directory whose name begins with `_` is private: Next does not route to
- * anything inside it, so `_components/admin-page.tsx` is a component that
- * happens to be named like a page. Matching on the basename alone would put it
- * in front of a gate it has no business holding.
- */
-function isRouteFile(path: string, basename: string): boolean {
-  const parts = relative(adminRoot, path).split("/");
-  return parts[parts.length - 1] === basename && !parts.some((part) => part.startsWith("_"));
-}
-
-const adminFiles = walk(adminRoot);
-const pages = adminFiles.filter((path) => isRouteFile(path, "page.tsx"));
-const actionFiles = adminFiles.filter((path) => isRouteFile(path, "actions.ts"));
-
-/** Named so a failure says which screen, not which absolute path. */
-const label = (path: string) => relative(appRoot, path);
+const pages = pagesUnder(adminRoot);
 
 describe("admin pages", () => {
   it("finds the screens", () => {
@@ -120,12 +47,7 @@ describe("admin pages", () => {
   it.each(pages.map((path) => [label(path), path] as const))(
     "%s gates itself with requireAdminPage as its first statement",
     (_name, path) => {
-      const source = parse(path);
-      const exported = source.statements.find(
-        (statement): statement is ts.FunctionDeclaration =>
-          ts.isFunctionDeclaration(statement) &&
-          statement.modifiers?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) === true,
-      );
+      const exported = defaultExportedFunction(parse(path));
 
       expect(exported, `${label(path)} has no default-exported page function`).toBeDefined();
       expect(firstStatement(exported?.body)).toContain("requireAdminPage()");
@@ -144,12 +66,7 @@ describe("admin pages", () => {
 });
 
 describe("admin server actions", () => {
-  const actions = actionFiles.flatMap((path) =>
-    exportedFunctions(parse(path)).map((fn) => ({
-      name: `${label(path)}#${fn.name}`,
-      first: firstStatement(fn.body),
-    })),
-  );
+  const actions = actionsUnder(adminRoot);
 
   it("finds the actions", () => {
     expect(actions.length).toBeGreaterThanOrEqual(20);
@@ -165,8 +82,8 @@ describe("admin server actions", () => {
   it("marks every action file as server-only", () => {
     // Without the directive these are ordinary exported functions, and the
     // gate inside them is a function call a client bundle would simply not make.
-    for (const path of actionFiles) {
-      expect(readFileSync(path, "utf8").startsWith('"use server"')).toBe(true);
+    for (const path of walk(adminRoot).filter((file) => file.endsWith("actions.ts"))) {
+      expect(readFileSync(path, "utf8").startsWith('"use server"'), label(path)).toBe(true);
     }
   });
 });
@@ -191,7 +108,7 @@ describe("route handlers", () => {
   // registry happens to name. A handler added inside `(admin)` would otherwise
   // be checked by nothing at all: the page and action walkers do not look at
   // `route.ts`, and a registry keyed on two directories would not see it.
-  const handlers = walk(join(appRoot, "src/app"))
+  const handlers = walk(join(APP_ROOT, "src/app"))
     .filter((path) => path.endsWith("route.ts"))
     .map(label);
 
@@ -208,6 +125,6 @@ describe("route handlers", () => {
   });
 
   it.each(Object.entries(ROUTE_GATES))("%s checks %s before it acts", (path, gate) => {
-    expect(readFileSync(join(appRoot, path), "utf8")).toContain(gate);
+    expect(readFileSync(join(APP_ROOT, path), "utf8")).toContain(gate);
   });
 });

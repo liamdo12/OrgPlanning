@@ -10,6 +10,15 @@
  * customer and vendor views that have not been built yet.
  */
 
+/**
+ * The class-name join, exported because the app composes these too.
+ *
+ * One implementation rather than a second small one per consumer: `className`
+ * assembled by hand is where a conditional class quietly becomes the string
+ * "false".
+ */
+export { cx } from "./lib/cx.js";
+
 export { ROLES, type Role } from "./theme/roles.js";
 export { RoleTheme } from "./theme/role-theme.js";
 
