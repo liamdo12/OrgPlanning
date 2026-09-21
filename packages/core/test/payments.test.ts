@@ -294,10 +294,16 @@ describe.skipIf(!url)("orders and payments", () => {
     });
 
     it("takes the deposit and the free window from the policy the service is sold under", async () => {
-      const templates = await sql<{ id: string; tier: string; deposit_bps: number }[]>`
-        select id, tier, deposit_bps from app.planning_org_policy_templates order by deposit_bps
+      const templates = await sql<
+        { id: string; tier: string; deposit_bps: number; free_hours: number }[]
+      >`
+        select id, tier, deposit_bps, free_cancellation_hours as free_hours
+        from app.planning_org_policy_templates order by deposit_bps
       `;
       expect(templates.map((row) => row.deposit_bps)).toEqual([1000, 2000, 3000]);
+      // Three genuinely different free windows, so the assertion below is not
+      // three readings of one number.
+      expect(templates.map((row) => row.free_hours)).toEqual([168, 48, 0]);
 
       for (const [index, template] of templates.entries()) {
         // The listing decides, not the request. Nothing the customer sends
@@ -306,9 +312,16 @@ describe.skipIf(!url)("orders and payments", () => {
         const order = await bookForEventIn(200 + index * 10);
 
         const [row] = await sql<
-          { deposit_amount: string; total: string; policy_template_id: string }[]
+          {
+            deposit_amount: string;
+            total: string;
+            policy_template_id: string;
+            free_hours: number;
+          }[]
         >`
-          select deposit_amount::text, total::text, policy_template_id
+          select deposit_amount::text, total::text, policy_template_id,
+                 round(extract(epoch from (cooling_window_ends_at - created_at)) / 3600)::int
+                   as free_hours
           from app.planning_org_orders where id = ${order.id}
         `;
 
@@ -320,6 +333,9 @@ describe.skipIf(!url)("orders and payments", () => {
           template.tier,
           expected,
         ]);
+        // The free-cancellation window is the other half of the policy, and it
+        // comes from the same row as the deposit.
+        expect([template.tier, row?.free_hours]).toEqual([template.tier, template.free_hours]);
         // And the order records the terms it was actually priced under, so its
         // own record cannot disagree with the deposit it took.
         expect([template.tier, row?.policy_template_id]).toEqual([template.tier, template.id]);
