@@ -93,6 +93,7 @@ describe.skipIf(!url)("admin completeness", () => {
   function offsetHours(from: OrderState, type: string): number {
     const job = jobsOnEntering(from === "fulfilled" ? "confirmed" : "balance_due", from, {
       hasBalance: true,
+      balanceLeadDays: 14,
     }).find((scheduled) => scheduled.type === type);
 
     if (job?.offsetMinutes === undefined) {
