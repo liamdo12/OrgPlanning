@@ -245,11 +245,12 @@ export type BalanceResult = {
 /**
  * Charges the balance with nobody present.
  *
- * Runs from the `charge_balance` job, fourteen days before the event. A decline
- * here is an ordinary answer rather than an error: the order moves to
- * `action_required`, a single-use link is minted for the email, and the
- * seventy-two hour grace window starts. Treating it as a failure would leave
- * the order in `balance_due` with nothing scheduled to move it and nobody told.
+ * Runs from the `charge_balance` job, which falls due ahead of the event by
+ * whatever `balance_lead_days` is set to. A decline here is an ordinary answer
+ * rather than an error: the order moves to `action_required`, a single-use link
+ * is minted for the email, and the seventy-two hour grace window starts.
+ * Treating it as a failure would leave the order in `balance_due` with nothing
+ * scheduled to move it and nobody told.
  */
 export async function chargeBalance(
   ctx: CoreContext,
@@ -900,12 +901,13 @@ export async function refundWithinCoolingWindow(
   //
   // The two are the same figure on an ordinary booking, because only the
   // deposit has been taken inside a forty-eight hour window. They are not the
-  // same on a booking made **fifteen days** before its event: the balance falls
-  // due at event−14d, which is inside that window, so both charges have settled
-  // by the time somebody cancels. Refunding their sum against the deposit's
-  // intent asks the provider to return more than that charge ever held, and it
-  // refuses — leaving a customer who cannot cancel and a `requested` row nobody
-  // reconciles.
+  // same on a booking made **just outside the balance lead time**: the balance
+  // then falls due within a day or two of the deposit, inside that same window,
+  // so both charges have settled by the time somebody cancels. How narrow that
+  // gap is depends on a setting, but that it exists does not. Refunding their
+  // sum against the deposit's intent asks the provider to return more than that
+  // charge ever held, and it refuses — leaving a customer who cannot cancel and
+  // a `requested` row nobody reconciles.
   const settled = (await repo.listPayments(ctx.db, orderId)).filter(
     (payment) => payment.state === "succeeded" && payment.providerPaymentIntentId,
   );

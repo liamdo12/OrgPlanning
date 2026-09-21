@@ -1,11 +1,16 @@
 import { record } from "../audit/service.js";
 import * as catalog from "../catalog/repo.js";
 import type { CoreContext, DbExecutor } from "../context.js";
-import { NotFoundError, UnauthenticatedError, ValidationError } from "../errors.js";
+import {
+  CapacityConflictError,
+  NotFoundError,
+  UnauthenticatedError,
+  ValidationError,
+} from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 import {
+  assertCanActOnEvent,
   assertCanActOnOrder,
-  assertCanReadEvent,
   assertCanReadOrder,
   type OrderParties,
 } from "../identity/policies.js";
@@ -118,18 +123,54 @@ export type CheckoutLine = {
   quantity: number;
 };
 
+/** Postgres' exclusion-violation SQLSTATE. */
+const EXCLUSION_VIOLATION = "23P01";
+/** The constraint that raises it when two active blocks overlap. */
+const CAPACITY_CONSTRAINT = "capacity_blocks_no_overlap";
+
+/**
+ * Whether a failure is the capacity constraint refusing an overlapping hold.
+ *
+ * The `cause` chain is walked because the query builder wraps driver errors in
+ * its own, so the SQLSTATE and the constraint name sit below the error the
+ * caller catches rather than on it — a check against the top-level error would
+ * simply never fire.
+ *
+ * The constraint is named as well as the SQLSTATE. A second exclusion
+ * constraint added later would otherwise reach a customer as "that date is
+ * already booked" while the real problem was something else entirely.
+ */
+function isCapacityOverlap(error: unknown): boolean {
+  let current: unknown = error;
+
+  // Bounded rather than `while`, so a self-referencing `cause` cannot hang the
+  // request that was already failing.
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current === null || typeof current !== "object") return false;
+
+    const detail = current as { code?: unknown; constraint_name?: unknown; cause?: unknown };
+    if (detail.code === EXCLUSION_VIOLATION && detail.constraint_name === CAPACITY_CONSTRAINT) {
+      return true;
+    }
+    current = detail.cause;
+  }
+
+  return false;
+}
+
+/**
+ * What a customer is buying, and nothing about what it costs.
+ *
+ * The cancellation policy is deliberately absent. It is a term of sale, set by
+ * the business selling the date and attached to the service, so it is read off
+ * the priced line here rather than named by the caller: a request that could
+ * name a template could name a foreign one and hold a C$5,000 date for a 10%
+ * deposit the business never offered. A field that must always equal a
+ * server-derived value is a field with no reason to exist.
+ */
 export type CheckoutRequest = {
   eventId: string;
   lines: readonly CheckoutLine[];
-  /**
-   * The cancellation policy the booking is made under.
-   *
-   * An id, and only an id. The deposit rate and the free-cancellation window
-   * are read from the template it names — a request that could state its own
-   * deposit could state a one-cent one, and lock a vendor's date for a C$5,000
-   * booking with fifty cents.
-   */
-  policyTemplateId?: string | undefined;
 };
 
 export type CheckoutResult = {
@@ -180,8 +221,8 @@ export async function createCheckout(
   // Not a validation failure: there is nothing wrong with what was sent, and a
   // caller that cannot tell the two apart shows "a booking needs somebody to
   // belong to" beside the quantity field instead of sending the person to sign
-  // in. `assertCanReadEvent` below is still what refuses an account that exists
-  // but may not act.
+  // in. `assertCanActOnEvent` below is still what refuses an account that
+  // exists but may not act.
   if (!isAuthenticated(actor)) {
     throw new UnauthenticatedError();
   }
@@ -204,28 +245,27 @@ export async function createCheckout(
     const pricing = await effectivePricing(ctx, tx);
     const terms = policy ?? pricing.policy;
 
-    const event = await repo.loadEventForOrder(tx, request.eventId);
+    // Locked, and locked here — before anything is priced. Every date below is
+    // derived from this row, so a date change committing between the read and
+    // the capacity insert would hold one day and charge for another, with no
+    // error anywhere. The lock makes the two serialise instead: the second
+    // transaction waits, then works from what the first left.
+    const event = await repo.loadEventForOrder(tx, request.eventId, { forUpdate: true });
     if (!event) throw new NotFoundError("No such event.");
 
     // Somebody else's event is not a thing to book against, and the refusal is
     // a `NotFoundError` for the same reason every other policy's is: success
     // and "forbidden" as different answers would make this an oracle for which
     // event ids exist.
-    assertCanReadEvent(actor, { id: event.id, ownerUserId: event.ownerUserId });
-
-    // The terms, read from the policy the booking names rather than taken from
-    // the request. `flexible` is 10%, `moderate` 20%, `strict` 30%, and each
-    // carries its own free-cancellation window.
-    const template = request.policyTemplateId
-      ? await repo.loadPolicyTemplate(tx, request.policyTemplateId)
-      : undefined;
-
-    if (request.policyTemplateId && !template) {
-      throw new NotFoundError("No such cancellation policy.");
-    }
-
-    const depositBps = template?.depositBps ?? terms.defaultDepositBps;
-    const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
+    //
+    // The *write* policy, which refuses administrators where the read policy
+    // admits them. This is not a read of the event: it holds the date, writes
+    // orders against it, and takes a card. An administrator viewing a
+    // customer's event is legitimate and is what `assertCanReadEvent` is for;
+    // an administrator committing that customer to a booking is not something
+    // any screen offers, and the audit entry would name a person who cannot
+    // explain the charge.
+    assertCanActOnEvent(actor, { id: event.id, ownerUserId: event.ownerUserId });
 
     const timeZone = event.timezone || DEFAULT_TIMEZONE;
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
@@ -272,6 +312,20 @@ export async function createCheckout(
       byVendor.set(service.vendorId, group);
     }
 
+    // The terms, read from the policy each service is sold under rather than
+    // taken from the request. `flexible` is 10%, `moderate` 20%, `strict` 30%,
+    // and each carries its own free-cancellation window.
+    //
+    // One query per distinct template rather than one per line: a cart of six
+    // services under the same policy is six round trips otherwise.
+    const templates = new Map<string, repo.PolicyTerms>();
+    for (const templateId of new Set(
+      [...priced.values()].map((line) => line.policyTemplateId).filter((id) => id !== null),
+    )) {
+      const template = await repo.loadPolicyTemplate(tx, templateId);
+      if (template) templates.set(templateId, template);
+    }
+
     const checkout = await repo.insertCheckout(tx, {
       userId: actor.userId,
       eventId: request.eventId,
@@ -305,6 +359,22 @@ export async function createCheckout(
         throw new ValidationError("A booking cannot mix currencies.", { currency: "mixed" });
       }
 
+      // An order carries one `policy_template_id`, so the lines under it have
+      // to agree on the terms. Picking the first line's, or the cheapest, takes
+      // a deposit on a cancellation policy the customer was never shown — and
+      // records terms on the order that half its services were not sold under.
+      if (group.some(({ priced: line }) => line.policyTemplateId !== first.policyTemplateId)) {
+        throw new ValidationError("A booking cannot mix cancellation policies.", {
+          policy: "mixed",
+        });
+      }
+
+      // Absent is an ordinary answer: a service with no policy attached is sold
+      // at the platform's own deposit rate, which is what that setting is for.
+      const template = first.policyTemplateId ? templates.get(first.policyTemplateId) : undefined;
+      const depositBps = template?.depositBps ?? terms.defaultDepositBps;
+      const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
+
       const money = computeOrderMoney({
         subtotal,
         vendorHstRegistered: first.vendorHstRegistered,
@@ -336,7 +406,9 @@ export async function createCheckout(
         depositAmount: plan.depositAmount,
         balanceAmount: plan.balanceAmount,
         currency: first.currency,
-        policyTemplateId: request.policyTemplateId ?? null,
+        // The template the lines were actually priced under, so the order's
+        // record of its own terms cannot disagree with the deposit it charged.
+        policyTemplateId: template?.id ?? null,
         coolingWindowEndsAt: plan.coolingWindowEndsAt,
         balanceDueAt: plan.balanceDueAt,
         isDemo: false,
@@ -348,18 +420,29 @@ export async function createCheckout(
       // exclusion constraint refusing the insert, which rolls the whole
       // checkout back — including the orders already written above.
       for (const { priced: priceLine } of group) {
-        await repo.holdCapacity(tx, {
-          serviceId: priceLine.serviceId,
-          orderId: order.id,
-          from: eventStart,
-          until: eventEnd,
-        });
+        try {
+          await repo.holdCapacity(tx, {
+            serviceId: priceLine.serviceId,
+            orderId: order.id,
+            from: eventStart,
+            until: eventEnd,
+          });
+        } catch (error) {
+          // Narrow on purpose: anything that is not the overlap constraint is
+          // somebody else's failure and is re-thrown unchanged. Translating
+          // here rather than around the transaction is what keeps the service
+          // and the day in hand — outside the loop they are gone, and a screen
+          // that cannot say which date is taken cannot offer another.
+          if (!isCapacityOverlap(error)) throw error;
+          throw new CapacityConflictError(priceLine.serviceId, event.eventDate);
+        }
       }
 
       // The soft hold's own expiry. Without it an abandoned cart keeps the
       // vendor's date for ever, and no other job would ever free it.
       for (const job of jobsOnEntering("pending_payment", "pending_payment", {
         hasBalance: plan.balanceAmount > 0n,
+        balanceLeadDays: terms.balanceLeadDays,
       })) {
         await repo.enqueue(tx, {
           type: job.type,
@@ -478,8 +561,14 @@ export async function applyTransition(
     assertTransition(order.state, to);
 
     const anchors = await anchorsFor(tx, ctx, order);
+    // Read inside this transaction, for the same reason checkout reads it
+    // inside its own: how far before the event a balance is charged is a
+    // setting an administrator can change, and the job and the order's own
+    // column must be computed from one reading of it.
+    const pricing = await effectivePricing(ctx, tx);
     const scheduled = jobsOnEntering(order.state, to, {
       hasBalance: order.balanceAmount > 0n,
+      balanceLeadDays: pricing.policy.balanceLeadDays,
     }).map((job) => ({ job, runAfter: dueAt(job, anchors) }));
 
     // The order's own date columns are the scheduled work, mirrored. Computing
@@ -487,12 +576,14 @@ export async function applyTransition(
     // grace deadline that no job is actually working to.
     const grace = scheduled.find(({ job }) => job.type === "balance_grace_expiry");
     const autoComplete = scheduled.find(({ job }) => job.type === "auto_complete_order");
+    const balance = scheduled.find(({ job }) => job.type === "charge_balance");
 
     await repo.setState(tx, orderId, to, {
       now: ctx.clock.now(),
       ...(options.issueNote === undefined ? {} : { issueNote: options.issueNote }),
       ...(grace ? { graceExpiresAt: grace.runAfter } : {}),
       ...(autoComplete ? { autoCompleteAt: autoComplete.runAfter } : {}),
+      ...(balance ? { balanceDueAt: balance.runAfter } : {}),
       // Leaving `action_required` means the deadline it was racing is over.
       ...(order.state === "action_required" && to !== "action_required"
         ? { graceExpiresAt: null }

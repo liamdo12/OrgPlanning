@@ -8,9 +8,11 @@ import { applyBps } from "./money.js";
  *
  * A card hold cannot secure an event months away — authorizations expire in
  * seven days, thirty at the outside — so the platform charges a real deposit,
- * saves the card, and charges the balance off-session fourteen days before the
- * event. That is the rule the whole payments domain is shaped around, and this
- * module is the one place that decides which shape a given booking takes.
+ * saves the card, and charges the balance off-session a set number of days
+ * before the event. How many is `balanceLeadDays`, which reaches this module
+ * from `platform_settings` rather than from here. That is the rule the whole
+ * payments domain is shaped around, and this module is the one place that
+ * decides which shape a given booking takes.
  *
  * Source: the architecture report §6.1–6.2. The deposit percentage belongs to
  * the cancellation policy the vendor chose (10 / 20 / 30%), and travels with
@@ -62,7 +64,7 @@ export type PaymentPlanInput = {
  * The two short-notice conditions are one rule with two reasons, and the
  * boundaries are deliberate:
  *
- * - **Event ≤ `balanceLeadDays` away → pay in full.** At exactly fourteen days
+ * - **Event ≤ `balanceLeadDays` away → pay in full.** At exactly the lead time
  *   the balance would be due now, and a "later" charge scheduled for this
  *   instant is not a plan, it is a second charge nobody expects. So the
  *   deposit-and-balance shape needs the event to be *more* than the lead time

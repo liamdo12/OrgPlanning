@@ -677,6 +677,48 @@ describe.skipIf(!url)("jobs and the clock", () => {
   });
 
   describe("the demo clock states, under retry", () => {
+    it("label the balance moment with the offset its own rows have", async () => {
+      // How far ahead of the event a balance is charged is a platform setting,
+      // and this row was written under whatever it was when the order was
+      // confirmed. So neither a number written into the label nor today's
+      // setting describes the button: only the gap between the two instants
+      // does, which is what the label is computed from.
+      //
+      // Cross-checked against the database's own date arithmetic in the event's
+      // zone, so this is two implementations agreeing rather than the code
+      // being read back to itself.
+      const gapInDays = async () => {
+        const [row] = await sql<{ days: number }[]>`
+          select (e.event_date - (o.balance_due_at at time zone e.timezone)::date)::int as days
+          from app.planning_org_orders o
+          join app.planning_org_events e on e.id = o.event_id
+          where o.balance_due_at is not null
+            and o.balance_amount > 0
+            and o.state in ('confirmed', 'balance_due', 'action_required')
+          order by o.balance_due_at asc limit 1
+        `;
+        return row?.days as number;
+      };
+
+      const labelled = (states: Awaited<ReturnType<typeof demoClockStates>>) =>
+        states.find((state) => state.key === "balance_due")?.name;
+
+      const seeded = await gapInDays();
+      expect(labelled(await demoClockStates(ctx))).toBe(`event−${seeded}d`);
+
+      // And it follows the data rather than restating a constant: move the due
+      // date and the claim moves with it.
+      await sql`
+        update app.planning_org_orders
+        set balance_due_at = balance_due_at - interval '7 days'
+        where balance_due_at is not null and balance_amount > 0
+      `;
+
+      const moved = await gapInDays();
+      expect(moved).not.toBe(seeded);
+      expect(labelled(await demoClockStates(ctx))).toBe(`event−${moved}d`);
+    });
+
     it("do not collapse to this afternoon when a charge bounces", async () => {
       // Derived from the order's own due date, not from its job's `run_after`.
       // A failed charge is re-queued minutes from now, and a state read off the

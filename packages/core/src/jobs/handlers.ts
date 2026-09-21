@@ -86,7 +86,7 @@ const coolingWindowTransfer: JobHandler = async (ctx, actor, job) => {
 };
 
 /**
- * The balance, fourteen days before the event.
+ * The balance, on the day the order says it is due.
  *
  * A decline is an ordinary answer rather than a failure: the order moves to
  * `action_required`, a link is minted for the customer, and the grace window
@@ -124,12 +124,11 @@ const chargeBalanceJob: JobHandler = async (ctx, actor, job) => {
  * The seventy-two hours a customer had to rescue a declined balance, run out.
  *
  * The booking is cancelled, which puts the date back on the vendor's calendar.
- * **No refund is computed here.** The free-cancellation window closed long
- * before — a balance falls due fourteen days before the event — so anything
- * owed back is a policy-computed amount, and this milestone performs exactly
- * one refund in-app: a cancellation inside the free window. Whatever the policy
- * says is due is refunded by an administrator in the provider's dashboard and
- * recorded against the order.
+ * **No refund is computed here.** What is owed back follows the cancellation
+ * policy the booking was made under, which is an amount this handler cannot
+ * derive: this milestone performs exactly one refund in-app, a cancellation
+ * inside the free window. Whatever the policy says is due is refunded by an
+ * administrator in the provider's dashboard and recorded against the order.
  */
 const balanceGraceExpiry: JobHandler = async (ctx, actor, job) => {
   const order = await orderFor(ctx, job);

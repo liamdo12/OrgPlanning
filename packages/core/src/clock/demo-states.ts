@@ -1,7 +1,12 @@
 import { and, asc, eq, gt, inArray, isNotNull } from "drizzle-orm";
 import { events, orders, seedMeta } from "@occasion/db/schema";
 import type { CoreContext } from "../context.js";
-import { DEFAULT_TIMEZONE, eventEndInstant } from "../ordering/schedule.js";
+import {
+  DEFAULT_TIMEZONE,
+  calendarDaysBetween,
+  eventEndInstant,
+  eventStartInstant,
+} from "../ordering/schedule.js";
 
 /**
  * The four moments the demo jumps between.
@@ -14,15 +19,26 @@ import { DEFAULT_TIMEZONE, eventEndInstant } from "../ordering/schedule.js";
  * all four rather than leaving the screen pointing at last spring.
  *
  * Two of them are anchor arithmetic. The other two are read off the work the
- * seeded orders actually scheduled — `event − 14 days` is whenever the first
+ * seeded orders actually scheduled — the balance moment is whenever the first
  * balance falls due, and there is no honest way to derive that from the anchor
  * alone, because it depends on when somebody's event is.
+ *
+ * Its **label** is derived too, from the gap between that due date and the
+ * event, rather than stated. How far ahead of the event a balance is charged is
+ * a platform setting, so a written-in number is the same lie as a written-in
+ * date; and today's setting would be no better, because the row was written
+ * under whatever the setting was when that order was confirmed and need not
+ * agree with it now. The two instants are the only thing that describes the
+ * button truthfully, so they are what describes it.
  */
 
 export type DemoClockState = {
   /** Stable across reseeds, so a selected state survives one. */
   key: "now" | "cooling_window" | "balance_due" | "auto_complete";
-  /** What the moment is, e.g. `event−14d`. The prototype's own shorthand. */
+  /**
+   * What the moment is, in the prototype's shorthand: `now`, `+48h`,
+   * `event+72h`, and the balance date as its own offset from the event.
+   */
   name: string;
   at: Date;
 };
@@ -78,12 +94,34 @@ export async function demoClockStates(ctx: CoreContext): Promise<DemoClockState[
     .limit(1);
 
   if (next?.balanceDueAt) {
-    states.push({ key: "balance_due", name: "event−14d", at: next.balanceDueAt });
+    const timeZone = next.timezone || DEFAULT_TIMEZONE;
+    // Counted on the calendar in the event's own zone, because that is what the
+    // due date was computed as. Elapsed hours divided by twenty-four would
+    // label a span containing a daylight-saving change one day out.
+    const lead = next.eventDate
+      ? calendarDaysBetween(
+          next.balanceDueAt,
+          eventStartInstant(next.eventDate, null, timeZone),
+          timeZone,
+        )
+      : null;
+
+    states.push({
+      key: "balance_due",
+      // An order can outlive its event — `orders.event_id` is cleared rather
+      // than cascaded — and then there is no event to be a number of days
+      // before. The moment is still real and the button still works, so it is
+      // named by what it is instead of by an offset from nothing.
+      name: lead === null ? "balance due" : `event−${lead}d`,
+      at: next.balanceDueAt,
+    });
 
     if (next.eventDate) {
-      const end = eventEndInstant(next.eventDate, next.timezone || DEFAULT_TIMEZONE);
+      const end = eventEndInstant(next.eventDate, timeZone);
       states.push({
         key: "auto_complete",
+        // Not a setting: auto-complete is the lifecycle's own specification, so
+        // unlike the balance offset this figure is fixed and may be written.
         name: "event+72h",
         at: new Date(end.getTime() + 72 * 3_600_000),
       });

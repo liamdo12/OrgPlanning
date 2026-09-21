@@ -8,7 +8,7 @@ import { auditLog, jobRuns } from "@occasion/db/schema";
 import type { CoreContext, DbExecutor } from "../src/context.js";
 import type { Actor } from "../src/identity/actor.js";
 import { getActor } from "../src/identity/service.js";
-import { clearSecondFactor } from "../src/identity/service.js";
+import { clearSecondFactor, setSecondFactorEnrolled } from "../src/identity/service.js";
 import {
   approveUser,
   grantRoleToUser,
@@ -120,10 +120,26 @@ type Subjects = {
   reviewId: string;
 };
 
+/**
+ * A person a case can run as, other than the administrator.
+ *
+ * Almost every audited action is an administrator's, so a case that says
+ * nothing runs as one. The exceptions are the actions somebody takes on their
+ * **own** account — nobody can enrol another person's second factor — and for
+ * those the entry must name that person and the hat they were wearing, not an
+ * administrator who was not involved.
+ */
+type CaseActorKey = "accountHolder";
+
+/** Who wrote the entry, and what the entry must say about them. */
+type Performer = { actor: Actor; userId: string; actingRole: string };
+
 type Case = {
   /** The screen the action belongs to, for reading the table. */
   screen: string;
   what: string;
+  /** Who performs it. Absent means the administrator. */
+  actor?: CaseActorKey;
   /** The `action` string the entry must carry. */
   action: string;
   entityType: string;
@@ -248,6 +264,20 @@ const CASES: readonly Case[] = [
     entityType: "user",
     entity: "activeUserId",
     run: (c, a, s) => clearSecondFactor(c, a, s.activeUserId),
+  },
+  {
+    // The one entry here that no administrator writes. Enrolling is the
+    // account holder's own choice, so the row names them and records the hat
+    // they were wearing — and asserting that is the only way to know the log
+    // can describe anybody but an administrator.
+    screen: "account",
+    what: "enrolling a second factor",
+    actor: "accountHolder",
+    action: "identity.mfa.enrol",
+    entityType: "user",
+    entity: "activeUserId",
+    before: true,
+    run: (c, a) => setSecondFactorEnrolled(c, a, true),
   },
   {
     screen: "users",
@@ -517,6 +547,7 @@ describe.skipIf(!url)("audit coverage", () => {
   let admin: Actor;
   let adminId: string;
   let subjects: Subjects;
+  let others: Record<CaseActorKey, Performer>;
 
   beforeAll(async () => {
     await resetDatabase(dbUrl);
@@ -538,15 +569,36 @@ describe.skipIf(!url)("audit coverage", () => {
       update app.planning_org_users set mfa_enrolled_at = now() where email = 'sarah@example.ca'
     `;
 
-    database.setUser({
-      id: "provider-sub-admin@occasion.test",
-      email: "admin@occasion.test",
-      issuedAt: new Date(),
-      emailVerified: true,
-      secondFactorVerified: true,
-    });
-    admin = await getActor(ctx, {});
+    const signInAs = async (email: string): Promise<Actor> => {
+      database.setUser({
+        id: `provider-sub-${email}`,
+        email,
+        issuedAt: new Date(),
+        emailVerified: true,
+        secondFactorVerified: true,
+      });
+      return getActor(ctx, {});
+    };
+
+    // Built once, here, rather than inside the case that needs it: the adapter
+    // reports one signed-in person at a time, so a case that changed it would
+    // change it for every case after.
+    const accountHolder = await signInAs("sarah@example.ca");
+
+    // And back to the administrator, who runs everything else.
+    admin = await signInAs("admin@occasion.test");
     adminId = (admin as Extract<Actor, { kind: "user" }>).userId;
+
+    others = {
+      accountHolder: {
+        actor: accountHolder,
+        userId: (accountHolder as Extract<Actor, { kind: "user" }>).userId,
+        // Stated rather than read off the actor: the entry has to record the
+        // hat this person was wearing, and reading it back off the same object
+        // the action was given would assert nothing about what was written.
+        actingRole: "customer",
+      },
+    };
 
     const one = async (query: postgres.PendingQuery<{ id: string }[]>) => {
       const [row] = await query;
@@ -631,8 +683,15 @@ describe.skipIf(!url)("audit coverage", () => {
    * the change it describes would still be here afterwards, and would survive a
    * rollback that took the change with it.
    */
+  /** The person a case runs as, defaulting to the administrator. */
+  function performerOf(testCase: Case): Performer {
+    if (testCase.actor) return others[testCase.actor];
+    return { actor: admin, userId: adminId, actingRole: "admin" };
+  }
+
   async function entryFor(testCase: Case) {
     const rollback = new Rollback();
+    const who = performerOf(testCase).actor;
     let entry: typeof auditLog.$inferSelect | undefined;
     let failure: unknown;
 
@@ -640,8 +699,8 @@ describe.skipIf(!url)("audit coverage", () => {
       await ctx.db.transaction(async (tx) => {
         const scoped = { ...ctx, db: tx as unknown as CoreContext["db"] };
         try {
-          await testCase.prepare?.(scoped, admin, subjects);
-          await testCase.run(scoped, admin, subjects);
+          await testCase.prepare?.(scoped, who, subjects);
+          await testCase.run(scoped, who, subjects);
         } catch (error) {
           failure = error;
         }
@@ -666,14 +725,16 @@ describe.skipIf(!url)("audit coverage", () => {
   }
 
   describe.each(CASES)("$screen · $what", (testCase) => {
-    it(`writes a ${testCase.action} entry naming the administrator`, async () => {
+    it(`writes a ${testCase.action} entry naming who did it`, async () => {
+      const who = performerOf(testCase);
       const entry = await entryFor(testCase);
 
       expect(entry, `no ${testCase.action} entry was written`).toBeDefined();
-      expect(entry?.actorUserId).toBe(adminId);
+      expect(entry?.actorUserId).toBe(who.userId);
       // Authority is held, never active: the entry records which hat the person
-      // was wearing, and for an admin action it has to say `admin`.
-      expect(entry?.actingRole).toBe("admin");
+      // was wearing, which for an admin action is `admin` and for an action
+      // somebody took on their own account is whatever they hold.
+      expect(entry?.actingRole).toBe(who.actingRole);
       expect(entry?.entityType).toBe(testCase.entityType);
       expect(entry?.after).not.toBeNull();
       if (testCase.entity) expect(entry?.entityId).toBe(subjects[testCase.entity]);
@@ -696,9 +757,13 @@ describe.skipIf(!url)("audit coverage", () => {
    * the shape of the call, which is why the prefixes are enumerated — a
    * narrower pattern would miss one and a wider one would match ordinary
    * strings.
+   *
+   * An unlisted prefix is invisible here, and invisible is worse than absent:
+   * the reciprocal check below would still pass, so a whole family of audited
+   * actions could arrive with nobody ever reading one of its entries back.
    */
   const ACTION_PATTERN =
-    /"((?:order|payment|identity|vendor|ops|email|transfer|quote|dispute|moderation|category|settings)\.[a-z_.]+)"/g;
+    /"((?:order|payment|identity|vendor|ops|email|transfer|quote|dispute|moderation|category|settings|planning|catalog|saved)\.[a-z_.]+)"/g;
 
   function actionsInSource(): string[] {
     const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -746,7 +811,6 @@ describe.skipIf(!url)("audit coverage", () => {
     "quote.expire": "jobs.test.ts — the quote-expiry handler",
     "vendor.connect_onboarding": "payments.test.ts — starting the provider's onboarding",
     "identity.admin.invite.accept": "identity.test.ts — redeeming an invitation",
-    "identity.mfa.enrol": "identity.test.ts — enrolling a second factor",
     "identity.mfa.remove": "identity.test.ts — removing one's own second factor",
     "email.broadcast": "email.test.ts — the send, with its recipient count and template hash",
     "email.consent_withdraw": "email.test.ts — the other direction of the same function",
@@ -770,6 +834,25 @@ describe.skipIf(!url)("audit coverage", () => {
     const claimed = [...CASES.map((testCase) => testCase.action), ...Object.keys(ELSEWHERE)];
 
     expect(claimed.filter((action) => !inSource.has(action))).toEqual([]);
+  });
+
+  it("sees the action families the domain has yet to write", () => {
+    // The customer's own screens are next, and none of their actions exists
+    // yet. A prefix the pattern does not list is invisible to the scan above,
+    // and invisible passes: the first `planning.*` entry would arrive with
+    // nothing requiring anybody to have read one back.
+    //
+    // A copy without the global flag, because `.exec` on the shared one moves
+    // its `lastIndex` and the next caller starts mid-file.
+    const pattern = new RegExp(ACTION_PATTERN.source);
+
+    for (const action of [
+      "planning.event.create",
+      "catalog.service.publish",
+      "saved.service.add",
+    ]) {
+      expect([action, pattern.exec(`action: "${action}",`)?.[1]]).toEqual([action, action]);
+    }
   });
 
   describe("money the platform moved by itself", () => {

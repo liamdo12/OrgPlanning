@@ -57,6 +57,29 @@ export class ValidationError extends AppError {
   }
 }
 
+/**
+ * The date a booking needs is already held.
+ *
+ * The exclusion constraint on active capacity blocks is what actually prevents
+ * a double booking, so the clash arrives as a driver error from inside the
+ * checkout transaction. Translated here because "conflicting key value violates
+ * exclusion constraint" is not something to put in front of a customer, and
+ * because the service and the day are the two facts a screen needs to say
+ * *which* date is taken and offer another.
+ */
+export class CapacityConflictError extends AppError {
+  override name = "CapacityConflictError";
+
+  constructor(
+    /** The service whose calendar refused the booking. */
+    readonly serviceId: string,
+    /** The day it is already booked for, `YYYY-MM-DD` in the event's zone. */
+    readonly day: string,
+  ) {
+    super(`That date is already booked.`);
+  }
+}
+
 /** Too many attempts in the window. */
 export class RateLimitedError extends AppError {
   override name = "RateLimitedError";

@@ -41,10 +41,16 @@ function documentedEdges(): ReadonlyArray<[OrderState, OrderState]> {
 
 const EDGES = documentedEdges();
 
-/** The ordinary booking: a deposit now and a balance later. */
-const WITH_BALANCE = { hasBalance: true };
+/**
+ * The ordinary booking: a deposit now and a balance later.
+ *
+ * The lead days are stated rather than assumed, because the table no longer
+ * carries them: they are a platform setting the caller reads, and the cases
+ * below assert the offset that this number produces.
+ */
+const WITH_BALANCE = { hasBalance: true, balanceLeadDays: 14 };
 /** Paid in full at checkout — short notice, or under the small-total threshold. */
-const PAID_IN_FULL = { hasBalance: false };
+const PAID_IN_FULL = { hasBalance: false, balanceLeadDays: 14 };
 
 function isDocumented(from: OrderState, to: OrderState): boolean {
   return EDGES.some(([a, b]) => a === from && b === to);
@@ -132,9 +138,9 @@ describe("order transitions", () => {
   });
 
   it("does not schedule a balance charge for a booking that has no balance", () => {
-    // Its due date is `event − 14 days`, which for a short-notice booking is
-    // already in the past — so the job would be immediately due and would throw
-    // every time the runner picked it up.
+    // Its due date is a set number of days before the event, which for a
+    // short-notice booking is already in the past — so the job would be
+    // immediately due and would throw every time the runner picked it up.
     const full = jobsOnEntering("pending_payment", "confirmed", PAID_IN_FULL).map(
       (job) => job.type,
     );
@@ -170,6 +176,14 @@ describe("order transitions", () => {
     // boundary the elapsed-time version charges on the wrong day.
     const [, balance] = jobsOnEntering("pending_payment", "confirmed", WITH_BALANCE);
     expect(balance).toEqual({ type: "charge_balance", anchor: "event_start", offsetDays: -14 });
+
+    // And the offset follows the setting rather than a literal, which is the
+    // only way the order's own `balance_due_at` can be the same date.
+    const [, later] = jobsOnEntering("pending_payment", "confirmed", {
+      hasBalance: true,
+      balanceLeadDays: 21,
+    });
+    expect(later).toEqual({ type: "charge_balance", anchor: "event_start", offsetDays: -21 });
   });
 
   it("cancels queued work on every ending", () => {

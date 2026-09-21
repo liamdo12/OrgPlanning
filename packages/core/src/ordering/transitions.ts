@@ -138,8 +138,8 @@ export function payoutAllowed(state: OrderState): boolean {
  *
  * Data rather than branching, so the job runner and the tests read the same
  * table. `anchor` names what the offset is measured from, because three of the
- * five are not measured from now: a balance is charged fourteen calendar days
- * before the event, and auto-complete lands three days after it ends.
+ * five are not measured from now: a balance is charged a set number of calendar
+ * days before the event, and auto-complete lands three days after it ends.
  */
 export type ScheduledJobType =
   | "expire_unpaid"
@@ -162,7 +162,10 @@ const ON_ENTERING: Record<OrderState, readonly ScheduledJob[]> = {
   pending_payment: [{ type: "expire_unpaid", anchor: "now", offsetMinutes: 30 }],
   confirmed: [
     { type: "cooling_window_transfer", anchor: "now", offsetMinutes: 48 * 60 },
-    { type: "charge_balance", anchor: "event_start", offsetDays: -14 },
+    // No offset in the table: how far ahead of the event a balance is charged
+    // is a platform setting an administrator edits, and `jobsOnEntering` fills
+    // it in from the shape the caller read inside its own transaction.
+    { type: "charge_balance", anchor: "event_start" },
   ],
   balance_due: [],
   action_required: [{ type: "balance_grace_expiry", anchor: "now", offsetMinutes: 72 * 60 }],
@@ -180,6 +183,24 @@ export type OrderShape = {
 };
 
 /**
+ * `OrderShape` plus the one number the table above cannot hold.
+ *
+ * How many calendar days before the event a balance is charged is a platform
+ * setting, so it arrives from the caller's transaction rather than sitting here
+ * as a literal. A literal here and a setting on the screen is how
+ * `orders.balance_due_at` came to name a date no queued job was working to:
+ * both are derived from this one value, and they can only agree if there is
+ * only one of it.
+ *
+ * Separate from `OrderShape` because `emailOnEntering` shares that type and has
+ * no business knowing a schedule offset.
+ */
+export type ScheduleShape = OrderShape & {
+  /** Whole calendar days; the charge lands that many days *before* the event. */
+  balanceLeadDays: number;
+};
+
+/**
  * What entering `to` from `from` schedules.
  *
  * The `from` argument is the whole reason this is a function rather than a
@@ -190,20 +211,25 @@ export type OrderShape = {
  * would refuse the duplicate, but a caller that relies on a constraint to
  * absorb a mistake it keeps making has not stopped making it.
  *
- * `shape` carries the one fact the table cannot: a short-notice or small
- * booking is paid in full at checkout and has no balance. Scheduling
- * `charge_balance` for one anyway is not merely redundant — its due date is
- * `event − 14 days`, which for a short-notice booking is **in the past**, so it
- * is immediately due and throws every time the runner picks it up, for ever.
+ * `shape` carries the two facts the table cannot. The first is that a
+ * short-notice or small booking is paid in full at checkout and has no balance.
+ * Scheduling `charge_balance` for one anyway is not merely redundant — its due
+ * date is before the event, which for a short-notice booking is **in the past**,
+ * so it is immediately due and throws every time the runner picks it up, for
+ * ever. The second is how far before the event that is, which is a setting.
  */
 export function jobsOnEntering(
   from: OrderState,
   to: OrderState,
-  shape: OrderShape,
+  shape: ScheduleShape,
 ): readonly ScheduledJob[] {
   if (to === "confirmed" && from !== "pending_payment") return [];
 
-  return ON_ENTERING[to].filter((job) => job.type !== "charge_balance" || shape.hasBalance);
+  return ON_ENTERING[to].flatMap((job) => {
+    if (job.type !== "charge_balance") return [job];
+    if (!shape.hasBalance) return [];
+    return [{ ...job, offsetDays: -shape.balanceLeadDays }];
+  });
 }
 
 /**
@@ -212,9 +238,10 @@ export function jobsOnEntering(
  * The `Email` column of `lifecycle.md`, as a function of the **edge** rather
  * than the destination — because the destination alone is not enough to know
  * what to say. `confirmed` is entered three ways, and "your booking is
- * confirmed" is only true of the first: sending it again fourteen days before
- * the event, when what actually happened is that a card was charged, buries the
- * one fact the customer needs under a duplicate of one they already have.
+ * confirmed" is only true of the first: sending it again when the balance is
+ * taken, weeks later, when what actually happened is that a card was charged,
+ * buries the one fact the customer needs under a duplicate of one they already
+ * have.
  *
  * `action_required` is deliberately absent, and its absence is load-bearing.
  * That message carries a single-use payment link, which exists only in memory
