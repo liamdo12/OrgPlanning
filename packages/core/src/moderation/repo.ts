@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { contentReports, messages, reviews, users, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
-import { PAGE_SIZE, decodeCursor, encodeCursor } from "../paging.js";
+import { PAGE_SIZE, SORTS, decodeCursor, encodeCursor } from "../paging.js";
 import { REMOVED_TEXT, type ContentDecision, type ContentTarget } from "./targets.js";
 
 /**
@@ -46,15 +46,18 @@ export type ReportPage = {
   nextCursor?: string | undefined;
 };
 
+/** Oldest first, and its own identity: the queues do not share cursors. */
+const SORT = SORTS.reportsOldest;
+
 export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Promise<ReportPage> {
-  const after = filter.cursor ? decodeCursor(filter.cursor) : undefined;
+  const after = filter.cursor ? decodeCursor(SORT, filter.cursor) : undefined;
 
   const conditions = [
     ...(filter.open ? [isNull(contentReports.decidedAt)] : []),
     ...(filter.targetType ? [eq(contentReports.targetType, filter.targetType)] : []),
     ...(after
       ? [
-          sql`(${contentReports.createdAt}, ${contentReports.id}) > (${after.at}::timestamptz, ${after.id}::uuid)`,
+          sql`(${contentReports.createdAt}, ${contentReports.id}) > (${after.value}::timestamptz, ${after.id}::uuid)`,
         ]
       : []),
   ];
@@ -91,7 +94,9 @@ export async function listReports(db: DbExecutor, filter: ReportFilter = {}): Pr
 
   return {
     rows: await withDeciders(db, page),
-    ...(rows.length > PAGE_SIZE && last ? { nextCursor: encodeCursor(last) } : {}),
+    ...(rows.length > PAGE_SIZE && last
+      ? { nextCursor: encodeCursor(SORT, { value: last.cursorAt, id: last.id }) }
+      : {}),
   };
 }
 

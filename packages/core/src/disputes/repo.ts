@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { disputeMessages, disputes, orders, users, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
-import { PAGE_SIZE, decodeCursor, encodeCursor } from "../paging.js";
+import { PAGE_SIZE, SORTS, decodeCursor, encodeCursor } from "../paging.js";
 import type { DisputeResolution, DisputeState } from "./transitions.js";
 
 /**
@@ -114,11 +114,14 @@ export type DisputePage = {
   nextCursor?: string | undefined;
 };
 
+/** Oldest first, so a cursor from the newest-first order list cannot replay here. */
+const SORT = SORTS.disputesOldest;
+
 export async function listForAdmin(
   db: DbExecutor,
   filter: DisputeFilter = {},
 ): Promise<DisputePage> {
-  const after = filter.cursor ? decodeCursor(filter.cursor) : undefined;
+  const after = filter.cursor ? decodeCursor(SORT, filter.cursor) : undefined;
 
   const conditions = [
     ...(filter.state ? [eq(disputes.state, filter.state)] : []),
@@ -130,7 +133,7 @@ export async function listForAdmin(
     // `>` because this list runs oldest first.
     ...(after
       ? [
-          sql`(${disputes.createdAt}, ${disputes.id}) > (${after.at}::timestamptz, ${after.id}::uuid)`,
+          sql`(${disputes.createdAt}, ${disputes.id}) > (${after.value}::timestamptz, ${after.id}::uuid)`,
         ]
       : []),
   ];
@@ -149,7 +152,9 @@ export async function listForAdmin(
 
   return {
     rows: await withAssignees(db, page),
-    ...(found.length > PAGE_SIZE && last ? { nextCursor: encodeCursor(last) } : {}),
+    ...(found.length > PAGE_SIZE && last
+      ? { nextCursor: encodeCursor(SORT, { value: last.cursorAt, id: last.id }) }
+      : {}),
   };
 }
 

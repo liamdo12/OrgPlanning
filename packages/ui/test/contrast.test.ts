@@ -53,6 +53,8 @@ const GLASS = over("#FFFFFF", 0.52, WORST_BACKDROP);
 const WASH = over("#FFFFFF", 0.28, WORST_BACKDROP);
 
 const AA = 4.5;
+/** WCAG's floor for a graphic or a control boundary, where AA does not apply. */
+const GRAPHICS = 3;
 
 describe("contrast", () => {
   it("clears AA for body text on glass, over the strongest gradient", () => {
@@ -78,6 +80,47 @@ describe("contrast", () => {
     for (const role of ["#3E6B34", "#C2374B", "#1F4D3A"]) {
       expect(contrast("#F4F1E9", role), role).toBeGreaterThanOrEqual(AA);
     }
+  });
+
+  it("clears AA for muted text on the customer role fill", () => {
+    // The prototype uses three greens for this and two of them fail: the hero
+    // eyebrow at 4.13:1 (line 575) and the payment labels at 4.40:1 (lines
+    // 924–927), neither of them large text. This is the third, and the other
+    // two collapse into it.
+    expect(contrast("#DCE8CE", "#3E6B34")).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("clears AA for a disabled primary button's label", () => {
+    // Asserted here, and the rule that puts these two colours on the button is
+    // asserted in `stylesheets.test.ts`. Neither half means anything alone:
+    // `.oc-button:disabled` fades every variant, and a pair written under that
+    // fade composites back down to 2.61:1 — see the case below.
+    expect(contrast("#3C4A43", "#DDE3DF")).toBeGreaterThanOrEqual(AA);
+  });
+
+  it("is why the disabled rule has to stop fading, not only recolour", () => {
+    // What the button would measure if `.oc-button--primary:disabled` set the
+    // colours and left `opacity: 0.55` in place. Worse than the graphics floor,
+    // and barely different from the 2.32:1 the old rule produced — which is the
+    // whole argument for the reset.
+    const faded = (hex: string) => over(hex, 0.55, GLASS);
+    expect(contrast(faded("#3C4A43"), faded("#DDE3DF"))).toBeLessThan(GRAPHICS);
+    expect(contrast(faded("#F4F1E9"), faded("#3E6B34"))).toBeLessThan(GRAPHICS);
+  });
+
+  it("clears the graphics floor for the save heart, which is a glyph", () => {
+    // Deliberately 3:1 and not AA. The heart is an icon with a text label
+    // elsewhere, and the published 4.99:1 is a figure over an opaque card — on
+    // the glass a card actually uses it is 3.71:1, so an AA assertion here
+    // would have failed the day it was written and taken a correct colour with
+    // it.
+    expect(contrast("#C2374B", GLASS)).toBeGreaterThanOrEqual(GRAPHICS);
+  });
+
+  it("keeps a progress fill distinguishable from its track", () => {
+    // Two adjacent graphics, so the floor is 3:1 and the pair is the role
+    // colour against the unfilled remainder.
+    expect(contrast("#3E6B34", "#EFE9DF")).toBeGreaterThanOrEqual(GRAPHICS);
   });
 });
 

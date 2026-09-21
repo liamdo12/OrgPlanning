@@ -18,7 +18,23 @@ import { cx } from "../lib/cx";
  * which is still there and still clickable.
  */
 
-function useDismissable(open: boolean, onClose: () => void) {
+/**
+ * Focus containment, Escape and focus return, for one open surface.
+ *
+ * Exported because it is the only implementation of this in the repository and
+ * has to stay that way. `Dialog` and `Sheet` cover most overlays, but not all:
+ * the customer header's search panel is anchored under the header with a scrim
+ * *below* the header rather than over it, which `.oc-scrim` at `z-60` cannot
+ * express. That surface is new; its trap is not, because a second trap is a
+ * second place for the two bugs this one already pays for — an `onClose` held
+ * in a ref, so a controlled input does not lose its caret on every keystroke,
+ * and `input[type=hidden]` excluded from the focusable query, since it matches
+ * every naive selector and cannot take focus.
+ *
+ * Returns the ref to put on the surface. Attach `role`, `aria-modal` and a
+ * label yourself: what this does is behaviour, not semantics.
+ */
+export function useDismissable(open: boolean, onClose: () => void) {
   const surface = useRef<HTMLDivElement>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
 

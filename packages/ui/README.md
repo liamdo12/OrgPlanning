@@ -50,6 +50,14 @@ The kitchen sink at `/kitchen-sink` renders every component in every state, in
 all three role themes. It is the surface to compare against the prototype, and
 it is withheld on the production tier.
 
+**Add to it when you add a component here.** That page is not only a showroom:
+it is the regression surface an additive change to this package is proved
+against — its rendered markup is diffed before and after, and a component it
+does not draw is a component nothing would have caught changing. The states
+worth drawing are the ones a screen cannot conveniently reach: a disabled
+primary beside a disabled secondary, a stepper sitting on each of its bounds, a
+tab that is deliberately inert.
+
 ## Role theming
 
 A role theme rewrites three custom properties — `--color-role`,
@@ -64,11 +72,16 @@ customer surface gets the customer palette in that subtree and nowhere else.
 | vendor   | `#C2374B` | `#A02637` | `#FDF0F2` |
 | admin    | `#1F4D3A` | `#163527` | `#F3F7F3` |
 
-## One breakpoint
+## Two breakpoints
 
-The prototype has exactly one: `S.vw < 860` is mobile and everything else is
-desktop (line 1989). That is the `desk:` variant, and it is the only breakpoint
-in the token set, so our layouts switch where the prototype's do.
+`S.vw < 860` is the prototype's mobile/desktop switch (line 1989) and is the
+`desk:` variant, so our layouts change where the prototype's do.
+
+`--breakpoint-wide: 1080px` is the `wide:` variant, and the header's search
+control is the only thing that uses it: the pill shows at `S.vw >= 1080` and
+the compact button below it (lines 2320–2321). That is a third layout state at
+a width `desk:` cannot express, so the band between 860 and 1080 — desktop
+chrome, compact search — is a state of its own and has to be checked as one.
 
 ## Contrast
 
@@ -81,6 +94,17 @@ better, which is why the paper figure is the wrong one to publish.
 
 `packages/ui/test/contrast.test.ts` asserts the tightest of these, so a token
 edit that breaks one fails `pnpm test` rather than a later audit.
+
+**Two kinds of assertion, and the difference matters.** `contrast.test.ts`
+computes ratios from hex literals: it never opens a stylesheet, so it can only
+say that a pair _would_ be legible, not that any rule uses it.
+`stylesheets.test.ts` parses `src/styles/components.css` and reads the rules
+themselves. The disabled primary button needs both and is the reason the
+distinction is written down — the colour pair alone is worth nothing, because
+`.oc-button:disabled` fades every variant and composites anything written
+underneath it back down. Before adding a pair, ask which of the two a new
+assertion belongs in; if the answer is "the rendered element has to use it",
+it is the second.
 
 | Foreground on background                             | Ratio           | AA  |
 | ---------------------------------------------------- | --------------- | --- |
@@ -98,9 +122,41 @@ edit that breaks one fails `pnpm test` rather than a later audit.
 | danger badge (`#8E2334` on `#FBE4E7`)                | 7.1             | ✓   |
 | surface on the role fill (customer / vendor / admin) | 5.5 / 4.7 / 8.5 | ✓   |
 | avatar initials, all five tones                      | 5.6 – 9.8       | ✓   |
+| muted on the customer role fill (`#DCE8CE`)          | 4.9             | ✓   |
+| disabled primary button (`#3C4A43` on `#DDE3DF`)     | 7.2             | ✓   |
 
 Badges and role fills are opaque, so what is behind them does not matter; the
 rest are worst-case figures.
+
+Two pairs are measured against the **3:1 graphics floor** instead, because
+neither is text:
+
+| Graphic on background                    | Ratio | 3:1 |
+| ---------------------------------------- | ----- | --- |
+| the save heart (`#C2374B` on card glass) | 3.7   | ✓   |
+| a progress fill on its track (`#EFE9DF`) | 5.2   | ✓   |
+
+The heart is the one to be careful with. It is published elsewhere as 4.99:1,
+which is a figure over an opaque card; over the glass a service card actually
+uses — the same worst-case compositing as every row above — it is **3.71:1**.
+That clears the floor as a glyph and does not clear AA as text, so it must not
+be reused for a word, and an assertion written at 4.5 would fail on a colour
+that is correct.
+
+### The disabled primary button
+
+`.oc-button:disabled { opacity: 0.55 }` renders a primary button's label at
+**2.32:1**, under even the graphics floor, and the checkout's Pay button is
+disabled until the agreement is ticked (line 2432) — so it is the most-seen
+disabled control in the product. `.oc-button--primary:disabled` takes
+`--color-disabled-bg` / `--color-disabled-fg` instead, which is the pair the
+prototype itself draws at that line.
+
+`opacity: 1` in that rule is the load-bearing half. Colours written under the
+base rule do not replace the fade, they composite through it: this pair at 0.55
+measures **2.61:1**, no better than what it replaced. That is why the rule is
+asserted in `stylesheets.test.ts` for all three declarations and the ratio in
+`contrast.test.ts` — either alone passes over a button nobody fixed.
 
 Three things follow from the measurements and are built in rather than left to
 each screen:

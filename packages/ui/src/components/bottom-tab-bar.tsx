@@ -15,13 +15,28 @@ import { cx } from "../lib/cx";
  * arrive with the screens that need them.
  */
 
-/** Source: the `ICONS` map, lines 2032–2035. */
+/** Source: the `ICONS` map, lines 2021–2024 and 2032–2035. */
 export const NAV_ICONS = {
   vendors: "M4 9.5h16V20H4zM4 9.5 6 4h12l2 5.5M9.5 20v-5h5v5",
   users:
     "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3.5 20c0-3 2.5-4.6 5.5-4.6s5.5 1.6 5.5 4.6M16.5 6.4a3 3 0 0 1 0 5.6M18 15.6c1.8.6 3 1.9 3 4",
   orders: "M6 3.5h12v16.5l-2.6-1.5-2.6 1.5-2.6-1.5L7.6 20 6 19V3.5zM9 8.5h6M9 12.5h4",
   automations: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 8v4.4l3 1.8",
+  /* The customer four, lines 2021–2024. */
+  home: "M3.5 11 12 4l8.5 7M6 9.8V20h12V9.8",
+  results: "M4 7h16M4 12h16M4 17h10",
+  saved: "M12 20s-7-4.4-7-9a3.8 3.8 0 0 1 7-2.1A3.8 3.8 0 0 1 19 11c0 4.6-7 9-7 9z",
+  event: "M4 6.5h16v13H4zM8 4v4M16 4v4M4 11h16",
+  /*
+   * Line 2025, and it draws a tab that goes nowhere: the calendar screen
+   * belongs to a later plan, and its tab is shown deferred rather than dropped
+   * so the row does not rearrange when it arrives. Transcribed rather than
+   * invented, like the rest — and it stays a *deferred* tab until there is a
+   * screen, because an icon is the thing that makes one look ready.
+   *
+   * `messages` (2026) is not here: nothing draws it at all.
+   */
+  calendar: "M4 6.5h16v13H4zM8 4v4M16 4v4M4 11h16M8.5 14.5h2M13.5 14.5h2",
 } as const;
 
 /** What a caller's own link component has to put on the element it renders. */
@@ -37,6 +52,19 @@ export type TabBarItem = {
   icon: string;
   href?: string;
   onSelect?: () => void;
+  /**
+   * Shown, and inert.
+   *
+   * For a destination the product names but does not have yet. The alternative
+   * — omitting the tab — loses the information that it is coming; the other
+   * alternative, linking it anyway, is a 404 with a nav bar around it.
+   *
+   * A disabled item never renders as a link whatever `href` says, so a place
+   * that is not ready cannot be reached by middle-clicking it either.
+   */
+  disabled?: boolean;
+  /** Why, in words. Required with `disabled`: dimmed with no reason is a bug. */
+  title?: string;
 };
 
 export function BottomTabBar({
@@ -71,7 +99,7 @@ export function BottomTabBar({
       )}
     >
       {items.map((item) => {
-        const active = item.id === activeId;
+        const active = item.id === activeId && !item.disabled;
         const body = (
           <>
             <svg
@@ -110,6 +138,30 @@ export function BottomTabBar({
             "grid min-w-0 flex-1 cursor-pointer justify-items-center gap-[3px] px-[2px] py-[6px] no-underline hover:no-underline",
           ...(active ? { "aria-current": "page" as const } : {}),
         };
+
+        if (item.disabled) {
+          return (
+            <button
+              key={item.id}
+              type="button"
+              // `aria-disabled`, not the attribute: a disabled button leaves
+              // the tab order, which takes the `title` with it — so the one
+              // group that cannot see the dimming is the one that gets no
+              // explanation at all. This stays reachable, announces as
+              // unavailable, and does nothing when pressed.
+              aria-disabled="true"
+              title={item.title}
+              onClick={(event) => event.preventDefault()}
+              {...props}
+              className={cx(
+                props.className,
+                "cursor-not-allowed border-0 bg-transparent opacity-[0.55]",
+              )}
+            >
+              {body}
+            </button>
+          );
+        }
 
         if (item.href) {
           return renderLink ? (

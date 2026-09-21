@@ -21,11 +21,17 @@ import {
   PageHeader,
   Pill,
   ROLES,
+  SearchButton,
+  SearchOption,
+  SearchPanelGroup,
+  SearchPill,
   Select,
   Sheet,
   Skeleton,
   SkeletonRows,
   StatusBadge,
+  Stepper,
+  Swatch,
   Switch,
   SectionNav,
   Textarea,
@@ -156,6 +162,9 @@ export function KitchenSink() {
   const [filter, setFilter] = useState("All accounts");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [searchField, setSearchField] = useState<string | undefined>(undefined);
+  const [category, setCategory] = useState("Any service");
+  const [guests, setGuests] = useState(60);
   const [toasts, setToasts] = useState<Array<{ id: number; tone: "success" | "danger" }>>([]);
 
   return (
@@ -185,8 +194,21 @@ export function KitchenSink() {
             <Button intent="secondary">Message</Button>
             <Button intent="ghost">Resend email</Button>
             <Button intent="danger">Suspend</Button>
+            {/*
+              The two disabled treatments, side by side on purpose. A primary
+              button takes a colour pair and stops being faded, because fading
+              it renders the label at 2.32:1; every other variant keeps the
+              fade, which is legible on them. Seeing both is the only way to
+              notice if one ever starts behaving like the other.
+            */}
             <Button intent="primary" disabled>
-              Disabled
+              Disabled primary
+            </Button>
+            <Button intent="secondary" disabled>
+              Disabled secondary
+            </Button>
+            <Button intent="ghost" disabled>
+              Disabled ghost
             </Button>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -223,10 +245,131 @@ export function KitchenSink() {
             ))}
           </FilterBar>
           <SectionNav
-            items={SECTIONS.map((section) => ({ ...section, onSelect: () => setTab(section.id) }))}
+            items={[
+              ...SECTIONS.map((section) => ({ ...section, onSelect: () => setTab(section.id) })),
+              // Visibly deferred: shown, inert, and never a link. Both tab
+              // renderers carry this state, and it is here because a screen
+              // that is planned and not built is a thing the product says out
+              // loud rather than leaves out of the row.
+              {
+                id: "deferred",
+                label: "Not built yet",
+                disabled: true,
+                title: "This screen is planned. It does not exist yet.",
+              },
+            ]}
             activeId={tab}
             label="Admin sections"
           />
+        </Section>
+
+        <Section
+          title="Search"
+          blurb="The header control in both its forms. The pill shows from 1080px; the button replaces it below that."
+        >
+          <div className="flex max-w-xl flex-col gap-4">
+            <SearchPill
+              activeKey={searchField}
+              onSubmit={() => setSearchField(undefined)}
+              segments={[
+                {
+                  key: "what",
+                  label: "What",
+                  value: category,
+                  grow: true,
+                  onOpen: () => setSearchField("what"),
+                },
+                {
+                  key: "where",
+                  label: "Where",
+                  value: "Liberty Village",
+                  onOpen: () => setSearchField("where"),
+                },
+                {
+                  key: "when",
+                  label: "When",
+                  value: "Mar 20",
+                  onOpen: () => setSearchField("when"),
+                },
+                {
+                  key: "guests",
+                  label: "Guests",
+                  value: String(guests),
+                  onOpen: () => setSearchField("guests"),
+                },
+              ]}
+            />
+
+            <SearchButton
+              value={category}
+              summary={`Liberty Village · Mar 20 · ${guests} guests`}
+              expanded={searchField !== undefined}
+              onOpen={() => setSearchField(searchField ? undefined : "what")}
+            />
+
+            <GlassPanel className="p-5">
+              <SearchPanelGroup legend="What do you need">
+                <div className="flex flex-wrap gap-2">
+                  {["Any service", "Flowers", "Catering", "Cakes", "Photography"].map((label) => (
+                    <SearchOption
+                      key={label}
+                      label={label}
+                      selected={category === label}
+                      onSelect={() => setCategory(label)}
+                    />
+                  ))}
+                </div>
+              </SearchPanelGroup>
+            </GlassPanel>
+          </div>
+        </Section>
+
+        <Section
+          title="Steppers and swatches"
+          blurb="A stepper announces its value as it changes, and refuses to leave its bounds. A swatch takes a tone and a size, or hashes both from a name."
+        >
+          <div className="flex flex-wrap items-center gap-6">
+            <Stepper
+              label="Guests"
+              decrementLabel="Fewer guests"
+              incrementLabel="More guests"
+              value={guests}
+              min={5}
+              max={500}
+              step={5}
+              onChange={setGuests}
+            />
+            {/* At the bounds, so the disabled ends are visible without anyone
+                having to press a button thirty times to find them. */}
+            <Stepper
+              label="At the minimum"
+              decrementLabel="Fewer"
+              incrementLabel="More"
+              value={5}
+              min={5}
+              max={500}
+              step={5}
+              onChange={() => undefined}
+            />
+            <Stepper
+              label="At the maximum"
+              decrementLabel="Fewer"
+              incrementLabel="More"
+              value={500}
+              min={5}
+              max={500}
+              step={5}
+              onChange={() => undefined}
+            />
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Swatch name="Bloom & Co" />
+            <Swatch name="Maple & Thyme" />
+            <Swatch name="Anything" tone="#B4C6BA" />
+            <Swatch name="Anything" tone={["#EADFD1", "#D6BFA8"]} />
+            <Swatch name="Anything" tone={["#D9E2DB", "#B4C6BA"]} size={64} />
+          </div>
         </Section>
 
         <Section title="Surfaces">
@@ -421,6 +564,16 @@ export function KitchenSink() {
             label: "Automations",
             icon: NAV_ICONS.automations,
             onSelect: () => setTab("automations"),
+          },
+          // The same deferred state as the section links above. A phone is
+          // where it matters most: the bar is the only navigation, so a tab
+          // that leads nowhere has nothing beside it to recover from.
+          {
+            id: "deferred",
+            label: "Calendar",
+            icon: NAV_ICONS.calendar,
+            disabled: true,
+            title: "This screen is planned. It does not exist yet.",
           },
         ]}
       />

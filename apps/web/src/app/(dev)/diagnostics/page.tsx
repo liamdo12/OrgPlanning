@@ -1,21 +1,25 @@
 import { AppBackground, GlassPanel, PageHeader } from "@occasion/ui";
-import { createRequestContext } from "../lib/core";
+import { createRequestContext } from "../../../lib/core";
 
 /**
- * Foundation landing page.
+ * The wiring, as a page.
  *
  * It exists to prove the wiring is real rather than to be product UI: it builds
- * a core context the way every server action will, so a broken environment
+ * a core context the way every server action does, so a broken environment
  * schema, a broken adapter wiring or a broken package boundary shows up
- * immediately. The admin shell replaces it.
+ * immediately.
  *
- * The diagnostic table is withheld on the production tier. Commission rates and
- * "a reseed path exists" are not things an anonymous visitor should be told,
- * and this route is unauthenticated.
+ * It began at `/` and moved here when Explore took that path. Its purpose did
+ * not change with the address, and neither did the two things that matter
+ * about it: the route is **unauthenticated**, and the diagnostic table is
+ * **withheld on the production tier**. Commission rates and "a reseed path
+ * exists" are not things to tell a visitor who has not identified themselves.
  */
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export const metadata = { title: "Diagnostics · Occasion" };
+
+export default function Diagnostics() {
   const ctx = createRequestContext();
   const showDiagnostics = ctx.config.appTier !== "production";
 
