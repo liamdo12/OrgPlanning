@@ -23,8 +23,10 @@ export function CustomerTabs({ signedIn }: { signedIn: boolean }) {
 
   return (
     // Line 452: the tabs sit under the header bar, in the same column, and are
-    // replaced by the bottom bar below 860.
-    <nav className="hidden desk:block" aria-label="Customer sections">
+    // replaced by the bottom bar below 860. A plain wrapper, because
+    // `SectionNav` is the landmark — nesting one inside another names the same
+    // set twice and gives a screen reader two ways into one row.
+    <div className="hidden desk:block">
       <SectionNav
         label="Customer sections"
         activeId={active}
@@ -40,7 +42,7 @@ export function CustomerTabs({ signedIn }: { signedIn: boolean }) {
           </Link>
         )}
       />
-    </nav>
+    </div>
   );
 }
 
