@@ -104,7 +104,7 @@ active.
 
 **The platform has one principal of its own, and it is a skeleton key.**
 `SYSTEM` in `packages/core/src/identity/actor.ts` exists because the job runner
-needs somebody: a balance charged fourteen days before an event was requested by
+needs somebody: a balance charged automatically ahead of an event was requested by
 nobody, and naming whichever administrator happened to be signed in would put a
 person on the audit trail who did not do it. It passes the **three order
 policies** and nothing else — `requireAdmin` refuses it, the vendor and account

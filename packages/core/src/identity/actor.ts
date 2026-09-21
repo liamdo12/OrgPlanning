@@ -20,8 +20,8 @@ export type Actor =
   /**
    * The platform acting on its own schedule.
    *
-   * The job runner needs a principal: a balance charged fourteen days before an
-   * event was not requested by anybody, and attributing it to whichever
+   * The job runner needs a principal: a balance charged automatically ahead of
+   * an event was not requested by anybody, and attributing it to whichever
    * administrator happened to be signed in — or to a designated human account —
    * would put a name on the audit trail that did not do it.
    *
