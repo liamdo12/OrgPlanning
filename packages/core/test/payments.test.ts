@@ -154,7 +154,7 @@ describe.skipIf(!url)("orders and payments", () => {
    * how far off the event is, so the cases that matter need their own. A fresh
    * event also means a fresh date, which the capacity constraint requires.
    */
-  async function bookForEventIn(days: number, quantity = 4, policyTemplateId?: string) {
+  async function bookForEventIn(days: number, quantity = 4) {
     const [created] = await sql<{ id: string }[]>`
       insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
       values (
@@ -171,9 +171,21 @@ describe.skipIf(!url)("orders and payments", () => {
     const result = await createCheckout(ctx, customer, {
       eventId: created?.id as string,
       lines: [{ serviceId: bloomServiceId, quantity }],
-      ...(policyTemplateId ? { policyTemplateId } : {}),
     });
     return result.orders[0] as NonNullable<(typeof result.orders)[number]>;
+  }
+
+  /** Sells the service under a named policy, the way its listing would. */
+  async function sellUnder(tier: string | null): Promise<string | null> {
+    const [row] = await sql<{ id: string }[]>`
+      update app.planning_org_services
+      set policy_template_id = (
+        select id from app.planning_org_policy_templates where tier = ${tier}
+      )
+      where id = ${bloomServiceId}
+      returning policy_template_id as id
+    `;
+    return row?.id ?? null;
   }
 
   const LINK_URLS = {
@@ -281,19 +293,22 @@ describe.skipIf(!url)("orders and payments", () => {
       ).rejects.toBeInstanceOf(NotFoundError);
     });
 
-    it("takes the deposit and the free window from the policy, not from the request", async () => {
+    it("takes the deposit and the free window from the policy the service is sold under", async () => {
       const templates = await sql<{ id: string; tier: string; deposit_bps: number }[]>`
         select id, tier, deposit_bps from app.planning_org_policy_templates order by deposit_bps
       `;
       expect(templates.map((row) => row.deposit_bps)).toEqual([1000, 2000, 3000]);
 
       for (const [index, template] of templates.entries()) {
-        const order = await bookForEventIn(200 + index * 10, 4, template.id);
+        // The listing decides, not the request. Nothing the customer sends
+        // names a template, so there is nothing to name a cheaper one with.
+        await sellUnder(template.tier);
+        const order = await bookForEventIn(200 + index * 10);
 
         const [row] = await sql<
-          { deposit_amount: string; total: string; cooling_window_ends_at: Date }[]
+          { deposit_amount: string; total: string; policy_template_id: string }[]
         >`
-          select deposit_amount::text, total::text, cooling_window_ends_at
+          select deposit_amount::text, total::text, policy_template_id
           from app.planning_org_orders where id = ${order.id}
         `;
 
@@ -305,16 +320,81 @@ describe.skipIf(!url)("orders and payments", () => {
           template.tier,
           expected,
         ]);
+        // And the order records the terms it was actually priced under, so its
+        // own record cannot disagree with the deposit it took.
+        expect([template.tier, row?.policy_template_id]).toEqual([template.tier, template.id]);
       }
 
       // `strict` allows no free cancellation at all, so its window closes the
       // moment the booking is made — a 30% deposit that is refundable for two
       // days is not the strict policy.
-      const strict = templates.find((row) => row.tier === "strict");
-      const order = await bookForEventIn(300, 4, strict?.id);
+      await sellUnder("strict");
+      const order = await bookForEventIn(300);
       await expect(refundWithinCoolingWindow(ctx, customer, order.id)).rejects.toBeInstanceOf(
         ValidationError,
       );
+    });
+
+    it("prices a service with no policy at the platform's own deposit rate", async () => {
+      // Null is an ordinary answer, and `platform_settings.deposit_bps` is what
+      // it falls back to — a catalogue row nobody has chosen terms for still
+      // has to be bookable at a rate somebody vetted.
+      expect(await sellUnder(null)).toBeNull();
+
+      const order = await bookForEventIn(210);
+      const [row] = await sql<
+        { deposit_amount: string; total: string; policy_template_id: string | null }[]
+      >`
+        select deposit_amount::text, total::text, policy_template_id
+        from app.planning_org_orders where id = ${order.id}
+      `;
+      const [setting] = await sql<{ value: number }[]>`
+        select value::int as value from app.planning_org_platform_settings
+        where key = 'deposit_bps'
+      `;
+
+      const total = BigInt(row?.total as string);
+      expect(BigInt(row?.deposit_amount as string)).toBe(
+        (total * BigInt(setting?.value as number) + 5000n) / 10000n,
+      );
+      // No template, so the order names none rather than inventing one.
+      expect(row?.policy_template_id).toBeNull();
+    });
+
+    it("refuses one order whose lines are sold under different policies", async () => {
+      // An order carries a single `policy_template_id`. Two services under one
+      // business with different terms would have to be charged at one of them,
+      // and the customer was shown both.
+      const [second] = await sql<{ id: string }[]>`
+        insert into app.planning_org_services
+          (vendor_id, category_id, slug, title, base_price, price_unit, booking_mode,
+           policy_template_id)
+        select
+          s.vendor_id, s.category_id, 'mixed-policy-fixture', 'Mixed policy fixture',
+          s.base_price, s.price_unit, s.booking_mode,
+          (select id from app.planning_org_policy_templates where tier = 'strict')
+        from app.planning_org_services s where s.id = ${bloomServiceId}
+        returning id
+      `;
+      await sellUnder("flexible");
+
+      const [created] = await sql<{ id: string }[]>`
+        insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+        values (${sarahId}, 'Mixed policy event', (now() + interval '250 days')::date,
+                '17:00', 'America/Toronto')
+        returning id
+      `;
+
+      signInAs("sarah@example.ca");
+      await expect(
+        createCheckout(ctx, customer, {
+          eventId: created?.id as string,
+          lines: [
+            { serviceId: bloomServiceId, quantity: 1 },
+            { serviceId: second?.id as string, quantity: 1 },
+          ],
+        }),
+      ).rejects.toBeInstanceOf(ValidationError);
     });
 
     it("gives concurrent bookings different references", async () => {
