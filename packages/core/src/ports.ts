@@ -199,10 +199,10 @@ export type StripePort = {
   /**
    * Charges a saved card with nobody watching.
    *
-   * The balance, fourteen days before the event. It fails more often than an
-   * on-session charge does — that is what `action_required` and the emailed
-   * payment link exist for — so a decline here is an ordinary answer rather
-   * than an exception.
+   * The balance, charged ahead of the event rather than taken at checkout. It
+   * fails more often than an on-session charge does — that is what
+   * `action_required` and the emailed payment link exist for — so a decline
+   * here is an ordinary answer rather than an exception.
    */
   chargeOffSession(input: {
     idempotencyKey: string;

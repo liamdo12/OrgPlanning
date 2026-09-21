@@ -99,6 +99,12 @@ export function shiftCalendarDays(instant: Date, days: number, timeZone: string)
  * out by one twice a year, and only for spans that happen to straddle a March
  * or November weekend, which is the kind of defect that ships.
  *
+ * Reducing to the date is what makes this exact rather than a rounding rule. A
+ * transition can skip a wall-clock hour or serve it twice, so an answer that
+ * depended on one would need a tie-break; it cannot do either to a date. Every
+ * instant falls on exactly one, in any zone, so the subtraction is total and
+ * there is no case left over to decide.
+ *
  * Positive when `to` falls on the later day. Round-trips with the function
  * above: `calendarDaysBetween(t, shiftCalendarDays(t, n, zone), zone)` is `n`.
  * That is what makes it safe to describe an instant by the offset that produced
