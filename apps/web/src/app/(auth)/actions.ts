@@ -21,6 +21,7 @@ import {
 import { createRequestContext } from "../../lib/core";
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { clearActiveRole, writeActiveRole } from "../../lib/active-role";
+import { clearActiveEvent } from "../../lib/active-event";
 import { getEnv } from "../../lib/env";
 import { readString } from "../../lib/form-values";
 
@@ -384,8 +385,15 @@ export async function requestPasswordResetAction(
 export async function signOutAction(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
-  // The next person at this browser starts from their own default rather than
-  // inheriting a role chip from whoever signed out.
+  // The next person at this browser starts from their own defaults rather than
+  // inheriting a role chip and a half-planned party from whoever signed out.
+  //
+  // Neither cookie is a permission, and the event one is checked against its
+  // owner on every read — so a leftover id would resolve to nothing rather than
+  // to somebody else's event. They are cleared because a browser that has been
+  // signed out should not still be carrying a selection, not because keeping
+  // one would let anybody through.
   await clearActiveRole();
+  await clearActiveEvent();
   redirect("/login");
 }

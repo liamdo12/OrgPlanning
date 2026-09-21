@@ -3,6 +3,7 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor, CoreContext } from "@occasion/core";
+import { APP_ROOT, exportedFunctions, parse } from "../authorization-registry.js";
 
 /**
  * The active-event cookie: what it carries, who may write it, and who reads it.
@@ -159,5 +160,29 @@ describe("the cookie has exactly one reader", () => {
       .map((path) => relative(appRoot, path));
 
     expect(named).toEqual([owner]);
+  });
+});
+
+/**
+ * Signing out puts the selection down with the rest of it.
+ *
+ * Not an authorization property — a leftover id resolves to nothing, because
+ * the resolver checks who owns the event on every read. It is that a browser
+ * somebody has signed out of should not still be carrying which party they
+ * were planning, and the next person at that browser should not have to
+ * wonder why the header knows something.
+ *
+ * Read off the sign-out action itself, because the failure is a line that
+ * stops being there, next to a line that is.
+ */
+describe("signing out", () => {
+  const signOut = join(APP_ROOT, "src/app/(auth)/actions.ts");
+
+  it("forgets the selection, beside the role it already forgets", () => {
+    const body = exportedFunctions(parse(signOut)).find((fn) => fn.name === "signOutAction")?.body;
+
+    expect(body, "signOutAction is not where it was").toBeDefined();
+    expect(body?.getText()).toContain("clearActiveEvent()");
+    expect(body?.getText()).toContain("clearActiveRole()");
   });
 });

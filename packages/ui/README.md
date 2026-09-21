@@ -50,6 +50,14 @@ The kitchen sink at `/kitchen-sink` renders every component in every state, in
 all three role themes. It is the surface to compare against the prototype, and
 it is withheld on the production tier.
 
+**Add to it when you add a component here.** That page is not only a showroom:
+it is the regression surface an additive change to this package is proved
+against — its rendered markup is diffed before and after, and a component it
+does not draw is a component nothing would have caught changing. The states
+worth drawing are the ones a screen cannot conveniently reach: a disabled
+primary beside a disabled secondary, a stepper sitting on each of its bounds, a
+tab that is deliberately inert.
+
 ## Role theming
 
 A role theme rewrites three custom properties — `--color-role`,
