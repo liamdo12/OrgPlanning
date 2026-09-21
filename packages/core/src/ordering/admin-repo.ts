@@ -10,7 +10,9 @@ import {
   users,
   vendors,
 } from "@occasion/db/schema";
+import { PAGE_SIZE, SORTS, decodeCursor, encodeCursor } from "../paging.js";
 import type { CoreContext, DbExecutor } from "../context.js";
+import type { CursorKey } from "../paging.js";
 import type { PaymentLabelKind } from "./payment-label.js";
 import type { OrderState } from "./transitions.js";
 
@@ -27,7 +29,7 @@ import type { OrderState } from "./transitions.js";
  * main query joins one-to-one and cannot fan out whatever the data does.
  */
 
-export const PAGE_SIZE = 25;
+export { PAGE_SIZE };
 
 /**
  * Which payment positions to show, named after the labels they produce.
@@ -245,47 +247,14 @@ function searchCondition(term: string) {
 }
 
 /**
- * The cursor: `(placed at, id)`, newest first.
+ * The cursor: `(placed at, id)`, newest first. Encoded by `paging.ts`, which
+ * documents why the instant is the database's own rendering and not a `Date`.
  *
- * Keyset rather than an offset, for the same reason as the account list — an
- * order cancelled between one page and the next shifts an offset and makes a
- * row repeat or vanish.
- *
- * The instant is carried as **the database's own text rendering**, never as a
- * `Date`. `created_at` is `timestamptz`, which keeps microseconds; JavaScript's
- * `Date` keeps milliseconds. A cursor built by `toISOString()` therefore names
- * an instant no row holds, so `= cursor` never matches and the id tiebreak
- * never fires — and every order inside the boundary millisecond matches neither
- * branch of the predicate and is silently unreachable at any page. That is not
- * hypothetical: a multi-vendor checkout writes its orders in one transaction,
- * sharing `now()` to the microsecond, which is exactly the case the tiebreak
- * exists for.
+ * The microsecond trap it describes is not hypothetical here: a multi-vendor
+ * checkout writes its orders in one transaction, sharing `now()` to the
+ * microsecond, which is exactly the case the id tiebreak exists for.
  */
-function encodeCursor(row: AdminOrderRow): string {
-  return `${row.cursorAt}|${row.id}`;
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-/** Postgres renders `timestamptz` as `2026-09-18 19:19:00.123456+00`. */
-const PG_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/;
-
-function decodeCursor(cursor: string): { at: string; id: string } | undefined {
-  // A pipe rather than a colon: the timestamp has two of its own, so the
-  // separator has to be a character neither half contains.
-  const split = cursor.lastIndexOf("|");
-  if (split < 0) return undefined;
-
-  const id = cursor.slice(split + 1);
-  const at = cursor.slice(0, split);
-
-  // Both halves are checked rather than merely non-empty: they are compared
-  // against `uuid` and `timestamptz` columns, and Postgres raises on a
-  // malformed one instead of matching nothing. A hand-edited cursor should fall
-  // back to the first page, not to the error boundary.
-  if (!UUID.test(id) || !PG_TIMESTAMP.test(at)) return undefined;
-
-  return { at, id };
-}
+const SORT = SORTS.ordersNewest;
 
 /**
  * Everything after the cursor row, in the list's own order.
@@ -294,8 +263,8 @@ function decodeCursor(cursor: string): { at: string; id: string } | undefined {
  * is one expression with the same meaning and no way to get the tiebreak's
  * polarity wrong.
  */
-function afterCursor(after: { at: string; id: string }) {
-  return sql`(${orders.createdAt}, ${orders.id}) < (${after.at}::timestamptz, ${after.id}::uuid)`;
+function afterCursor(after: CursorKey) {
+  return sql`(${orders.createdAt}, ${orders.id}) < (${after.value}::timestamptz, ${after.id}::uuid)`;
 }
 
 /** Conditions shared by the count and the page, so the two cannot disagree. */
@@ -375,7 +344,7 @@ export async function listForAdmin(
 
   const [counted] = await counting.where(conditions.length > 0 ? and(...conditions) : undefined);
 
-  const after = options.cursor ? decodeCursor(options.cursor) : undefined;
+  const after = options.cursor ? decodeCursor(SORT, options.cursor) : undefined;
   const paged = after ? [...conditions, afterCursor(after)] : conditions;
 
   const rows = await db
@@ -398,7 +367,9 @@ export async function listForAdmin(
 
   return {
     rows: page,
-    ...(hasMore && last ? { nextCursor: encodeCursor(last) } : {}),
+    ...(hasMore && last
+      ? { nextCursor: encodeCursor(SORT, { value: last.cursorAt, id: last.id }) }
+      : {}),
     total: counted?.total ?? 0,
   };
 }

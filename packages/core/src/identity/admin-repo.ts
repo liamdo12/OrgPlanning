@@ -9,6 +9,7 @@ import {
   vendorMembers,
   vendors,
 } from "@occasion/db/schema";
+import { PAGE_SIZE, SORTS, decodeCursor, encodeCursor } from "../paging.js";
 import type { CoreContext, DbExecutor } from "../context.js";
 import type { RoleName, UserStatus } from "./actor.js";
 
@@ -64,7 +65,7 @@ export type UserPage = {
   total: number;
 };
 
-export const PAGE_SIZE = 25;
+export { PAGE_SIZE };
 
 /**
  * Roles as an array, one row per user.
@@ -208,34 +209,15 @@ function searchCondition(term: string) {
 }
 
 /**
- * The cursor.
+ * The cursor: `(fullName, id)`, encoded by `paging.ts`.
  *
- * `(fullName, id)` rather than an offset: an offset skips or repeats rows when
+ * A composite key rather than an offset: an offset skips or repeats rows when
  * somebody is suspended between one page and the next, and the id breaks ties
- * so two people with the same name cannot hide each other.
+ * so two people with the same name cannot hide each other. The leading half is
+ * a name rather than an instant, which is why the shared encoder has to be told
+ * what it is comparing — a name is not required to parse as anything.
  */
-function encodeCursor(row: AdminUserRow): string {
-  return `${row.fullName}:${row.id}`;
-}
-
-function decodeCursor(cursor: string): { fullName: string; id: string } | undefined {
-  // Split at the *last* separator, not the first. A name may contain a colon;
-  // a uuid cannot, so the tail is unambiguous and whatever precedes it is the
-  // name. Splitting at the first would truncate "Smith: The Second" to "Smith".
-  const split = cursor.lastIndexOf(":");
-  if (split < 0) return undefined;
-
-  const id = cursor.slice(split + 1);
-  // Checked, not merely non-empty: the tail is compared against a `uuid`
-  // column, and Postgres raises on a malformed one rather than matching
-  // nothing. A hand-edited or truncated cursor should fall back to the first
-  // page, not the error boundary.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
-    return undefined;
-  }
-
-  return { fullName: cursor.slice(0, split), id };
-}
+const SORT = SORTS.usersByName;
 
 export async function listForAdmin(
   ctx: CoreContext,
@@ -257,12 +239,12 @@ export async function listForAdmin(
     .where(conditions.length > 0 ? and(...conditions) : undefined);
   const total = counted?.total ?? 0;
 
-  const after = options.cursor ? decodeCursor(options.cursor) : undefined;
+  const after = options.cursor ? decodeCursor(SORT, options.cursor) : undefined;
   if (after) {
     conditions.push(
       or(
-        gt(users.fullName, after.fullName),
-        and(eq(users.fullName, after.fullName), gt(users.id, after.id)),
+        gt(users.fullName, after.value),
+        and(eq(users.fullName, after.value), gt(users.id, after.id)),
       )!,
     );
   }
@@ -308,7 +290,9 @@ export async function listForAdmin(
 
   return {
     rows: page,
-    ...(hasMore && last ? { nextCursor: encodeCursor(last) } : {}),
+    ...(hasMore && last
+      ? { nextCursor: encodeCursor(SORT, { value: last.fullName, id: last.id }) }
+      : {}),
     total,
   };
 }
