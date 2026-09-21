@@ -900,12 +900,13 @@ export async function refundWithinCoolingWindow(
   //
   // The two are the same figure on an ordinary booking, because only the
   // deposit has been taken inside a forty-eight hour window. They are not the
-  // same on a booking made **fifteen days** before its event: the balance falls
-  // due at event−14d, which is inside that window, so both charges have settled
-  // by the time somebody cancels. Refunding their sum against the deposit's
-  // intent asks the provider to return more than that charge ever held, and it
-  // refuses — leaving a customer who cannot cancel and a `requested` row nobody
-  // reconciles.
+  // same on a booking made **just outside the balance lead time**: the balance
+  // then falls due within a day or two of the deposit, inside that same window,
+  // so both charges have settled by the time somebody cancels. How narrow that
+  // gap is depends on a setting, but that it exists does not. Refunding their
+  // sum against the deposit's intent asks the provider to return more than that
+  // charge ever held, and it refuses — leaving a customer who cannot cancel and
+  // a `requested` row nobody reconciles.
   const settled = (await repo.listPayments(ctx.db, orderId)).filter(
     (payment) => payment.state === "succeeded" && payment.providerPaymentIntentId,
   );

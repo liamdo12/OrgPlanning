@@ -79,13 +79,45 @@ function parseDay(day: string): { year: number; month: number; day: number } {
  * The same wall-clock time, a whole number of calendar days away.
  *
  * Negative counts move backwards, which is how the balance date is expressed:
- * `event − 14 days`, not `event − 336 hours`.
+ * a number of days before the event, not a number of hours before it.
  */
 export function shiftCalendarDays(instant: Date, days: number, timeZone: string): Date {
   const naive = new Date(instant.getTime() + days * 24 * 60 * 60 * 1000);
   return new Date(
     naive.getTime() + (zoneOffsetMs(instant, timeZone) - zoneOffsetMs(naive, timeZone)),
   );
+}
+
+/**
+ * How many calendar days apart two instants are, counted in a zone.
+ *
+ * The inverse of `shiftCalendarDays`, and the same kind of number: days on a
+ * calendar, not elapsed time divided by twenty-four. Each instant is reduced to
+ * the local date it fell on and those dates are subtracted, so a span
+ * containing a daylight-saving transition — twenty-three hours long, or
+ * twenty-five — still counts as the one day it was. Dividing milliseconds is
+ * out by one twice a year, and only for spans that happen to straddle a March
+ * or November weekend, which is the kind of defect that ships.
+ *
+ * Positive when `to` falls on the later day. Round-trips with the function
+ * above: `calendarDaysBetween(t, shiftCalendarDays(t, n, zone), zone)` is `n`.
+ * That is what makes it safe to describe an instant by the offset that produced
+ * it, rather than restating a number the instant was derived from and hoping
+ * the two stay in step.
+ */
+export function calendarDaysBetween(from: Date, to: Date, timeZone: string): number {
+  return localDayNumber(to, timeZone) - localDayNumber(from, timeZone);
+}
+
+/**
+ * Which calendar day a zone was on at an instant, counted from the epoch.
+ *
+ * Shifting by the zone's offset moves the instant's UTC fields onto the local
+ * ones, so flooring to whole days leaves the local date and nothing else — no
+ * hour, and therefore nothing for a transition to push across a boundary.
+ */
+function localDayNumber(instant: Date, timeZone: string): number {
+  return Math.floor((instant.getTime() + zoneOffsetMs(instant, timeZone)) / 86_400_000);
 }
 
 /**
