@@ -1,11 +1,16 @@
 import { record } from "../audit/service.js";
 import * as catalog from "../catalog/repo.js";
 import type { CoreContext, DbExecutor } from "../context.js";
-import { NotFoundError, UnauthenticatedError, ValidationError } from "../errors.js";
+import {
+  CapacityConflictError,
+  NotFoundError,
+  UnauthenticatedError,
+  ValidationError,
+} from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 import {
+  assertCanActOnEvent,
   assertCanActOnOrder,
-  assertCanReadEvent,
   assertCanReadOrder,
   type OrderParties,
 } from "../identity/policies.js";
@@ -118,6 +123,41 @@ export type CheckoutLine = {
   quantity: number;
 };
 
+/** Postgres' exclusion-violation SQLSTATE. */
+const EXCLUSION_VIOLATION = "23P01";
+/** The constraint that raises it when two active blocks overlap. */
+const CAPACITY_CONSTRAINT = "capacity_blocks_no_overlap";
+
+/**
+ * Whether a failure is the capacity constraint refusing an overlapping hold.
+ *
+ * The `cause` chain is walked because the query builder wraps driver errors in
+ * its own, so the SQLSTATE and the constraint name sit below the error the
+ * caller catches rather than on it — a check against the top-level error would
+ * simply never fire.
+ *
+ * The constraint is named as well as the SQLSTATE. A second exclusion
+ * constraint added later would otherwise reach a customer as "that date is
+ * already booked" while the real problem was something else entirely.
+ */
+function isCapacityOverlap(error: unknown): boolean {
+  let current: unknown = error;
+
+  // Bounded rather than `while`, so a self-referencing `cause` cannot hang the
+  // request that was already failing.
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (current === null || typeof current !== "object") return false;
+
+    const detail = current as { code?: unknown; constraint_name?: unknown; cause?: unknown };
+    if (detail.code === EXCLUSION_VIOLATION && detail.constraint_name === CAPACITY_CONSTRAINT) {
+      return true;
+    }
+    current = detail.cause;
+  }
+
+  return false;
+}
+
 /**
  * What a customer is buying, and nothing about what it costs.
  *
@@ -181,8 +221,8 @@ export async function createCheckout(
   // Not a validation failure: there is nothing wrong with what was sent, and a
   // caller that cannot tell the two apart shows "a booking needs somebody to
   // belong to" beside the quantity field instead of sending the person to sign
-  // in. `assertCanReadEvent` below is still what refuses an account that exists
-  // but may not act.
+  // in. `assertCanActOnEvent` below is still what refuses an account that
+  // exists but may not act.
   if (!isAuthenticated(actor)) {
     throw new UnauthenticatedError();
   }
@@ -205,14 +245,27 @@ export async function createCheckout(
     const pricing = await effectivePricing(ctx, tx);
     const terms = policy ?? pricing.policy;
 
-    const event = await repo.loadEventForOrder(tx, request.eventId);
+    // Locked, and locked here — before anything is priced. Every date below is
+    // derived from this row, so a date change committing between the read and
+    // the capacity insert would hold one day and charge for another, with no
+    // error anywhere. The lock makes the two serialise instead: the second
+    // transaction waits, then works from what the first left.
+    const event = await repo.loadEventForOrder(tx, request.eventId, { forUpdate: true });
     if (!event) throw new NotFoundError("No such event.");
 
     // Somebody else's event is not a thing to book against, and the refusal is
     // a `NotFoundError` for the same reason every other policy's is: success
     // and "forbidden" as different answers would make this an oracle for which
     // event ids exist.
-    assertCanReadEvent(actor, { id: event.id, ownerUserId: event.ownerUserId });
+    //
+    // The *write* policy, which refuses administrators where the read policy
+    // admits them. This is not a read of the event: it holds the date, writes
+    // orders against it, and takes a card. An administrator viewing a
+    // customer's event is legitimate and is what `assertCanReadEvent` is for;
+    // an administrator committing that customer to a booking is not something
+    // any screen offers, and the audit entry would name a person who cannot
+    // explain the charge.
+    assertCanActOnEvent(actor, { id: event.id, ownerUserId: event.ownerUserId });
 
     const timeZone = event.timezone || DEFAULT_TIMEZONE;
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
@@ -367,12 +420,22 @@ export async function createCheckout(
       // exclusion constraint refusing the insert, which rolls the whole
       // checkout back — including the orders already written above.
       for (const { priced: priceLine } of group) {
-        await repo.holdCapacity(tx, {
-          serviceId: priceLine.serviceId,
-          orderId: order.id,
-          from: eventStart,
-          until: eventEnd,
-        });
+        try {
+          await repo.holdCapacity(tx, {
+            serviceId: priceLine.serviceId,
+            orderId: order.id,
+            from: eventStart,
+            until: eventEnd,
+          });
+        } catch (error) {
+          // Narrow on purpose: anything that is not the overlap constraint is
+          // somebody else's failure and is re-thrown unchanged. Translating
+          // here rather than around the transaction is what keeps the service
+          // and the day in hand — outside the loop they are gone, and a screen
+          // that cannot say which date is taken cannot offer another.
+          if (!isCapacityOverlap(error)) throw error;
+          throw new CapacityConflictError(priceLine.serviceId, event.eventDate);
+        }
       }
 
       // The soft hold's own expiry. Without it an abandoned cart keeps the

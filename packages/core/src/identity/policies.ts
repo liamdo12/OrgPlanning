@@ -149,3 +149,30 @@ export function assertCanReadEvent(actor: Actor, event: EventRef): void {
     throw new NotFoundError("No such event.");
   }
 }
+
+/**
+ * Writing to somebody's event: booking against it, changing its date.
+ *
+ * The owner, and nobody else. This is the one policy here that refuses
+ * administrators, and the refusal is the point rather than an oversight.
+ * `assertCanReadEvent` admits them because an administrator looking at a
+ * customer's event on an admin screen is legitimate; an administrator
+ * *committing* that customer to a C$5,000 booking, or moving the date a
+ * business has already blocked its calendar for, is not something any admin
+ * screen offers and not something an audit trail could explain afterwards.
+ *
+ * `SYSTEM` is refused for the same reason it is refused everywhere outside the
+ * three order policies: the job runner charges money on bookings that already
+ * exist, and nothing it does begins one.
+ *
+ * `NotFoundError` in every refusal, so this is not a way to learn which event
+ * ids exist.
+ */
+export function assertCanActOnEvent(actor: Actor, event: EventRef): void {
+  // One answer for every refusal — suspended, anonymous, `SYSTEM`, an
+  // administrator, or simply somebody else's event — so none of them is
+  // distinguishable from the event not existing.
+  if (!isUsable(actor) || isAdmin(actor) || actor.userId !== event.ownerUserId) {
+    throw new NotFoundError("No such event.");
+  }
+}

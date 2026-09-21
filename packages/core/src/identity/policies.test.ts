@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { NotFoundError } from "../errors.js";
 import {
+  assertCanActOnEvent,
   assertCanActOnOrder,
   assertCanActOnUser,
   assertCanActOnVendor,
+  assertCanReadEvent,
   assertCanReadOrder,
   assertCanReadUser,
   assertCanReadVendorPrivately,
 } from "./policies.js";
-import { ANONYMOUS, type Actor } from "./actor.js";
+import { ANONYMOUS, SYSTEM, type Actor } from "./actor.js";
 
 /**
  * The authorization matrix.
@@ -168,5 +170,53 @@ describe("user policies", () => {
     expect(() => assertCanActOnUser(CUSTOMER, { id: "user-other-customer" })).toThrow(
       NotFoundError,
     );
+  });
+});
+
+describe("event policies", () => {
+  const EVENT = { id: "event-1", ownerUserId: "user-customer" };
+
+  it("lets an admin read a customer's event", () => {
+    // Deliberate, and the reason the two event policies are different
+    // functions: an administrator looking at a booking's event on an admin
+    // screen is legitimate.
+    expect(() => assertCanReadEvent(ADMIN, EVENT)).not.toThrow();
+    expect(() => assertCanReadEvent(CUSTOMER, EVENT)).not.toThrow();
+    expect(() => assertCanReadEvent(OTHER_CUSTOMER, EVENT)).toThrow(NotFoundError);
+  });
+
+  it("lets only the owner act on an event", () => {
+    expect(() => assertCanActOnEvent(CUSTOMER, EVENT)).not.toThrow();
+    expect(() => assertCanActOnEvent(OTHER_CUSTOMER, EVENT)).toThrow(NotFoundError);
+    expect(() => assertCanActOnEvent(ANONYMOUS, EVENT)).toThrow(NotFoundError);
+  });
+
+  it("refuses an administrator, however they are presenting themselves", () => {
+    // Acting on an event books against it and takes a card. An administrator
+    // doing that puts a person on the audit trail who cannot explain the
+    // charge — and the customer-chip view is the same authority wearing a
+    // different label, so it is refused too.
+    expect(() => assertCanActOnEvent(ADMIN, EVENT)).toThrow(NotFoundError);
+    expect(() => assertCanActOnEvent(ADMIN_AS_CUSTOMER, EVENT)).toThrow(NotFoundError);
+  });
+
+  it("refuses an administrator their own event as well", () => {
+    // Ownership is not the escape hatch: the refusal is about what the actor
+    // holds, not whose row it is, so a held admin role refuses regardless.
+    expect(() => assertCanActOnEvent(ADMIN, { id: "event-2", ownerUserId: "user-admin" })).toThrow(
+      NotFoundError,
+    );
+  });
+
+  it("refuses the platform's own principal", () => {
+    // The three order policies admit `SYSTEM` because the job runner charges
+    // money on bookings that exist. Nothing it does begins one.
+    expect(() => assertCanActOnEvent(SYSTEM, EVENT)).toThrow(NotFoundError);
+    expect(() => assertCanReadEvent(SYSTEM, EVENT)).toThrow(NotFoundError);
+  });
+
+  it("refuses an account that may not act at all", () => {
+    expect(() => assertCanActOnEvent(SUSPENDED_CUSTOMER, EVENT)).toThrow(NotFoundError);
+    expect(() => assertCanActOnEvent(UNVERIFIED_CUSTOMER, EVENT)).toThrow(NotFoundError);
   });
 });

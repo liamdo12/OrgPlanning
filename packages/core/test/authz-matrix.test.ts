@@ -286,9 +286,12 @@ const REGISTRY: readonly Entry[] = [
   },
   {
     name: "createCheckout",
-    // `assertCanReadEvent` — the event is Sarah's, and a booking is made
-    // against an event rather than against a vendor.
-    allow: ["customer", ...ADMIN],
+    // `assertCanActOnEvent` — the event is Sarah's, and a booking is made
+    // against an event rather than against a vendor. The owner and nobody
+    // else: an administrator may look at a customer's event, but committing
+    // that customer to a booking and taking their card is not an admin action,
+    // and the audit entry would name a person who cannot explain the charge.
+    allow: ["customer"],
     call: (c, a, s) =>
       createCheckout(c, a, {
         eventId: s.eventId,
