@@ -3,12 +3,16 @@ import type { CoreContext, DbExecutor } from "../context.js";
 import { formatShortDay, orderEmailFacts } from "../email/order-facts.js";
 import { queueTransactional } from "../email/service.js";
 import { NotFoundError, ValidationError } from "../errors.js";
-import { ANONYMOUS, isAuthenticated, type Actor } from "../identity/actor.js";
+import { ANONYMOUS, SYSTEM, isAuthenticated, type Actor } from "../identity/actor.js";
 import { assertCanActOnOrder, assertCanPayOrder } from "../identity/policies.js";
 import { requireAdmin } from "../identity/service.js";
 import * as ordering from "../ordering/repo.js";
 import { applyTransition } from "../ordering/service.js";
-import { payoutAllowed as orderPayoutAllowed, parseOrderState } from "../ordering/transitions.js";
+import {
+  payoutAllowed as orderPayoutAllowed,
+  parseOrderState,
+  releasesCapacity,
+} from "../ordering/transitions.js";
 import type { CancelIntentResult } from "../ports.js";
 import { payoutAllowed as vendorPayoutAllowed, type VendorStatus } from "../vendors/transitions.js";
 import { formatMoney, sliceOrderMoney } from "./money.js";
@@ -176,6 +180,24 @@ export async function confirmFromWebhook(
     await repo.markPaymentSucceeded(ctx.db, payment.id, { chargeId: input.chargeId, now });
   }
 
+  // A charge that landed after the booking had already gone.
+  //
+  // The expiry races the customer's own card: it cancels the order, the date
+  // goes back on the vendor's calendar, and the capture arrives a moment
+  // later. There is no booking left to confirm and nobody the money belongs
+  // to, so it goes back.
+  //
+  // **The condition is a released date, not a finished order.** `isTerminal`
+  // also covers `completed`, and a balance capture arriving late on a
+  // completed booking is money that was genuinely earned — refunding that
+  // would take a vendor's fee back for a party that happened.
+  if (releasesCapacity(order.state)) {
+    // The event's own intent id, not the row's: a hosted checkout's intent was
+    // learned a few lines above, and the copy in hand is the one from before.
+    const refunded = await refundLateCapture(ctx, order, payment, input.paymentIntentId);
+    return { orderId: order.id, applied: refunded };
+  }
+
   // Which move this is depends on what was paid: a deposit confirms a new
   // booking, a balance returns one from `balance_due` or `action_required`.
   const to = "confirmed" as const;
@@ -200,6 +222,90 @@ export async function confirmFromWebhook(
   }
 
   return { orderId: order.id, applied: true };
+}
+
+/**
+ * Gives back a charge that settled after its booking had already been released.
+ *
+ * Its own path rather than a parameter on `refundWithinCoolingWindow`, because
+ * that function cannot do any of this. It asserts `assertCanPayOrder` against
+ * the webhook's actor, which is `ANONYMOUS` and fails; it requires the free
+ * window to still be open, which nobody consulted here; and it ends by moving
+ * the order to `cancelled`, a move an order that is already cancelled cannot
+ * make again.
+ *
+ * **`SYSTEM` is the actor, and nothing is widened to reach it.** Nobody asked
+ * for this refund: it is the platform tidying up after its own expiry, and
+ * naming whichever administrator happened to be signed in would put a person on
+ * the audit trail who did not do it. `SYSTEM` passes the three order policies
+ * and nothing else, and none of them is touched here.
+ *
+ * **Idempotency is the payment row, not a fresh attempt.** The provider key is
+ * derived from the refund row's own id, so a retry that opened a *second* row
+ * would mint a *second* key and give the money back twice. So this looks for a
+ * refund already standing against this payment first, and reuses the row it
+ * finds — which reuses its key. The column is indexed but not unique, so the
+ * lookup is the guarantee rather than a constraint.
+ *
+ * **Nothing transitions.** The order has already made its move; this only
+ * records that the money went back.
+ *
+ * Answers whether it actually refunded anything.
+ */
+async function refundLateCapture(
+  ctx: CoreContext,
+  order: { id: string; reference: string },
+  payment: repo.PaymentRow,
+  paymentIntentId: string,
+): Promise<boolean> {
+  const standing = (await repo.listRefunds(ctx.db, order.id)).find(
+    (refund) => refund.paymentId === payment.id,
+  );
+
+  // Settled is done. `needs_attention` is a person's, and re-refunding behind
+  // them is exactly what that state exists to stop.
+  if (standing && standing.state !== "requested") return false;
+
+  const attempt =
+    standing ??
+    (await repo.openRefund(ctx.db, {
+      orderId: order.id,
+      paymentId: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+      reason: `Captured after ${order.reference} had already been cancelled.`,
+      // Nobody requested it. The platform did.
+      requestedByUserId: null,
+    }));
+
+  const refund = await createOrAdoptRefund(ctx, {
+    refundId: attempt.id,
+    orderId: order.id,
+    openedAt: attempt.openedAt,
+    amount: payment.amount,
+    paymentIntentId,
+  });
+
+  await repo.settleRefund(ctx.db, attempt.id, {
+    providerRefundId: refund.id,
+    now: ctx.clock.realNow(),
+    external: false,
+  });
+  await repo.markPaymentRefunded(ctx.db, payment.id);
+
+  await record(ctx, SYSTEM, {
+    action: "payment.refunded_late_capture",
+    entityType: "order",
+    entityId: order.id,
+    after: {
+      paymentId: payment.id,
+      refundId: attempt.id,
+      amount: payment.amount.toString(),
+      providerRefundId: refund.id,
+    },
+  });
+
+  return true;
 }
 
 /** Raised when an event names an order this platform has not written yet. */

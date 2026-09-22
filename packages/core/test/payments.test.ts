@@ -13,6 +13,7 @@ import {
   raiseIssue,
 } from "../src/ordering/service.js";
 import * as ordering from "../src/ordering/repo.js";
+import { runDueJobs } from "../src/jobs/runner.js";
 import {
   UnknownOrderError,
   applyWebhook,
@@ -1033,6 +1034,119 @@ describe.skipIf(!url)("orders and payments", () => {
 
       const jobs = await ordering.listJobsForOrder(ctx.db, order.id);
       expect(jobs.filter((job) => job.status === "queued")).toHaveLength(0);
+    });
+  });
+
+  describe("a charge that lands after the booking has gone", () => {
+    /**
+     * The race the expiry exists inside, played out in order.
+     *
+     * The hold falls due while nobody has paid, so the booking is cancelled and
+     * the date goes back on the vendor's calendar. Then the customer's card
+     * settles anyway.
+     */
+    async function captureAfterCancellation() {
+      const order = await book();
+      const deposit = await chargeDeposit(ctx, customer, order.id);
+
+      await sql`
+        update app.planning_org_jobs set run_after = now() - interval '10 years'
+        where type = 'expire_unpaid' and payload ->> 'orderId' = ${order.id}
+      `;
+      await runDueJobs(ctx, { asOf: new Date(), demoOnly: false, trigger: "cron" });
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("cancelled");
+
+      // The provider took the money regardless — a capture already in flight
+      // when the cancel was asked for.
+      stripe.settleCheckoutSession(deposit.providerPaymentIntentId);
+      const intent = await stripe.retrievePaymentIntent(deposit.providerPaymentIntentId);
+
+      return {
+        order,
+        deposit,
+        event: {
+          type: "payment_intent.succeeded",
+          object: {
+            id: deposit.providerPaymentIntentId,
+            latest_charge: intent?.chargeId,
+            metadata: { order_id: order.id, payment_id: deposit.paymentId },
+          },
+        },
+      };
+    }
+
+    it("gives it back, under the platform's own principal", async () => {
+      const { order, deposit, event } = await captureAfterCancellation();
+
+      const applied = await applyWebhook(ctx, event);
+      expect(applied.applied).toBe(true);
+
+      const refunds = await payments.listRefunds(ctx.db, order.id);
+      expect(refunds).toHaveLength(1);
+      expect(refunds[0]?.state).toBe("settled");
+      expect(refunds[0]?.paymentId).toBe(deposit.paymentId);
+      expect(await payments.netCaptured(ctx.db, order.id)).toBe(0n);
+
+      // The order made its move already and does not make it twice.
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("cancelled");
+
+      // Nobody asked for this refund; the platform did, and the trail says so
+      // rather than naming a person who was not there.
+      const [entry] = await sql<{ actor_user_id: string | null; acting_role: string | null }[]>`
+        select actor_user_id, acting_role from app.planning_org_audit_log
+        where action = 'payment.refunded_late_capture' and entity_id = ${order.id}
+      `;
+      expect(entry).toBeDefined();
+      expect(entry?.actor_user_id).toBeNull();
+    });
+
+    it("refunds once however many times the event is delivered", async () => {
+      // Two layers stand between a replay and a second refund. The webhook
+      // table's own unique event id is the first; this is the second, and it is
+      // the one that holds when the provider re-sends under a fresh id — the
+      // key is derived from the refund row, so a branch that opened a second
+      // row would mint a second key and give the money back twice.
+      const { order, event } = await captureAfterCancellation();
+
+      const first = await applyWebhook(ctx, event);
+      const second = await applyWebhook(ctx, event);
+      const third = await applyWebhook(ctx, event);
+
+      expect(first.applied).toBe(true);
+      expect(second.applied).toBe(false);
+      expect(third.applied).toBe(false);
+
+      expect(await payments.listRefunds(ctx.db, order.id)).toHaveLength(1);
+      expect(stripe.created.filter((row) => row.kind === "refund")).toHaveLength(1);
+    });
+
+    it("leaves a completed booking's money where it is", async () => {
+      // A finished order is not the same thing as a released date. A charge
+      // settling late against a booking that actually happened is money the
+      // vendor earned, and giving it back would take a fee for a party that
+      // took place — so the refund turns on the date having been released,
+      // which `completed` never does.
+      const order = await bookForEventIn(30);
+      await payDeposit(order.id);
+      await markFulfilled(ctx, admin, order.id);
+      await autoComplete(ctx, admin, order.id);
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("completed");
+
+      const settled = await payments.succeededPaymentOfKind(ctx.db, order.id, "deposit");
+      const replay = applyWebhook(ctx, {
+        type: "payment_intent.succeeded",
+        object: {
+          id: settled?.providerPaymentIntentId as string,
+          metadata: { order_id: order.id, payment_id: settled?.id as string },
+        },
+      });
+
+      // The order refuses to confirm again, which is the lifecycle's own
+      // answer and not this branch's. What matters here is what did *not*
+      // happen on the way to it.
+      await expect(replay).rejects.toThrow(ValidationError);
+      expect(await payments.listRefunds(ctx.db, order.id)).toHaveLength(0);
+      expect(await payments.netCaptured(ctx.db, order.id)).toBe(settled?.amount);
     });
   });
 

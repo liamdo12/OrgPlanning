@@ -908,6 +908,8 @@ describe.skipIf(!url)("audit coverage", () => {
     "payment.balance_captured": "payments.test.ts — a balance that settles",
     "payment.balance_declined": "payments.test.ts — the first decline, which moves the order",
     "payment.deposit_captured": "payments.test.ts — the deposit",
+    "payment.refunded_late_capture":
+      "payments.test.ts — a charge that settled after its booking was released",
     "transfer.paid": "jobs.test.ts — the payout",
     "transfer.held": "jobs.test.ts — a payout parked for a suspended vendor",
     "quote.expire": "jobs.test.ts — the quote-expiry handler",
