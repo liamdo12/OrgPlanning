@@ -86,7 +86,18 @@ export function EventSwitcher({
       {open ? (
         <form
           id={panelId}
-          action={selectActiveEventAction}
+          // Closed **after** the write, and never from the button's own click.
+          //
+          // A `setOpen(false)` in the submit button's `onClick` unmounts this
+          // form while the click is still being handled, before the browser
+          // dispatches `submit` — so the action is never called, the cookie is
+          // never written, and nothing anywhere reports a failure. It stayed
+          // invisible because the shell has so far been handed at most one
+          // event, and with one there is nothing to switch to.
+          action={async (form: FormData) => {
+            await selectActiveEventAction(form);
+            setOpen(false);
+          }}
           className="oc-overlay-surface absolute top-[calc(100%+8px)] right-0 z-50 grid w-[260px] gap-1 p-3 motion-safe:animate-rise"
         >
           {events.map((event) => (
@@ -96,7 +107,6 @@ export function EventSwitcher({
               name="eventId"
               value={event.id}
               aria-pressed={event.id === activeEventId}
-              onClick={() => setOpen(false)}
               className="oc-chip w-full truncate text-left"
             >
               {event.name}
