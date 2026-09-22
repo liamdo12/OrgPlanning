@@ -163,6 +163,52 @@ describe.skipIf(!url)("seed", () => {
     expect(rows).toEqual([]);
   });
 
+  it("holds a date for every seeded booking, and frees the cancelled one", async () => {
+    // Without these rows the exclusion constraint has nothing to collide with,
+    // so every seeded booking's date reads as free and can be booked a second
+    // time — on a demo database whose whole job is to look like a platform that
+    // has been running for a while.
+    //
+    // Both sides of the flag, because a seed that made every block active would
+    // lose a cancelled booking's date for ever and nothing would say why.
+    const [row] = await sql<{ blocks: string; active: string; inactive: string }[]>`
+      select
+        count(*)::text as blocks,
+        count(*) filter (where active)::text as active,
+        count(*) filter (where not active)::text as inactive
+      from app.planning_org_capacity_blocks
+    `;
+    const [lines] = await sql<{ count: string }[]>`
+      select count(*)::text as count
+      from app.planning_org_order_items where service_id is not null
+    `;
+
+    expect(Number(row?.blocks)).toBe(Number(lines?.count));
+    expect(Number(row?.inactive)).toBeGreaterThan(0);
+    expect(Number(row?.active)).toBeGreaterThan(0);
+  });
+
+  it("gives every block the range of the event its order was placed against", async () => {
+    // The same half-open range a checkout writes: local start to the next local
+    // midnight, in the event's own zone. A block an hour out is one that admits
+    // a second booking on a date the business is committed to.
+    const rows = await sql<{ reference: string; agrees: boolean }[]>`
+      select
+        o.reference,
+        cb.during = tstzrange(
+          (e.event_date + coalesce(e.start_time, '00:00'::time)) at time zone e.timezone,
+          (e.event_date + 1)::timestamp at time zone e.timezone,
+          '[)'
+        ) as agrees
+      from app.planning_org_capacity_blocks cb
+      join app.planning_org_orders o on o.id = cb.order_id
+      join app.planning_org_events e on e.id = o.event_id
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => !row.agrees)).toEqual([]);
+  });
+
   it("publishes eleven of the twelve services, leaving one a draft", async () => {
     // Both numbers, not just the first. Publication and vendor standing are two
     // separate conditions on every discovery query, and a seed that published

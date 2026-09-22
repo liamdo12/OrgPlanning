@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { createDb, type Db } from "../client.js";
 import * as s from "../schema/index.js";
+import { seedCapacityBlocks } from "./capacity.js";
 import { seedId } from "./ids.js";
 import { deriveFromTotal } from "./money.js";
 import { CATEGORIES, PLACES, PLATFORM_SETTINGS, POLICY_TEMPLATES } from "./data/reference.js";
@@ -674,6 +675,10 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
 
   await db.insert(s.orderItems).values(itemRows).onConflictDoNothing();
   counts["order_items"] = itemRows.length;
+
+  // After the lines, because a block is written per booked line and takes its
+  // range from the event the order was placed against.
+  Object.assign(counts, await seedCapacityBlocks(db));
 
   await db.insert(s.payments).values(paymentRows).onConflictDoNothing();
   counts["payments"] = paymentRows.length;
