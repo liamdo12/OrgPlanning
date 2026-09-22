@@ -2,7 +2,13 @@ import "server-only";
 
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { isAuthenticated, type Actor, type CoreContext } from "@occasion/core";
+import {
+  getEvent,
+  isAuthenticated,
+  NotFoundError,
+  type Actor,
+  type CoreContext,
+} from "@occasion/core";
 import { getEnv } from "./env";
 
 /**
@@ -21,9 +27,11 @@ import { getEnv } from "./env";
  * of that resolves to "no active event" — the same answer an absent cookie
  * gets, so it cannot be used to find out which ids exist.
  *
- * Ownership is checked **directly**, not through `assertCanReadEvent`, which
- * returns early for any administrator: an administrator would otherwise pick
- * up a customer's event as their own active one.
+ * Ownership is checked through the planning module's own read, which runs the
+ * event **write** policy — not `assertCanReadEvent`, which returns early for
+ * any administrator. An administrator would otherwise pick up a customer's
+ * event as their own active one, and the whole customer shell would render
+ * around somebody else's party.
  *
  * Nothing outside this module reads the cookie. That is asserted rather than
  * asked for, in `active-event.test.ts`.
@@ -92,41 +100,48 @@ export type ActiveEvent = {
  * switcher chip, the page wants the id and the booking card wants the date,
  * and that should be one query rather than three.
  *
- * Keyed on the owner rather than on the context: a context is built fresh at
- * each call site, so a cache keyed on one would miss between the layout and
- * the page — which is precisely the pair it exists to spare. The owner is what
- * the answer actually depends on, the cookie being the same for all of them.
+ * The key is the actor and the context together, because the load now goes
+ * through both. That is weaker than keying on the owner alone, which was the
+ * intent while there was no read to make: a context is built fresh at each call
+ * site, so call sites that build their own miss each other. It is a repeated
+ * query and never a wrong answer — the policy runs again on the second one —
+ * and threading one context through a render is what makes the dedupe bite.
  */
-const activeEventFor = cache(async (_ownerUserId: string): Promise<ActiveEvent | undefined> => {
-  const eventId = await readActiveEventId();
-  if (!eventId) return undefined;
+const activeEventFor = cache(
+  async (ctx: CoreContext, actor: Actor): Promise<ActiveEvent | undefined> => {
+    const eventId = await readActiveEventId();
+    if (!eventId) return undefined;
 
-  // The load and the ownership check belong here, against the planning
-  // module's own read of an event — which does not exist yet. Both
-  // alternatives were worse than waiting: a raw database query from
-  // `apps/web/src/lib` is the second data-access path this layering exists to
-  // prevent, and a stub returning a plausible event would make the
-  // forged-cookie behaviour *look* right without ever constructing the
-  // identity that got through.
-  //
-  // So an id of the right shape still resolves to nothing, which is a correct
-  // answer, and the one every caller has to handle regardless.
-  return undefined;
-});
+    try {
+      // The planning module's own read, which runs the event *write* policy —
+      // the owner and nobody else, administrators included in the refusal. That
+      // is what this needs: an administrator picking up a customer's event as
+      // their own active one would put the whole customer shell on somebody
+      // else's party.
+      const event = await getEvent(ctx, actor, eventId);
+      return { id: event.id, name: event.name };
+    } catch (error) {
+      // Every refusal is the same answer as no cookie at all — a forged id, a
+      // deleted event, somebody else's event, an administrator's. Anything that
+      // is not a refusal is a real fault and goes to the error boundary rather
+      // than being swallowed into "no active event", which would hide an outage
+      // behind an ordinary-looking screen.
+      if (error instanceof NotFoundError) return undefined;
+      throw error;
+    }
+  },
+);
 
 /**
  * The active event for this actor, or nothing.
  *
  * Every failure is the same answer: no cookie, a cookie that is not an id, an
- * id nobody owns, an id somebody else owns. That is what stops the cookie
- * being used to find out which events exist.
- *
- * `ctx` is on the signature because the load above goes through the domain the
- * way every other read does; it is unused only for as long as that read is
- * missing.
+ * id nobody owns, an id somebody else owns, and an administrator's request for
+ * a customer's event. That is what stops the cookie being used to find out
+ * which events exist.
  */
 export function resolveActiveEvent(
-  _ctx: CoreContext,
+  ctx: CoreContext,
   actor: Actor,
 ): Promise<ActiveEvent | undefined> {
   // An anonymous visitor has no events, and the platform's own principal is not
@@ -134,5 +149,5 @@ export function resolveActiveEvent(
   // is a reason to read it.
   if (!isAuthenticated(actor)) return Promise.resolve(undefined);
 
-  return activeEventFor(actor.userId);
+  return activeEventFor(ctx, actor);
 }
