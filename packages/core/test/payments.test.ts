@@ -54,11 +54,21 @@ describe.skipIf(!url)("orders and payments", () => {
   let admin: Actor;
   let customer: Actor;
 
-  /** Seeded rows this suite books against. */
+  /** Seeded rows this suite books against, and one event it makes for itself. */
   let sarahId: string;
   let eventId: string;
   let bloomServiceId: string;
   let bloomVendorId: string;
+
+  /**
+   * How far off the event this suite books against sits.
+   *
+   * Comfortably past the balance lead time, so `book()` produces the
+   * deposit-and-balance shape most of the lifecycle is about, and clear of
+   * every offset `bookForEventIn` uses so those bookings never collide with
+   * this one.
+   */
+  const EVENT_DAYS_AWAY = 150;
 
   beforeAll(async () => {
     await resetDatabase(dbUrl);
@@ -90,9 +100,22 @@ describe.skipIf(!url)("orders and payments", () => {
     `;
     sarahId = sarah?.id as string;
 
+    // An event of Sarah's on a date nothing has booked, rather than one of the
+    // seeded ones. Every seeded booking now holds its date in `capacity_blocks`,
+    // which is the point of seeding them — so a suite that booked Bloom & Co on
+    // Sarah's 30th would be booking the date TO-4192 is already holding, and
+    // every case below would fail on the exclusion constraint rather than on
+    // whatever it is about.
     const [event] = await sql<{ id: string }[]>`
-      select id from app.planning_org_events where owner_user_id = ${sarahId}
-      order by event_date desc limit 1
+      insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+      values (
+        ${sarahId},
+        'Payments fixture',
+        (now() + (${EVENT_DAYS_AWAY} || ' days')::interval)::date,
+        '17:00',
+        'America/Toronto'
+      )
+      returning id
     `;
     eventId = event?.id as string;
 
