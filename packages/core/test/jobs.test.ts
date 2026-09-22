@@ -119,7 +119,14 @@ describe.skipIf(!url)("jobs and the clock", () => {
    */
   let bookings = 0;
 
-  async function bookAndPayDeposit(options: { demo: boolean; days?: number } = { demo: true }) {
+  /**
+   * A checkout that reached the provider and stopped there.
+   *
+   * The state an abandoned cart is in: the order `pending_payment`, its dates
+   * held, an open deposit attempt, and an intent nobody confirmed. What the
+   * expiry is for.
+   */
+  async function startCheckout(options: { demo: boolean; days?: number } = { demo: true }) {
     bookings += 1;
     const [event] = await sql<{ id: string }[]>`
       insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
@@ -144,8 +151,10 @@ describe.skipIf(!url)("jobs and the clock", () => {
     });
     const order = checkout.orders[0] as NonNullable<(typeof checkout.orders)[number]>;
 
-    // `createCheckout` writes `is_demo = false`. A test about the demo filter
-    // has to be able to say which side of it a row is on.
+    // Which side of the demo filter a row lands on is decided by the tier the
+    // checkout ran under, and this suite is about the filter rather than about
+    // the tier: every row is put on the side the test names, whatever the
+    // context it was created in would have written.
     await sql`
       update app.planning_org_orders set is_demo = ${options.demo} where id = ${order.id}
     `;
@@ -155,6 +164,12 @@ describe.skipIf(!url)("jobs and the clock", () => {
     `;
 
     const deposit = await chargeDeposit(ctx, customer, order.id);
+    return { order, deposit };
+  }
+
+  async function bookAndPayDeposit(options: { demo: boolean; days?: number } = { demo: true }) {
+    const { order, deposit } = await startCheckout(options);
+
     stripe.settleCheckoutSession(deposit.providerPaymentIntentId);
     const intent = await stripe.retrievePaymentIntent(deposit.providerPaymentIntentId);
     await applyWebhook(ctx, {
@@ -175,17 +190,82 @@ describe.skipIf(!url)("jobs and the clock", () => {
   }
 
   async function jobStatus(orderId: string, type: string) {
-    const [row] = await sql<{ status: string; held_reason: string | null; attempts: number }[]>`
-      select status::text, held_reason, attempts from app.planning_org_jobs
+    const [row] = await sql<
+      {
+        status: string;
+        held_reason: string | null;
+        attempts: number;
+        run_after: Date;
+        last_error: string | null;
+      }[]
+    >`
+      select status::text, held_reason, attempts, run_after, last_error
+      from app.planning_org_jobs
       where type = ${type}::app.job_type and payload ->> 'orderId' = ${orderId}
     `;
     return row;
+  }
+
+  /** Brings a job forward so the next run is certain to claim it first. */
+  async function makeOverdue(orderId: string, type: string): Promise<void> {
+    await sql`
+      update app.planning_org_jobs set run_after = now() - interval '10 years'
+      where type = ${type}::app.job_type and payload ->> 'orderId' = ${orderId}
+    `;
+  }
+
+  async function activeBlocks(orderId: string): Promise<number> {
+    const blocks = await ordering.listCapacityBlocks(ctx.db, orderId);
+    return blocks.filter((block) => block.active).length;
   }
 
   /** Far enough ahead that everything the seed queued is due. */
   function farFuture(): Date {
     return new Date(Date.now() + 400 * 24 * 3_600_000);
   }
+
+  describe("what a checkout flags its order with", () => {
+    /** Books through the domain in a given context, returning the order's flag. */
+    async function flagOfBookingIn(context: CoreContext, days: number): Promise<boolean> {
+      const [event] = await sql<{ id: string }[]>`
+        insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+        values (
+          (select id from app.planning_org_users where email = 'sarah@example.ca'),
+          ${`Flag ${days}`},
+          (now() + (${days} || ' days')::interval)::date,
+          '17:00',
+          'America/Toronto'
+        )
+        returning id
+      `;
+      const [service] = await sql<{ id: string }[]>`
+        select s.id from app.planning_org_services s
+        join app.planning_org_vendors v on v.id = s.vendor_id
+        where v.slug = 'bloom-and-co' and v.status = 'approved' limit 1
+      `;
+
+      const checkout = await createCheckout(context, customer, {
+        eventId: event?.id as string,
+        lines: [{ serviceId: service?.id as string, quantity: 4 }],
+      });
+      const order = checkout.orders[0] as NonNullable<(typeof checkout.orders)[number]>;
+      return (await ordering.load(context.db, order.id))?.isDemo as boolean;
+    }
+
+    it("flags it for the preview exactly when the clock can be moved", async () => {
+      // The demo is the whole point of the deployment, and it can only drive an
+      // order the runner is allowed to claim. Reading the flag off the tier is
+      // what keeps that from also reaching a real customer: a deployment that
+      // may not move its clock cannot write the flag, and the boot check that
+      // refuses the two together is what makes it a guarantee rather than care.
+      expect(ctx.config.allowClockOverride).toBe(true);
+      expect(await flagOfBookingIn(ctx, 210)).toBe(true);
+
+      const production = productionContext();
+      expect(production.config.allowClockOverride).toBe(false);
+      expect(await flagOfBookingIn(production, 217)).toBe(false);
+    });
+  });
 
   describe("the demo filter", () => {
     it("will not let a shifted clock claim a real order's job", async () => {
@@ -400,6 +480,201 @@ describe.skipIf(!url)("jobs and the clock", () => {
       // the sixth: it computes to 480 minutes and is clamped to 360.
       expect(jobsRepo.backoffMs(jobsRepo.MAX_ATTEMPTS - 1)).toBe(6 * 3_600_000);
       expect(jobsRepo.backoffMs(40)).toBe(6 * 3_600_000);
+    });
+  });
+
+  describe("re-arming a job", () => {
+    /** A job of a type nothing else in this suite runs, in a chosen state. */
+    async function queueBare(status: string, runAfter: string): Promise<string> {
+      const key = `expire_quote_request:${crypto.randomUUID()}`;
+      await sql`
+        insert into app.planning_org_jobs (type, dedupe_key, run_after, payload, status, is_demo)
+        values (
+          'expire_quote_request', ${key}, ${runAfter}::timestamptz,
+          ${sql.json({ quoteRequestId: crypto.randomUUID() })}, ${status}::app.job_status, true
+        )
+      `;
+      return key;
+    }
+
+    async function deadlineOf(dedupeKey: string): Promise<Date> {
+      const [row] = await sql<{ run_after: Date }[]>`
+        select run_after from app.planning_org_jobs where dedupe_key = ${dedupeKey}
+      `;
+      return row?.run_after as Date;
+    }
+
+    it("moves a queued job's deadline forward and reports it", async () => {
+      const key = await queueBare("queued", new Date(Date.now() + 60_000).toISOString());
+      const wanted = new Date(Date.now() + 3 * 3_600_000);
+
+      const moved = await jobsRepo.rearmQueuedJob(ctx.db, {
+        type: "expire_quote_request",
+        dedupeKey: key,
+        runAfter: wanted,
+      });
+
+      expect(moved?.getTime()).toBe(wanted.getTime());
+      expect((await deadlineOf(key)).getTime()).toBe(wanted.getTime());
+    });
+
+    it("leaves a finished job and a parked one exactly where they are", async () => {
+      // `done` is the status the dedupe key's guarantee rests on: a key that
+      // could be re-armed would stop being one, and the replayed confirmation
+      // it refuses would charge a second time.
+      const at = new Date(Date.now() + 60_000).toISOString();
+
+      for (const status of ["done", "held"]) {
+        const key = await queueBare(status, at);
+        const before = await deadlineOf(key);
+
+        const moved = await jobsRepo.rearmQueuedJob(ctx.db, {
+          type: "expire_quote_request",
+          dedupeKey: key,
+          runAfter: new Date(Date.now() + 3 * 3_600_000),
+        });
+
+        expect(moved).toBeUndefined();
+        expect((await deadlineOf(key)).getTime()).toBe(before.getTime());
+      }
+    });
+
+    it("never pulls a deadline backwards", async () => {
+      // A re-arm asking for an earlier moment leaves the later one standing.
+      // The alternative quietly brings a charge forward.
+      const later = new Date(Date.now() + 6 * 3_600_000);
+      const key = await queueBare("queued", later.toISOString());
+
+      const moved = await jobsRepo.rearmQueuedJob(ctx.db, {
+        type: "expire_quote_request",
+        dedupeKey: key,
+        runAfter: new Date(Date.now() + 60_000),
+      });
+
+      expect(moved?.getTime()).toBe(later.getTime());
+      expect((await deadlineOf(key)).getTime()).toBe(later.getTime());
+    });
+
+    it("is not something enqueue can do", async () => {
+      // The reason a separate statement exists. `enqueue`'s upsert only writes
+      // over `held` and `failed`, so a live job conflicts, updates nothing and
+      // answers false — silently, which is how a re-arm written through it
+      // moves no deadline and reports no failure to.
+      const later = new Date(Date.now() + 6 * 3_600_000);
+      const key = await queueBare("queued", later.toISOString());
+
+      const inserted = await jobsRepo.enqueue(ctx.db, {
+        type: "expire_quote_request",
+        dedupeKey: key,
+        runAfter: new Date(Date.now() + 60_000),
+        payload: {},
+        isDemo: true,
+      });
+
+      expect(inserted).toBe(false);
+      expect((await deadlineOf(key)).getTime()).toBe(later.getTime());
+    });
+  });
+
+  describe("the soft hold expiring", () => {
+    it("cancels the order and releases the date when the charge cancels", async () => {
+      const { order } = await startCheckout({ demo: true });
+      expect(await activeBlocks(order.id)).toBeGreaterThan(0);
+      await makeOverdue(order.id, "expire_unpaid");
+
+      await runDueJobs(ctx, { asOf: new Date(), demoOnly: false, trigger: "cron" });
+
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("cancelled");
+      expect(await activeBlocks(order.id)).toBe(0);
+      expect((await jobStatus(order.id, "expire_unpaid"))?.status).toBe("done");
+    });
+
+    it("keeps the date when the provider refuses, and comes back to ask again", async () => {
+      // The counter-intuitive row: the charge is going through, so the booking
+      // is about to be real, and cancelling it would take the date away from
+      // somebody whose card has been charged. The webhook has not arrived yet,
+      // which is exactly the race.
+      const { order, deposit } = await startCheckout({ demo: true });
+      stripe.settleCheckoutSession(deposit.providerPaymentIntentId);
+
+      const held = await activeBlocks(order.id);
+      await makeOverdue(order.id, "expire_unpaid");
+
+      const summary = await runDueJobs(ctx, { asOf: new Date(), demoOnly: false, trigger: "cron" });
+
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("pending_payment");
+      expect(await activeBlocks(order.id)).toBe(held);
+
+      const job = await jobStatus(order.id, "expire_unpaid");
+      expect(job?.status).toBe("queued");
+      expect(job?.run_after.getTime()).toBeGreaterThan(Date.now());
+      // Bounded, so a provider that never resolves cannot loop for ever.
+      expect(job?.attempts).toBe(1);
+      // And nothing went wrong, so nothing is recorded as having gone wrong.
+      expect(job?.last_error).toBeNull();
+      expect(summary.retrying).toBeGreaterThan(0);
+      expect(summary.failed).toBe(0);
+    });
+
+    it("parks for a person once the attempts run out", async () => {
+      const { order, deposit } = await startCheckout({ demo: true });
+      stripe.settleCheckoutSession(deposit.providerPaymentIntentId);
+      await makeOverdue(order.id, "expire_unpaid");
+      await sql`
+        update app.planning_org_jobs set attempts = ${jobsRepo.MAX_ATTEMPTS - 1}
+        where type = 'expire_unpaid' and payload ->> 'orderId' = ${order.id}
+      `;
+
+      await runDueJobs(ctx, { asOf: new Date(), demoOnly: false, trigger: "cron" });
+
+      const job = await jobStatus(order.id, "expire_unpaid");
+      // `held`, not `failed`: waiting on a provider is not a fault, and an
+      // operator reading a failure list should not have to work out that it
+      // was never one.
+      expect(job?.status).toBe("held");
+      expect(job?.held_reason).toContain(order.reference);
+      expect(job?.last_error).toBeNull();
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("pending_payment");
+    });
+
+    it("releases the date anyway when the provider simply fails", async () => {
+      // A stranded date is worse than an uncancelled charge: the charge expires
+      // on the provider's own schedule, and a capture arriving afterwards is
+      // refunded by the webhook.
+      const { order } = await startCheckout({ demo: true });
+      stripe.failNextWith("cancelPaymentIntent", new Error("The provider timed out."));
+      await makeOverdue(order.id, "expire_unpaid");
+
+      await runDueJobs(ctx, { asOf: new Date(), demoOnly: false, trigger: "cron" });
+
+      expect((await ordering.load(ctx.db, order.id))?.state).toBe("cancelled");
+      expect(await activeBlocks(order.id)).toBe(0);
+      expect((await jobStatus(order.id, "expire_unpaid"))?.status).toBe("done");
+    });
+  });
+
+  describe("the balance date the planner reads", () => {
+    it("is the same instant on the order as on its queued charge", async () => {
+      // The planner's payments panel states the next charge from
+      // `orders.balance_due_at`, and the queue is what actually charges it.
+      // Read off both tables in one join rather than compared to a date typed
+      // into this file, so the seed moving cannot make this pass by agreeing
+      // with nothing.
+      const rows = await sql<{ reference: string; due: Date; run_after: Date }[]>`
+        select o.reference, o.balance_due_at as due, j.run_after
+        from app.planning_org_orders o
+        join app.planning_org_jobs j
+          on j.type = 'charge_balance' and j.payload ->> 'orderId' = o.id::text
+        where j.status = 'queued' and o.balance_due_at is not null
+      `;
+
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect([row.reference, row.run_after.getTime()]).toEqual([
+          row.reference,
+          row.due.getTime(),
+        ]);
+      }
     });
   });
 
@@ -782,10 +1057,10 @@ describe.skipIf(!url)("jobs and the clock", () => {
       // cannot: the row is on the list, the order is not, and the delete dies
       // on a foreign key several layers below the button.
       //
-      // Both sides, because `createCheckout` writes `is_demo: false` on every
-      // order — so the ordinary way to try the deployed demo, signing in as a
-      // seeded account and booking something, produces the customer-side case
-      // on the first attempt.
+      // Both sides, because a tier that cannot move its clock writes a real
+      // order against whichever rows it names — so an operator booking
+      // something on a live deployment against a seeded business produces the
+      // vendor-side case, and a seeded account produces the other.
       const order = await orderByReference("TO-4192");
       await sql`update app.planning_org_orders set is_demo = false where id = ${order.id}`;
       // Only the side under test is demo, so a pass cannot come from the other.

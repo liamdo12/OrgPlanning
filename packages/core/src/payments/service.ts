@@ -3,12 +3,17 @@ import type { CoreContext, DbExecutor } from "../context.js";
 import { formatShortDay, orderEmailFacts } from "../email/order-facts.js";
 import { queueTransactional } from "../email/service.js";
 import { NotFoundError, ValidationError } from "../errors.js";
-import { ANONYMOUS, isAuthenticated, type Actor } from "../identity/actor.js";
+import { ANONYMOUS, SYSTEM, isAuthenticated, type Actor } from "../identity/actor.js";
 import { assertCanActOnOrder, assertCanPayOrder } from "../identity/policies.js";
 import { requireAdmin } from "../identity/service.js";
 import * as ordering from "../ordering/repo.js";
 import { applyTransition } from "../ordering/service.js";
-import { payoutAllowed as orderPayoutAllowed, parseOrderState } from "../ordering/transitions.js";
+import {
+  payoutAllowed as orderPayoutAllowed,
+  parseOrderState,
+  releasesCapacity,
+} from "../ordering/transitions.js";
+import type { CancelIntentResult } from "../ports.js";
 import { payoutAllowed as vendorPayoutAllowed, type VendorStatus } from "../vendors/transitions.js";
 import { formatMoney, sliceOrderMoney } from "./money.js";
 import { mintPaymentLinkToken, paymentLinkDigest, paymentLinkState } from "./payment-links.js";
@@ -175,6 +180,24 @@ export async function confirmFromWebhook(
     await repo.markPaymentSucceeded(ctx.db, payment.id, { chargeId: input.chargeId, now });
   }
 
+  // A charge that landed after the booking had already gone.
+  //
+  // The expiry races the customer's own card: it cancels the order, the date
+  // goes back on the vendor's calendar, and the capture arrives a moment
+  // later. There is no booking left to confirm and nobody the money belongs
+  // to, so it goes back.
+  //
+  // **The condition is a released date, not a finished order.** `isTerminal`
+  // also covers `completed`, and a balance capture arriving late on a
+  // completed booking is money that was genuinely earned — refunding that
+  // would take a vendor's fee back for a party that happened.
+  if (releasesCapacity(order.state)) {
+    // The event's own intent id, not the row's: a hosted checkout's intent was
+    // learned a few lines above, and the copy in hand is the one from before.
+    const refunded = await refundLateCapture(ctx, order, payment, input.paymentIntentId);
+    return { orderId: order.id, applied: refunded };
+  }
+
   // Which move this is depends on what was paid: a deposit confirms a new
   // booking, a balance returns one from `balance_due` or `action_required`.
   const to = "confirmed" as const;
@@ -199,6 +222,90 @@ export async function confirmFromWebhook(
   }
 
   return { orderId: order.id, applied: true };
+}
+
+/**
+ * Gives back a charge that settled after its booking had already been released.
+ *
+ * Its own path rather than a parameter on `refundWithinCoolingWindow`, because
+ * that function cannot do any of this. It asserts `assertCanPayOrder` against
+ * the webhook's actor, which is `ANONYMOUS` and fails; it requires the free
+ * window to still be open, which nobody consulted here; and it ends by moving
+ * the order to `cancelled`, a move an order that is already cancelled cannot
+ * make again.
+ *
+ * **`SYSTEM` is the actor, and nothing is widened to reach it.** Nobody asked
+ * for this refund: it is the platform tidying up after its own expiry, and
+ * naming whichever administrator happened to be signed in would put a person on
+ * the audit trail who did not do it. `SYSTEM` passes the three order policies
+ * and nothing else, and none of them is touched here.
+ *
+ * **Idempotency is the payment row, not a fresh attempt.** The provider key is
+ * derived from the refund row's own id, so a retry that opened a *second* row
+ * would mint a *second* key and give the money back twice. So this looks for a
+ * refund already standing against this payment first, and reuses the row it
+ * finds — which reuses its key. The column is indexed but not unique, so the
+ * lookup is the guarantee rather than a constraint.
+ *
+ * **Nothing transitions.** The order has already made its move; this only
+ * records that the money went back.
+ *
+ * Answers whether it actually refunded anything.
+ */
+async function refundLateCapture(
+  ctx: CoreContext,
+  order: { id: string; reference: string },
+  payment: repo.PaymentRow,
+  paymentIntentId: string,
+): Promise<boolean> {
+  const standing = (await repo.listRefunds(ctx.db, order.id)).find(
+    (refund) => refund.paymentId === payment.id,
+  );
+
+  // Settled is done. `needs_attention` is a person's, and re-refunding behind
+  // them is exactly what that state exists to stop.
+  if (standing && standing.state !== "requested") return false;
+
+  const attempt =
+    standing ??
+    (await repo.openRefund(ctx.db, {
+      orderId: order.id,
+      paymentId: payment.id,
+      amount: payment.amount,
+      currency: payment.currency,
+      reason: `Captured after ${order.reference} had already been cancelled.`,
+      // Nobody requested it. The platform did.
+      requestedByUserId: null,
+    }));
+
+  const refund = await createOrAdoptRefund(ctx, {
+    refundId: attempt.id,
+    orderId: order.id,
+    openedAt: attempt.openedAt,
+    amount: payment.amount,
+    paymentIntentId,
+  });
+
+  await repo.settleRefund(ctx.db, attempt.id, {
+    providerRefundId: refund.id,
+    now: ctx.clock.realNow(),
+    external: false,
+  });
+  await repo.markPaymentRefunded(ctx.db, payment.id);
+
+  await record(ctx, SYSTEM, {
+    action: "payment.refunded_late_capture",
+    entityType: "order",
+    entityId: order.id,
+    after: {
+      paymentId: payment.id,
+      refundId: attempt.id,
+      amount: payment.amount.toString(),
+      providerRefundId: refund.id,
+    },
+  });
+
+  return true;
 }
 
 /** Raised when an event names an order this platform has not written yet. */
@@ -233,6 +340,99 @@ async function paymentForEvent(
 
   const payments = await repo.listPayments(ctx.db, order.id);
   return payments.find((payment) => payment.providerPaymentIntentId === input.paymentIntentId);
+}
+
+/**
+ * What became of trying to release an order's unpaid charge.
+ *
+ * `in_flight` is the one the caller has to treat differently: the provider
+ * refused to cancel because the money is already moving, and the booking is
+ * about to be real.
+ */
+export type IntentRelease =
+  | { kind: "released"; detail: string }
+  | { kind: "in_flight"; detail: string }
+  | { kind: "error"; detail: string };
+
+/**
+ * Gives up on the charge behind a checkout nobody finished.
+ *
+ * Called by the expiry, which has no business knowing which attempt row holds
+ * an intent or how a provider spells a refusal — that is this module's, and the
+ * handler stays a decision about the order rather than a second payments
+ * implementation.
+ *
+ * **A provider fault is an outcome, not a throw.** The caller's choice is
+ * between releasing somebody's date and leaving it held, and a timeout is not a
+ * reason to leave it held: the intent expires on the provider's own schedule,
+ * and if it captures after all, the webhook refunds it. So a fault comes back
+ * as `error` with its message, and only the refusal — the money is moving —
+ * comes back as `in_flight`.
+ *
+ * No actor: it takes an order id and is package-internal, called from a handler
+ * that has already loaded the order under the runner's own principal.
+ */
+export async function releaseUnpaidIntent(
+  ctx: CoreContext,
+  orderId: string,
+): Promise<IntentRelease> {
+  const attempts = await repo.listPayments(ctx.db, orderId);
+
+  // A failed attempt has an answer already and nothing left to cancel; a
+  // refunded one belongs to an order that was paid for. Everything else that
+  // reached the provider is a charge that might still land.
+  const live = attempts.filter(
+    (attempt) =>
+      attempt.providerPaymentIntentId !== null &&
+      attempt.state !== "failed" &&
+      attempt.state !== "refunded",
+  );
+
+  if (live.length === 0) return { kind: "released", detail: "no charge was ever opened" };
+
+  const faults: string[] = [];
+  let cancelled = 0;
+
+  /**
+   * The call, with a fault turned into a value.
+   *
+   * `try`/`catch` around the call rather than `.catch()` on its result: an
+   * adapter is free to raise before it ever returns a promise, and a handler
+   * attached to a promise that was never made does not run. The difference is
+   * invisible until it strands a date.
+   */
+  const cancel = async (intentId: string): Promise<CancelIntentResult | Error> => {
+    try {
+      return await ctx.stripe.cancelPaymentIntent(intentId);
+    } catch (error) {
+      return error instanceof Error ? error : new Error("The provider did not answer.");
+    }
+  };
+
+  for (const attempt of live) {
+    const result = await cancel(attempt.providerPaymentIntentId as string);
+
+    if (result instanceof Error) {
+      faults.push(result.message);
+      continue;
+    }
+
+    // One in-flight charge is enough. The order holds a date per service and a
+    // cancellation would take all of them back, so the first charge that may
+    // yet succeed stops the whole release.
+    if (result.outcome === "refused") {
+      return {
+        kind: "in_flight",
+        detail: result.status ? `the charge is ${result.status}` : result.reason,
+      };
+    }
+
+    if (result.outcome === "canceled") cancelled += 1;
+  }
+
+  return faults.length > 0
+    ? { kind: "error", detail: faults.join("; ") }
+    : { kind: "released", detail: `${cancelled} charge(s) cancelled` };
 }
 
 export type BalanceResult = {

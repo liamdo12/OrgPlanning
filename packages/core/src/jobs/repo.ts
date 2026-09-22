@@ -106,6 +106,93 @@ export async function enqueue(
 }
 
 /**
+ * Moves a **queued** job's deadline forward, and nothing else.
+ *
+ * `enqueue` cannot do this. Its upsert carries
+ * `setWhere: inArray(jobs.status, ["held", "failed"])`, so a live `queued` job
+ * conflicts, updates nothing and returns `false` — a re-arm written through it
+ * moves no deadline and says nothing about having failed to. The obvious second
+ * attempt is worse: `cancelQueuedJobs` sets `done`, which is the one status
+ * `enqueue` will never re-arm, so cancel-then-enqueue destroys the job
+ * permanently and whatever it was going to release is never released.
+ *
+ * So this is a narrower statement than either. It cannot resurrect a `done`
+ * row, cannot reach a `held` one, cannot reset `attempts` and cannot create a
+ * job. `greatest` is what keeps it a re-arm rather than a reschedule: a
+ * deadline only ever moves later, so a caller asking for an earlier one leaves
+ * the later one standing rather than quietly pulling a charge forward.
+ *
+ * Answers the row's deadline as it now stands, or nothing at all when no
+ * `queued` row matched — a job already claimed by a runner is an ordinary
+ * answer here, not a fault.
+ */
+export async function rearmQueuedJob(
+  db: DbExecutor,
+  input: { type: JobType; dedupeKey: string; runAfter: Date },
+): Promise<Date | undefined> {
+  const [row] = await db
+    .update(jobs)
+    .set({
+      runAfter: sql`greatest(${jobs.runAfter}, ${input.runAfter.toISOString()}::timestamptz)`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(jobs.type, input.type),
+        eq(jobs.dedupeKey, input.dedupeKey),
+        eq(jobs.status, "queued"),
+      ),
+    )
+    .returning({ runAfter: jobs.runAfter });
+
+  return row?.runAfter;
+}
+
+/**
+ * Puts the job a handler is **running** back in the queue, later.
+ *
+ * The handler's own row is `running` while it executes — `claimDue` sets that
+ * in the same statement it takes the job with — so `rearmQueuedJob` matches
+ * nothing from inside a handler. This is the statement that does.
+ *
+ * It exists for the outcome that is neither success nor failure: work that
+ * cannot finish yet because something outside this platform is mid-flight, and
+ * which must be asked about again rather than waited on. `attempts` is
+ * incremented so the loop is bounded by the same ceiling a failing job has, and
+ * at the ceiling the job is **held** with its reason rather than `failed` —
+ * "waiting on the provider" is not a fault, and an operator reading a failure
+ * list should not have to work out that it was never one.
+ *
+ * `last_error` is deliberately not written. Nothing went wrong.
+ */
+export async function rearmRunningJob(
+  db: DbExecutor,
+  jobId: string,
+  input: { runAfter: Date; attempts: number; reason: string; now: Date },
+): Promise<{ status: JobStatus; runAfter: Date }> {
+  const attempts = input.attempts + 1;
+  const exhausted = attempts >= MAX_ATTEMPTS;
+
+  const [row] = await db
+    .update(jobs)
+    .set(
+      exhausted
+        ? { status: "held", heldReason: input.reason, attempts, updatedAt: input.now }
+        : {
+            status: "queued",
+            heldReason: null,
+            attempts,
+            runAfter: sql`greatest(${jobs.runAfter}, ${input.runAfter.toISOString()}::timestamptz)`,
+            updatedAt: input.now,
+          },
+    )
+    .where(eq(jobs.id, jobId))
+    .returning({ runAfter: jobs.runAfter });
+
+  return { status: exhausted ? "held" : "queued", runAfter: row?.runAfter ?? input.runAfter };
+}
+
+/**
  * Takes up to `limit` jobs that are due, and marks them `running`.
  *
  * Three things happen in one statement, and each of them has to:

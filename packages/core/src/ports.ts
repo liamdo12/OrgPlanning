@@ -109,6 +109,29 @@ export type ProviderPaymentIntent = {
   failureMessage: string | null;
 };
 
+/**
+ * What came of asking the provider to cancel a charge.
+ *
+ * Three answers rather than a boolean, because the middle one is the only case
+ * where the caller must do *less* than it would otherwise: an intent the
+ * provider refuses to cancel is one that is about to become a real booking, and
+ * treating that refusal as a failure is how a customer whose card has been
+ * charged loses their date.
+ */
+export type CancelIntentResult =
+  /** It is cancelled, and nothing was taken. */
+  | { outcome: "canceled"; intent: ProviderPaymentIntent }
+  /**
+   * Refused: the money is moving or has moved. The provider's own words.
+   *
+   * `status` is null when the refusal did not carry one. Nothing here invents
+   * a plausible status to fill the gap — the refusal is the fact a caller acts
+   * on, and the status is only ever repeated back in a message.
+   */
+  | { outcome: "refused"; status: PaymentIntentStatus | null; reason: string }
+  /** The provider has never heard of it. */
+  | { outcome: "missing" };
+
 export type ProviderTransfer = {
   id: string;
   amount: bigint;
@@ -246,6 +269,22 @@ export type StripePort = {
   }): Promise<ProviderPaymentIntent | null>;
 
   retrievePaymentIntent(id: string): Promise<ProviderPaymentIntent | null>;
+
+  /**
+   * Gives up on a charge nobody completed.
+   *
+   * No idempotency key: cancelling twice reaches the same end state, and the
+   * second call is refused by the provider rather than charged for.
+   *
+   * **A refusal is a result here, not a throw.** The provider will not cancel
+   * an intent that is already `processing` or `succeeded`, and that is the
+   * exact race this method exists inside — an expiry falling due while the
+   * customer's card is being taken. A caller forced to recognise that case by
+   * reading a code out of an exception would be parsing prose to decide
+   * whether to release somebody's booking, so it is in the return type. A
+   * timeout or an outage still throws, because those are not answers.
+   */
+  cancelPaymentIntent(id: string): Promise<CancelIntentResult>;
 
   /**
    * Moves a vendor's share to their connected account.

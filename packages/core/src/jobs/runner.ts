@@ -164,6 +164,24 @@ async function runOne(
       return { jobId: job.id, type: job.type, outcome: "held", detail: outcome.reason };
     }
 
+    if (outcome.kind === "retry") {
+      // Back in the queue with a later deadline, and **no error written**. The
+      // handler asked to come back; nothing went wrong, and recording this as
+      // a failure would put a fault in front of an operator who has none to
+      // find. At the attempt ceiling the row holds instead, so a provider that
+      // never resolves stops the loop rather than running it for ever.
+      const { status } = await repo.rearmRunningJob(ctx.db, job.id, {
+        runAfter: outcome.runAfter,
+        attempts: job.attempts,
+        reason: outcome.reason,
+        now: ctx.clock.realNow(),
+      });
+
+      const result = status === "queued" ? ("retrying" as const) : ("held" as const);
+      await write(result, null);
+      return { jobId: job.id, type: job.type, outcome: result, detail: outcome.reason };
+    }
+
     await repo.markDone(ctx.db, job.id, ctx.clock.realNow());
     await write("done", null);
     return { jobId: job.id, type: job.type, outcome: "done", detail: outcome.detail };

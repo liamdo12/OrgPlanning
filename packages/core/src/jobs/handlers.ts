@@ -3,7 +3,7 @@ import { NotFoundError, ValidationError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
 import * as ordering from "../ordering/repo.js";
 import { autoComplete, cancelOrder } from "../ordering/service.js";
-import { chargeBalance, transferShare } from "../payments/service.js";
+import { chargeBalance, releaseUnpaidIntent, transferShare } from "../payments/service.js";
 import { expireQuoteRequest } from "../quotes/service.js";
 import { deliverSend } from "../email/service.js";
 import { isTerminal } from "../ordering/transitions.js";
@@ -24,13 +24,27 @@ import { orderIdOf, type JobRow, type JobType } from "./repo.js";
  * reports that and finishes, rather than throwing.
  */
 
-/** A job either finished, or could not run yet for a reason that is not an error. */
-export type JobOutcome = { kind: "done"; detail: string } | { kind: "held"; reason: string };
+/**
+ * A job either finished, could not run yet, or has to come back and ask again.
+ *
+ * `held` and `retry` are both "not yet", and the difference is who resumes it.
+ * A `held` job is waiting on a person — a suspended vendor, an order somebody
+ * has to unflag — and nothing re-runs it until one presses requeue. A `retry`
+ * job is waiting on something that resolves itself, so it goes back in the
+ * queue with a later deadline and no error recorded against it. Collapsing the
+ * two either parks work that would have finished on its own, or fills the
+ * failure list with things that never failed.
+ */
+export type JobOutcome =
+  | { kind: "done"; detail: string }
+  | { kind: "held"; reason: string }
+  | { kind: "retry"; runAfter: Date; reason: string };
 
 export type JobHandler = (ctx: CoreContext, actor: Actor, job: JobRow) => Promise<JobOutcome>;
 
 const done = (detail: string): JobOutcome => ({ kind: "done", detail });
 const held = (reason: string): JobOutcome => ({ kind: "held", reason });
+const retry = (runAfter: Date, reason: string): JobOutcome => ({ kind: "retry", runAfter, reason });
 
 /** The order a job is about, or a refusal naming the job rather than the row. */
 async function orderFor(ctx: CoreContext, job: JobRow) {
@@ -45,12 +59,37 @@ async function orderFor(ctx: CoreContext, job: JobRow) {
 }
 
 /**
+ * How long to wait before asking a provider about a charge again.
+ *
+ * Short, because the question is about a card authorisation that either settles
+ * or fails within seconds, and the thing waiting on the answer is somebody
+ * else's date. Long enough that the runner is not asking the provider the same
+ * question several times a minute. The attempt ceiling bounds the loop, so the
+ * longest this can hold a date is roughly this interval times `MAX_ATTEMPTS`.
+ */
+const INTENT_RECHECK_MS = 5 * 60_000;
+
+/**
  * The soft hold expiring on a cart nobody paid for.
  *
  * Without this an abandoned checkout keeps a vendor's date for ever and nothing
  * else would ever free it. An order that has since been paid is left alone —
  * leaving `pending_payment` already cancels this job, so arriving here at all
  * means the two raced.
+ *
+ * **The release is the cancellation.** Nothing here touches `capacity_blocks`:
+ * the date goes back on the vendor's calendar because `cancelOrder` puts it
+ * there, and the transition reports how many it freed. So each outcome below is
+ * really one decision — whether to cancel at all.
+ *
+ * | The provider | What happens |
+ * |---|---|
+ * | cancels the charge | the order is cancelled, and the date is released |
+ * | refuses, because the charge is already going through | **nothing is cancelled.** The booking is about to be real and cancelling it would take the date from somebody whose card has been charged. The job comes back shortly and asks again — it asks rather than waits, because an intent that ends `failed` sends no webhook this path is listening for, and waiting on one would hold the date for ever |
+ * | fails some other way | the order is cancelled anyway. A stranded date is worse than an uncancelled charge: the charge expires on the provider's own schedule, and if it captures after all, the webhook refunds it |
+ *
+ * The middle row is the only case where doing less is correct, and it is the
+ * one that looks most like a failure.
  */
 const expireUnpaid: JobHandler = async (ctx, actor, job) => {
   const order = await orderFor(ctx, job);
@@ -58,8 +97,24 @@ const expireUnpaid: JobHandler = async (ctx, actor, job) => {
     return done(`${order.reference} is ${order.state}; nothing to expire.`);
   }
 
+  const release = await releaseUnpaidIntent(ctx, order.id);
+
+  if (release.kind === "in_flight") {
+    return retry(
+      new Date(ctx.clock.realNow().getTime() + INTENT_RECHECK_MS),
+      `${order.reference} is being paid for — ${release.detail}. Asking again shortly.`,
+    );
+  }
+
   const change = await cancelOrder(ctx, actor, order.id, "order.expire_unpaid");
-  return done(`${order.reference} expired unpaid; ${change.capacityReleased} date(s) released.`);
+  const why =
+    release.kind === "error"
+      ? ` The charge could not be cancelled: ${release.detail}.`
+      : ` (${release.detail})`;
+
+  return done(
+    `${order.reference} expired unpaid; ${change.capacityReleased} date(s) released.${why}`,
+  );
 };
 
 /**

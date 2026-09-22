@@ -192,6 +192,32 @@ export function createStripe(secretKey: string, webhookSecret: string): StripePo
       return intent ? toPaymentIntent(intent) : null;
     },
 
+    async cancelPaymentIntent(id) {
+      try {
+        const intent = await stripe.paymentIntents.cancel(id);
+        return { outcome: "canceled", intent: toPaymentIntent(intent) };
+      } catch (error) {
+        if (error instanceof Stripe.errors.StripeError) {
+          if (error.code === "resource_missing") return { outcome: "missing" };
+
+          // The one error that is an answer rather than a fault: Stripe raises
+          // this when the intent is already `processing` or `succeeded`, which
+          // is the race an expiry falling due mid-checkout lands in. The status
+          // is read back from the intent Stripe attaches to the error rather
+          // than parsed out of its message.
+          if (error.code === "payment_intent_unexpected_state") {
+            const status = error.payment_intent?.status;
+            return {
+              outcome: "refused",
+              status: status ? (status as PaymentIntentStatus) : null,
+              reason: error.message,
+            };
+          }
+        }
+        throw error;
+      }
+    },
+
     async createTransfer({
       idempotencyKey,
       amount,

@@ -461,6 +461,105 @@ describe.skipIf(!url)("planning", () => {
     });
   });
 
+  describe("what will be taken, and when", () => {
+    it("names the soonest balance a confirmed booking still owes", async () => {
+      // The state a booking waits in is `confirmed`; `balance_due` is entered
+      // and left inside one provider round trip. A summary that only looked
+      // there reported no next charge at all on an ordinary event — on the one
+      // panel whose entire job is to say what is coming.
+      const owed = await sql<{ due: Date; amount: string; reference: string }[]>`
+        select balance_due_at as due, balance_amount::text as amount, reference
+        from app.planning_org_orders
+        where event_id = ${sarahsThirtiethId}
+          and state in ('confirmed', 'balance_due', 'action_required')
+          and balance_amount > 0 and balance_due_at is not null
+        order by balance_due_at asc
+      `;
+      const soonest = owed[0];
+      expect(soonest).toBeDefined();
+
+      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
+
+      expect(hub.payments.nextChargeAt?.getTime()).toBe(soonest?.due.getTime());
+      expect(hub.payments.nextCharge).toBe(BigInt(soonest?.amount as string));
+      expect(hub.payments.nextChargeStatus).toBe("scheduled");
+    });
+
+    it("says a declined balance needs attention rather than printing its date as a deadline", async () => {
+      // Nothing is queued in `action_required` — the charge already ran and was
+      // declined — so a panel with no way to tell the two apart shows a date
+      // that has passed and a customer waits for a charge that will not come.
+      await sql`
+        update app.planning_org_orders set state = 'action_required'
+        where event_id = ${sarahsThirtiethId}
+          and balance_amount > 0 and balance_due_at is not null
+          and balance_due_at = (
+            select min(balance_due_at) from app.planning_org_orders
+            where event_id = ${sarahsThirtiethId} and balance_amount > 0
+          )
+      `;
+
+      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(hub.payments.nextChargeStatus).toBe("attention");
+      expect(hub.payments.nextCharge).toBeGreaterThan(0n);
+    });
+
+    it("has nothing to take once every booking is paid for or gone", async () => {
+      await sql`
+        update app.planning_org_orders set state = 'cancelled'
+        where event_id = ${sarahsThirtiethId}
+      `;
+
+      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(hub.payments.nextChargeAt).toBeNull();
+      expect(hub.payments.nextCharge).toBe(0n);
+      expect(hub.payments.nextChargeStatus).toBeNull();
+    });
+
+    it("sums what actually settled rather than what the orders say is due", async () => {
+      const [settled] = await sql<{ total: string }[]>`
+        select coalesce(sum(p.amount), 0)::text as total
+        from app.planning_org_payments p
+        join app.planning_org_orders o on o.id = p.order_id
+        where o.event_id = ${sarahsThirtiethId} and p.state = 'succeeded'
+      `;
+
+      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(hub.payments.captured).toBe(BigInt(settled?.total as string));
+    });
+  });
+
+  describe("the colour a slot is drawn in", () => {
+    it("comes from the category, whatever an administrator has set it to", async () => {
+      // The planner draws a tile per slot in its category's own gradient. Six
+      // pairs copied into the screen would be right until somebody edited one,
+      // and wrong silently afterwards — so the value travels with the slot.
+      const tones = new Map(
+        (
+          await sql<{ id: string; tone: string | null }[]>`
+            select id, tone from app.planning_org_categories
+          `
+        ).map((row) => [row.id, row.tone]),
+      );
+
+      const before = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(before.items.length).toBeGreaterThan(0);
+      for (const item of before.items) {
+        expect(item.categoryTone).toBe(tones.get(item.categoryId));
+      }
+
+      await sql`
+        update app.planning_org_categories
+        set tone = 'linear-gradient(140deg, #000000, #FFFFFF)'
+        where id = ${cakesCategoryId}
+      `;
+
+      const after = await eventHub(ctx, sarah, sarahsThirtiethId);
+      const cakes = after.items.find((item) => item.categoryId === cakesCategoryId);
+      expect(cakes?.categoryTone).toBe("linear-gradient(140deg, #000000, #FFFFFF)");
+    });
+  });
+
   describe("the day of the event", () => {
     it("leads with venue access and orders the arrivals", async () => {
       const flowersCategoryId = await one(

@@ -263,6 +263,32 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
       return Promise.resolve(intents.get(id) ?? null);
     },
 
+    cancelPaymentIntent(id) {
+      const intent = intents.get(id);
+      if (!intent) return Promise.resolve({ outcome: "missing" as const });
+
+      // The provider's own rule, and the reason this method returns a refusal
+      // rather than a success flag: money that is moving cannot be called back
+      // by cancelling the intent it is moving under.
+      if (intent.status === "succeeded" || intent.status === "processing") {
+        maybeFail("cancelPaymentIntent");
+        return Promise.resolve({
+          outcome: "refused" as const,
+          status: intent.status,
+          reason: `You cannot cancel this PaymentIntent because it has a status of ${intent.status}.`,
+        });
+      }
+
+      const canceled = { ...intent, status: "canceled" as const };
+      intents.set(id, canceled);
+      created.push({ kind: "payment_intent_cancel", id, idempotencyKey: null });
+      // After the object has been recorded, as everywhere else here: a call
+      // that failed on the way back still cancelled the intent, and a retry
+      // that assumed otherwise would be acting on a stale answer.
+      maybeFail("cancelPaymentIntent");
+      return Promise.resolve({ outcome: "canceled" as const, intent: canceled });
+    },
+
     createTransfer({ idempotencyKey, amount, destinationAccountId, metadata }) {
       const existing = replay<ProviderTransfer>(idempotencyKey);
       if (existing) return Promise.resolve(existing);

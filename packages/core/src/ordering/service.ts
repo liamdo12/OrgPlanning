@@ -411,7 +411,18 @@ export async function createCheckout(
         policyTemplateId: template?.id ?? null,
         coolingWindowEndsAt: plan.coolingWindowEndsAt,
         balanceDueAt: plan.balanceDueAt,
-        isDemo: false,
+        // A booking made on a tier that may move its clock is a booking the
+        // preview is allowed to drive forward; one made anywhere else is not.
+        //
+        // Reading the flag off the tier rather than setting it by hand is what
+        // makes that safe by construction: the context refuses the override on
+        // the production tier at boot and freezes the config, so a real
+        // customer's order cannot carry it however this line is called. Left
+        // `false`, the preview reaches seeded rows only — and a visitor who
+        // booked during it could still become the earliest balance the demo
+        // names, which the runner would then refuse to claim, so the button
+        // would relabel itself to their date and report no work to do.
+        isDemo: ctx.config.allowClockOverride,
       });
 
       await repo.insertItems(tx, order.id, items);

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   categories,
   eventItems,
@@ -232,6 +232,8 @@ export type ItemRow = {
   categoryId: string;
   categoryName: string;
   categorySlug: string;
+  /** A CSS background the category is drawn in, or nothing if none is set. */
+  categoryTone: string | null;
   sortOrder: number;
   serviceId: string | null;
   serviceName: string | null;
@@ -271,6 +273,16 @@ export async function listItems(db: DbExecutor, eventId: string): Promise<ItemRo
       categoryId: eventItems.categoryId,
       categoryName: categories.name,
       categorySlug: categories.slug,
+      /**
+       * The category's own colour, projected rather than looked up on screen.
+       *
+       * The planner draws a tile per slot in the category's gradient, and the
+       * gradient is reference data an administrator edits. A copy of the six
+       * pairs in the web app would be right until the first edit and wrong
+       * silently afterwards; a second query per slot would be the fan-out this
+       * whole read exists to avoid.
+       */
+      categoryTone: categories.tone,
       sortOrder: eventItems.sortOrder,
       serviceId: eventItems.serviceId,
       serviceName: services.title,
@@ -462,7 +474,24 @@ export async function listOrdersForEvent(
   return rows;
 }
 
-export type PaymentSummaryRow = { captured: bigint; nextChargeAt: Date | null; nextCharge: bigint };
+/**
+ * Where the next charge stands.
+ *
+ * `attention` is a balance whose card was declined: the money is still owed,
+ * the date on the order is behind us, and the customer has to do something
+ * about it. Said as a status rather than as an order state, because the planner
+ * deliberately does not speak the lifecycle's vocabulary — but a screen that
+ * could not tell these apart would print a past date under "Next charge" and
+ * leave somebody waiting for a charge that has already failed.
+ */
+export type NextChargeStatus = "scheduled" | "attention";
+
+export type PaymentSummaryRow = {
+  captured: bigint;
+  nextChargeAt: Date | null;
+  nextCharge: bigint;
+  nextChargeStatus: NextChargeStatus | null;
+};
 
 /**
  * What has been taken and what is coming.
@@ -470,6 +499,14 @@ export type PaymentSummaryRow = { captured: bigint; nextChargeAt: Date | null; n
  * Captured is the payments that actually succeeded, summed from the payment
  * rows rather than from the orders' deposit columns — a deposit that was never
  * charged is a figure the order carries and the customer has not paid.
+ *
+ * **The next charge is every order that still owes one**, not only one in
+ * `balance_due`. That state is entered and left inside a single provider round
+ * trip, so an event whose bookings are confirmed — which is every ordinary
+ * event — had no next charge at all, on the one screen that exists to say what
+ * will be taken and when. The columns were always right: `balance_due_at` and
+ * `balance_amount` are written inside the checkout's own transaction, and the
+ * queue charges from the same instant.
  */
 export async function paymentSummary(db: DbExecutor, eventId: string): Promise<PaymentSummaryRow> {
   const [captured] = await db
@@ -479,13 +516,14 @@ export async function paymentSummary(db: DbExecutor, eventId: string): Promise<P
     .where(and(eq(orders.eventId, eventId), eq(payments.state, "succeeded")));
 
   const [next] = await db
-    .select({ due: orders.balanceDueAt, amount: orders.balanceAmount })
+    .select({ due: orders.balanceDueAt, amount: orders.balanceAmount, state: orders.state })
     .from(orders)
     .where(
       and(
         eq(orders.eventId, eventId),
-        eq(orders.state, "balance_due"),
-        sql`${orders.balanceDueAt} is not null`,
+        inArray(orders.state, ["confirmed", "balance_due", "action_required"]),
+        gt(orders.balanceAmount, 0n),
+        isNotNull(orders.balanceDueAt),
       ),
     )
     .orderBy(asc(orders.balanceDueAt))
@@ -495,6 +533,7 @@ export async function paymentSummary(db: DbExecutor, eventId: string): Promise<P
     captured: BigInt(captured?.total ?? "0"),
     nextChargeAt: next?.due ?? null,
     nextCharge: next?.amount ?? 0n,
+    nextChargeStatus: next ? (next.state === "action_required" ? "attention" : "scheduled") : null,
   };
 }
 
