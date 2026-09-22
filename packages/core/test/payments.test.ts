@@ -1136,8 +1136,8 @@ describe.skipIf(!url)("orders and payments", () => {
       const replay = applyWebhook(ctx, {
         type: "payment_intent.succeeded",
         object: {
-          id: settled?.providerPaymentIntentId as string,
-          metadata: { order_id: order.id, payment_id: settled?.id as string },
+          id: settled?.providerPaymentIntentId,
+          metadata: { order_id: order.id, payment_id: settled?.id },
         },
       });
 
