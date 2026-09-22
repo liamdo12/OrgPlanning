@@ -224,6 +224,49 @@ describe.skipIf(!url)("jobs and the clock", () => {
     return new Date(Date.now() + 400 * 24 * 3_600_000);
   }
 
+  describe("what a checkout flags its order with", () => {
+    /** Books through the domain in a given context, returning the order's flag. */
+    async function flagOfBookingIn(context: CoreContext, days: number): Promise<boolean> {
+      const [event] = await sql<{ id: string }[]>`
+        insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+        values (
+          (select id from app.planning_org_users where email = 'sarah@example.ca'),
+          ${`Flag ${days}`},
+          (now() + (${days} || ' days')::interval)::date,
+          '17:00',
+          'America/Toronto'
+        )
+        returning id
+      `;
+      const [service] = await sql<{ id: string }[]>`
+        select s.id from app.planning_org_services s
+        join app.planning_org_vendors v on v.id = s.vendor_id
+        where v.slug = 'bloom-and-co' and v.status = 'approved' limit 1
+      `;
+
+      const checkout = await createCheckout(context, customer, {
+        eventId: event?.id as string,
+        lines: [{ serviceId: service?.id as string, quantity: 4 }],
+      });
+      const order = checkout.orders[0] as NonNullable<(typeof checkout.orders)[number]>;
+      return (await ordering.load(context.db, order.id))?.isDemo as boolean;
+    }
+
+    it("flags it for the preview exactly when the clock can be moved", async () => {
+      // The demo is the whole point of the deployment, and it can only drive an
+      // order the runner is allowed to claim. Reading the flag off the tier is
+      // what keeps that from also reaching a real customer: a deployment that
+      // may not move its clock cannot write the flag, and the boot check that
+      // refuses the two together is what makes it a guarantee rather than care.
+      expect(ctx.config.allowClockOverride).toBe(true);
+      expect(await flagOfBookingIn(ctx, 210)).toBe(true);
+
+      const production = productionContext();
+      expect(production.config.allowClockOverride).toBe(false);
+      expect(await flagOfBookingIn(production, 217)).toBe(false);
+    });
+  });
+
   describe("the demo filter", () => {
     it("will not let a shifted clock claim a real order's job", async () => {
       // The headline. A real booking with a balance charge due in a year, and a
@@ -1014,10 +1057,10 @@ describe.skipIf(!url)("jobs and the clock", () => {
       // cannot: the row is on the list, the order is not, and the delete dies
       // on a foreign key several layers below the button.
       //
-      // Both sides, because `createCheckout` writes `is_demo: false` on every
-      // order — so the ordinary way to try the deployed demo, signing in as a
-      // seeded account and booking something, produces the customer-side case
-      // on the first attempt.
+      // Both sides, because a tier that cannot move its clock writes a real
+      // order against whichever rows it names — so an operator booking
+      // something on a live deployment against a seeded business produces the
+      // vendor-side case, and a seeded account produces the other.
       const order = await orderByReference("TO-4192");
       await sql`update app.planning_org_orders set is_demo = false where id = ${order.id}`;
       // Only the side under test is demo, so a pass cannot come from the other.
