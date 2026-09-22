@@ -51,6 +51,10 @@ export function QuantityControl({
       decrementLabel="One fewer"
       incrementLabel="One more"
       onChange={(next) => select("qty", String(next))}
+      // Sized to its own contents: the stepper is a flex row with no width of
+      // its own, so in a stretching column it draws a border around empty
+      // space to the right of the plus.
+      className="w-fit"
     />
   );
 }
