@@ -14,13 +14,16 @@ import { SORTS, decodeCursor, encodeCursor, type Sort } from "./paging.js";
  */
 
 const INSTANT = "2026-09-18 19:19:00.123456+00";
+const RATING = "4.9";
 const ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 const OTHER_ID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
 const everySort = Object.values(SORTS) as readonly Sort[];
 
 function sampleValue(sort: Sort): string {
-  return sort.leading === "timestamptz" ? INSTANT : "Sarah Mensah";
+  if (sort.leading === "timestamptz") return INSTANT;
+  if (sort.leading === "numeric") return RATING;
+  return "Sarah Mensah";
 }
 
 describe("sorts", () => {
@@ -110,5 +113,30 @@ describe("cursors", () => {
       const cursor = encodeCursor(SORTS.ordersNewest, { value, id: OTHER_ID });
       expect(decodeCursor(SORTS.ordersNewest, cursor), value).toEqual({ value, id: OTHER_ID });
     }
+  });
+
+  it("accepts the numbers Postgres actually renders", () => {
+    // A rating is `numeric(2,1)`, a price is `bigint` and a review count is
+    // `integer`. All three arrive as plain decimals, and all three go back into
+    // a `::numeric` cast.
+    for (const value of ["0", "0.0", "4.9", "45000", "-1"]) {
+      const cursor = encodeCursor(SORTS.servicesRating, { value, id: OTHER_ID });
+      expect(decodeCursor(SORTS.servicesRating, cursor), value).toEqual({ value, id: OTHER_ID });
+    }
+  });
+
+  it.each([
+    ["a word", "services-rating|top|3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+    ["an empty comparand", "services-rating||3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+    ["sql in the comparand", "services-rating|0) or true--|3f2504e0-4f89-41d3-9a0c-0305e82c3301"],
+    [
+      "an exponent Postgres never writes",
+      "services-rating|4.9e1|3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+    ],
+  ])("falls back to the first page on %s", (_name, cursor) => {
+    // The catalogue's cursor rides on a public URL, so a hand-edited one has to
+    // answer with the first page rather than reaching a `::numeric` cast, which
+    // raises on anything that is not a number.
+    expect(decodeCursor(SORTS.servicesRating, cursor)).toBeUndefined();
   });
 });

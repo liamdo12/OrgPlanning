@@ -99,14 +99,21 @@ describe.skipIf(!url)("the checkout transaction", () => {
     return { id: row?.id as string, day: row?.day as string };
   }
 
-  /** A second listing of the same business, sold under the same terms. */
+  /**
+   * A second listing of the same business, sold under the same terms.
+   *
+   * Published, like the one it is copied from. A draft is not bookable, so a
+   * fixture that left the column null would refuse every checkout below with
+   * `NotFoundError` and read as a policy failure.
+   */
   async function siblingService(): Promise<string> {
     const [row] = await sql<{ id: string }[]>`
       insert into app.planning_org_services
         (vendor_id, category_id, slug, title, base_price, price_unit, booking_mode,
-         policy_template_id)
+         policy_template_id, published_at)
       select s.vendor_id, s.category_id, 'sibling-listing', 'Sibling listing',
-             s.base_price, s.price_unit, s.booking_mode, s.policy_template_id
+             s.base_price, s.price_unit, s.booking_mode, s.policy_template_id,
+             s.published_at
       from app.planning_org_services s where s.id = ${bloomServiceId}
       returning id
     `;

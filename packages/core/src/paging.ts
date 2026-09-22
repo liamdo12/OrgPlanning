@@ -31,11 +31,14 @@ export const PAGE_SIZE = 25;
  * How the leading column is compared, which decides what a decoder may accept.
  *
  * A `timestamptz` comparand is validated, because Postgres raises on a
- * malformed one rather than matching no rows. A `text` comparand is not: every
- * string is a legal one, the empty string and one containing the separator
- * included.
+ * malformed one rather than matching no rows. A `numeric` one is validated for
+ * the same reason and with a wider blast radius: the catalogue sorts on a
+ * rating and a price, and its cursor reaches the server as `?cursor=` on a page
+ * anybody can open, so an edited one would be a 500 instead of the first page.
+ * A `text` comparand is not validated: every string is a legal one, the empty
+ * string and one containing the separator included.
  */
-export type SortShape = "timestamptz" | "text";
+export type SortShape = "timestamptz" | "numeric" | "text";
 
 export type Sort = {
   /** Rides in the cursor. Carries no `|`, which is the separator. */
@@ -57,6 +60,9 @@ export const SORTS = {
   usersByName: { id: "users-by-name", leading: "text" },
   disputesOldest: { id: "disputes-oldest", leading: "timestamptz" },
   reportsOldest: { id: "reports-oldest", leading: "timestamptz" },
+  servicesRecommended: { id: "services-recommended", leading: "numeric" },
+  servicesRating: { id: "services-rating", leading: "numeric" },
+  servicesPriceLowest: { id: "services-price-lowest", leading: "numeric" },
 } as const satisfies Record<string, Sort>;
 
 /** The composite sort key of one row: the leading column, then the tiebreak. */
@@ -76,6 +82,13 @@ export function encodeCursor(sort: Sort, key: CursorKey): string {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Postgres renders `timestamptz` as `2026-09-18 19:19:00.123456+00`. */
 const PG_TIMESTAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?[+-]\d{2}(:\d{2})?$/;
+/**
+ * A plain decimal, which is how Postgres renders every number a cursor here
+ * leads on — `numeric`, `bigint` and `integer` alike. No exponent and no
+ * leading `+`: the database writes neither, so admitting them would widen what
+ * reaches the comparison without widening what a real cursor can say.
+ */
+const PG_NUMERIC = /^-?\d+(\.\d+)?$/;
 
 /**
  * The sort key a cursor names, or nothing when it does not name one for `sort`.
@@ -101,6 +114,7 @@ export function decodeCursor(sort: Sort, cursor: string): CursorKey | undefined 
 
   const value = cursor.slice(first + 1, last);
   if (sort.leading === "timestamptz" && !PG_TIMESTAMP.test(value)) return undefined;
+  if (sort.leading === "numeric" && !PG_NUMERIC.test(value)) return undefined;
 
   return { value, id };
 }

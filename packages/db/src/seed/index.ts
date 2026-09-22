@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { createDb, type Db } from "../client.js";
 import * as s from "../schema/index.js";
+import { seedCapacityBlocks } from "./capacity.js";
 import { seedId } from "./ids.js";
 import { deriveFromTotal } from "./money.js";
 import { CATEGORIES, PLACES, PLATFORM_SETTINGS, POLICY_TEMPLATES } from "./data/reference.js";
@@ -360,6 +361,11 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     toneStart: service.tone[0],
     toneEnd: service.tone[1],
     policyTemplateId: seedId(`policy:${service.policyTier}`),
+    // Publication is what makes a listing findable and bookable, so a demo
+    // catalogue that never writes it is one where every discovery query
+    // returns nothing. Offset from the anchor like every other instant: a
+    // listing published before the oldest seeded booking was made.
+    publishedAt: service.published ? at(anchorAt, days(-150)) : null,
   }));
   await db
     .insert(s.services)
@@ -370,6 +376,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
         title: sql`excluded.title`,
         basePrice: sql`excluded.base_price`,
         policyTemplateId: sql`excluded.policy_template_id`,
+        publishedAt: sql`excluded.published_at`,
       },
     });
   counts["services"] = serviceRows.length;
@@ -668,6 +675,10 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
 
   await db.insert(s.orderItems).values(itemRows).onConflictDoNothing();
   counts["order_items"] = itemRows.length;
+
+  // After the lines, because a block is written per booked line and takes its
+  // range from the event the order was placed against.
+  Object.assign(counts, await seedCapacityBlocks(db));
 
   await db.insert(s.payments).values(paymentRows).onConflictDoNothing();
   counts["payments"] = paymentRows.length;

@@ -15,6 +15,9 @@ import {
   suspendAccount,
 } from "../src/identity/admin-service.js";
 import { inviteAdmin, revokeAdminInvite } from "../src/identity/invites.js";
+import { serviceAvailability } from "../src/catalog/availability.js";
+import { quoteCheckout } from "../src/catalog/quote-checkout.js";
+import { toggleSaved } from "../src/catalog/saved.js";
 import {
   approveVendor,
   blockVendor,
@@ -142,6 +145,17 @@ type Subjects = {
   /** Jonah Tran — never the admin, so self-action is not what refuses. */
   targetUserId: string;
   eventId: string;
+  /**
+   * An event of the same customer's, on a date nothing has booked.
+   *
+   * Every seeded order now holds its date in `capacity_blocks`, so booking
+   * `serviceId` against `eventId` is booking the date TO-4192 is already
+   * holding. The permitted identity would be turned away by the exclusion
+   * constraint — which is not a refusal, so the row would still pass while
+   * proving only that the *other* identities are refused earlier. A free date
+   * keeps "does not refuse the customer" a claim about authorization.
+   */
+  freeEventId: string;
   serviceId: string;
   jobId: string;
   inviteId: string;
@@ -185,6 +199,23 @@ const SIGNED_IN: readonly Identity[] = [
   "otherVendor",
   ...ADMIN,
 ];
+/**
+ * Nobody is refused — the answer is public.
+ *
+ * A legitimate entry for a read whose subject is a listing the whole internet
+ * can already open. It still has to be listed, because the claim being made is
+ * "this was decided", and an id-taking export missing from the registry makes
+ * the same claim by silence.
+ */
+const EVERYONE: readonly Identity[] = IDENTITIES;
+
+/**
+ * An arbitrary day for the availability read.
+ *
+ * Which day it is does not matter: every identity has to get the same answer,
+ * so the row is about who may ask rather than about what they are told.
+ */
+const ANY_DAY = "2099-06-01";
 
 const REGISTRY: readonly Entry[] = [
   // ---- accounts ----------------------------------------------------------
@@ -265,6 +296,36 @@ const REGISTRY: readonly Entry[] = [
       }),
   },
 
+  // ---- the catalogue -------------------------------------------------------
+  {
+    name: "quoteCheckout",
+    // `assertCanActOnEvent`, exactly as `createCheckout` does — and that is the
+    // point of pricing through a shared path. A quote names an event's date and
+    // its guest count, so quoting somebody else's is reading somebody else's
+    // event with a price on it.
+    allow: ["customer"],
+    call: (c, a, s) =>
+      quoteCheckout(c, a, {
+        eventId: s.freeEventId,
+        lines: [{ serviceId: s.serviceId, quantity: 1 }],
+      }),
+  },
+  {
+    name: "serviceAvailability",
+    // A listing's own calendar, on a page anybody can open. It refuses a draft
+    // and a suspended business's service, which is a fact about the row rather
+    // than about who asked.
+    allow: EVERYONE,
+    call: (c, a, s) => serviceAvailability(c, a, s.serviceId, ANY_DAY),
+  },
+  {
+    name: "toggleSaved",
+    // A shortlist belongs to a person, so it needs one — but no role. Anonymous
+    // is told to sign in and a suspended account is refused.
+    allow: SIGNED_IN,
+    call: (c, a, s) => toggleSaved(c, a, s.serviceId),
+  },
+
   // ---- orders, through the lifecycle -------------------------------------
   { name: "getOrder", allow: READ_ORDER, call: (c, a, s) => getOrder(c, a, s.orderId) },
   { name: "autoComplete", allow: ACT_ON_ORDER, call: (c, a, s) => autoComplete(c, a, s.orderId) },
@@ -294,7 +355,7 @@ const REGISTRY: readonly Entry[] = [
     allow: ["customer"],
     call: (c, a, s) =>
       createCheckout(c, a, {
-        eventId: s.eventId,
+        eventId: s.freeEventId,
         lines: [{ serviceId: s.serviceId, quantity: 1 }],
       }),
   },
@@ -560,6 +621,16 @@ describe.skipIf(!url)("authorization matrix", () => {
       select id from app.planning_org_categories where slug = 'decorations'
     `;
 
+    // An event of the order's customer, far enough out that no seeded booking
+    // is holding the date. See `freeEventId`.
+    const [free] = await sql<{ id: string }[]>`
+      insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+      select o.user_id, 'Matrix fixture', (now() + interval '500 days')::date, '17:00',
+             'America/Toronto'
+      from app.planning_org_orders o where o.reference = 'TO-4192'
+      returning id
+    `;
+
     // Onboard one vendor through the fake so the provider has heard of it.
     await sql`
       update app.planning_org_vendors set stripe_account_id = null where id = ${lens?.id as string}
@@ -576,6 +647,7 @@ describe.skipIf(!url)("authorization matrix", () => {
       connectedVendorId: lens?.id as string,
       targetUserId: jonah?.id as string,
       eventId: order?.event_id as string,
+      freeEventId: free?.id as string,
       serviceId: service?.id as string,
       jobId: job?.id as string,
       inviteId: invite.id,

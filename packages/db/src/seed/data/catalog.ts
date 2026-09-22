@@ -29,6 +29,7 @@ export const SERVICES = [
     priceUnit: "bouquet",
     bookingMode: "book_now",
     policyTier: "moderate",
+    published: true,
     badge: "Popular",
     areaLabel: "Serves Downtown & West End",
     rating: "4.9",
@@ -54,6 +55,7 @@ export const SERVICES = [
     priceUnit: "event",
     bookingMode: "book_now",
     policyTier: "moderate",
+    published: true,
     badge: "Book now",
     areaLabel: "Serves all of Toronto",
     rating: "4.8",
@@ -72,6 +74,7 @@ export const SERVICES = [
     priceUnit: "guest",
     bookingMode: "quote",
     policyTier: "moderate",
+    published: true,
     badge: "Quotes",
     areaLabel: "Serves Downtown & Midtown",
     rating: "4.8",
@@ -90,6 +93,7 @@ export const SERVICES = [
     priceUnit: "cake",
     bookingMode: "book_now",
     policyTier: "moderate",
+    published: true,
     badge: "Pickup",
     areaLabel: "Pickup in Leslieville · 4.1 km",
     rating: "4.9",
@@ -108,6 +112,7 @@ export const SERVICES = [
     priceUnit: "event",
     bookingMode: "quote",
     policyTier: "flexible",
+    published: true,
     badge: "Quotes",
     areaLabel: "Serves all of Toronto",
     rating: "4.7",
@@ -126,6 +131,7 @@ export const SERVICES = [
     priceUnit: "install",
     bookingMode: "quote",
     policyTier: "moderate",
+    published: true,
     badge: "Quotes",
     areaLabel: "Serves West End",
     rating: "4.9",
@@ -144,6 +150,18 @@ export const SERVICES = [
     priceUnit: "event",
     bookingMode: "book_now",
     policyTier: "flexible",
+    /**
+     * The one draft, and the only reason it is one.
+     *
+     * Publication and vendor standing are two separate conditions on every
+     * discovery query, and with every service published the first would be
+     * satisfied by every row — so a test asserting an unpublished service is
+     * absent would be asserting nothing. Gold House is approved and carries no
+     * seeded order and no quote request, so leaving this listing a draft
+     * exercises publication on its own and takes no demo screen with it: the
+     * photography category still shows Lens Studio's coverage.
+     */
+    published: false,
     badge: "Book now",
     areaLabel: "Serves Downtown & East End",
     rating: "4.6",
@@ -162,6 +180,7 @@ export const SERVICES = [
     priceUnit: "guest",
     bookingMode: "quote",
     policyTier: "moderate",
+    published: true,
     badge: "New",
     areaLabel: "Serves North York & Midtown",
     rating: "4.9",
@@ -180,6 +199,7 @@ export const SERVICES = [
     priceUnit: "arch",
     bookingMode: "quote",
     policyTier: "strict",
+    published: true,
     badge: "Quotes",
     areaLabel: "Serves all of Toronto",
     rating: "4.7",
@@ -198,6 +218,7 @@ export const SERVICES = [
     priceUnit: "table",
     bookingMode: "book_now",
     policyTier: "flexible",
+    published: true,
     badge: "Book now",
     areaLabel: "Delivery across Toronto",
     rating: "4.8",
@@ -216,6 +237,7 @@ export const SERVICES = [
     priceUnit: "event",
     bookingMode: "quote",
     policyTier: "strict",
+    published: true,
     badge: "Top rated",
     areaLabel: "Serves all of Toronto",
     rating: "5.0",
@@ -234,6 +256,7 @@ export const SERVICES = [
     priceUnit: "package",
     bookingMode: "book_now",
     policyTier: "moderate",
+    published: true,
     badge: "Book now",
     areaLabel: "Delivery across Toronto",
     rating: "4.5",

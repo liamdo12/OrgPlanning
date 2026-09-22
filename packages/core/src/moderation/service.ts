@@ -1,4 +1,5 @@
 import { record } from "../audit/service.js";
+import { recomputeServiceRating } from "../catalog/reviews.js";
 import type { CoreContext } from "../context.js";
 import { NotFoundError, UnauthenticatedError, ValidationError } from "../errors.js";
 import { isAuthenticated, isUsable, type Actor } from "../identity/actor.js";
@@ -249,6 +250,14 @@ export async function decideReport(
       decidedByUserId: isAuthenticated(actor) ? actor.userId : null,
       now,
     });
+
+    // A decision about a review changes what the listing's star rating is an
+    // average of, so the two move together or not at all. Rejecting a review
+    // and leaving the number it contributed to is how a catalogue filter over
+    // "4.8 and above" ends up filtering on something nothing maintains.
+    if (report.targetType === "review") {
+      await recomputeServiceRating(tx, report.targetId);
+    }
 
     await record(
       ctx,

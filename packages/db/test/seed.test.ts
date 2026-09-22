@@ -163,6 +163,105 @@ describe.skipIf(!url)("seed", () => {
     expect(rows).toEqual([]);
   });
 
+  it("leaves no listing without a rating", async () => {
+    // The column the catalogue's headline sort leads on. Nullable, an unrated
+    // listing sorted above every rated business — `desc` puts NULLs first — and
+    // a keyset page comparing a cursor against NULL matched neither side of the
+    // boundary, so that row was unreachable at any offset.
+    const [column] = await sql<{ is_nullable: string; column_default: string }[]>`
+      select is_nullable, column_default
+      from information_schema.columns
+      where table_schema = 'app'
+        and table_name = 'planning_org_services'
+        and column_name = 'rating_average'
+    `;
+
+    expect(column?.is_nullable).toBe("NO");
+    expect(column?.column_default).toBe("0");
+  });
+
+  it("holds a date for every seeded booking, and frees the cancelled one", async () => {
+    // Without these rows the exclusion constraint has nothing to collide with,
+    // so every seeded booking's date reads as free and can be booked a second
+    // time — on a demo database whose whole job is to look like a platform that
+    // has been running for a while.
+    //
+    // Both sides of the flag, because a seed that made every block active would
+    // lose a cancelled booking's date for ever and nothing would say why.
+    const [row] = await sql<{ blocks: string; active: string; inactive: string }[]>`
+      select
+        count(*)::text as blocks,
+        count(*) filter (where active)::text as active,
+        count(*) filter (where not active)::text as inactive
+      from app.planning_org_capacity_blocks
+    `;
+    const [lines] = await sql<{ count: string }[]>`
+      select count(*)::text as count
+      from app.planning_org_order_items where service_id is not null
+    `;
+
+    expect(Number(row?.blocks)).toBe(Number(lines?.count));
+    expect(Number(row?.inactive)).toBeGreaterThan(0);
+    expect(Number(row?.active)).toBeGreaterThan(0);
+  });
+
+  it("gives every block the range of the event its order was placed against", async () => {
+    // The same half-open range a checkout writes: local start to the next local
+    // midnight, in the event's own zone. A block an hour out is one that admits
+    // a second booking on a date the business is committed to.
+    const rows = await sql<{ reference: string; agrees: boolean }[]>`
+      select
+        o.reference,
+        cb.during = tstzrange(
+          (e.event_date + coalesce(e.start_time, '00:00'::time)) at time zone e.timezone,
+          (e.event_date + 1)::timestamp at time zone e.timezone,
+          '[)'
+        ) as agrees
+      from app.planning_org_capacity_blocks cb
+      join app.planning_org_orders o on o.id = cb.order_id
+      join app.planning_org_events e on e.id = o.event_id
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => !row.agrees)).toEqual([]);
+  });
+
+  it("publishes eleven of the twelve services, leaving one a draft", async () => {
+    // Both numbers, not just the first. Publication and vendor standing are two
+    // separate conditions on every discovery query, and a seed that published
+    // everything would leave the first satisfied by every row — so a test that
+    // an unpublished service is absent would be asserting nothing. A seed that
+    // published nothing empties the catalogue, which is the other half.
+    const [row] = await sql<{ published: string; draft: string }[]>`
+      select
+        count(*) filter (where published_at is not null)::text as published,
+        count(*) filter (where published_at is null)::text as draft
+      from app.planning_org_services
+    `;
+
+    expect([Number(row?.published), Number(row?.draft)]).toEqual([11, 1]);
+  });
+
+  it("publishes every listing before the oldest booking against it was made", async () => {
+    // Anchor-relative like every other seeded instant, and earlier than the
+    // orders: a booking recorded against a listing that was not yet on sale is
+    // a demo that contradicts its own rule.
+    const rows = await sql<{ published_at: Date }[]>`
+      select published_at from app.planning_org_services where published_at is not null
+    `;
+    const [earliest] = await sql<{ created_at: Date }[]>`
+      select min(created_at) as created_at from app.planning_org_orders
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.published_at.getTime()).toBeLessThan(anchorAt.getTime());
+      expect(row.published_at.getTime()).toBeLessThanOrEqual(
+        (earliest as { created_at: Date }).created_at.getTime(),
+      );
+    }
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'
