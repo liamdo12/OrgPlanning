@@ -1,3 +1,4 @@
+import { cache } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -32,16 +33,51 @@ import { ReviewList } from "./_components/review-list";
 export const dynamic = "force-dynamic";
 
 /**
- * The title comes from the slug, not from a second read.
+ * The listing, looked up once per request.
  *
- * Next renders metadata and the page separately, so naming the listing here
- * would mean querying it twice per request — and the slug is what the vendor
- * wrote the title as, hyphenated.
+ * `cache()` because the metadata and the page both need it and both run in the
+ * same render pass — without it the listing is queried twice for every view.
+ * The context is built inside for the same reason: one built per call site
+ * would give the two callers different keys and defeat the dedupe.
+ *
+ * It answers `null` rather than throwing, so the two callers can each decide
+ * what a missing listing means for them. Anything that is not the domain's own
+ * refusal is a fault and is left to the error boundary with a digest.
+ */
+const loadListing = cache(
+  async (
+    slug: string,
+  ): Promise<{ service: ServiceDetail; actor: Actor; viewer: SignedInCustomer } | null> => {
+    const ctx = createRequestContext();
+    const viewer = await customerViewer();
+    const actor: Actor = viewer ?? ANONYMOUS;
+
+    try {
+      return { service: await getServiceDetail(ctx, actor, slug), actor, viewer };
+    } catch (error) {
+      if (error instanceof NotFoundError) return null;
+      throw error;
+    }
+  },
+);
+
+type SignedInCustomer = Awaited<ReturnType<typeof customerViewer>>;
+
+/**
+ * The title, and the **status**.
+ *
+ * Refusing here rather than only in the page is what makes a withdrawn listing
+ * a real 404 rather than a 404-looking page served with a 200. Metadata is
+ * resolved before the response begins; the page below it renders inside a
+ * Suspense boundary the group's loading file creates, and by the time it runs
+ * the status line has already been sent.
  */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const words = slug.replaceAll("-", " ");
-  return { title: `${words.charAt(0).toUpperCase()}${words.slice(1)} · Occasion` };
+  const found = await loadListing(slug);
+  if (!found) notFound();
+
+  return { title: `${found.service.title} · Occasion` };
 }
 
 /**
@@ -68,20 +104,16 @@ export default async function ServiceDetailPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const ctx = createRequestContext();
-  const viewer = await customerViewer();
-  const actor = viewer ?? ANONYMOUS;
   const { slug } = await params;
   const query = toSearchParams(await searchParams);
 
-  let service: ServiceDetail;
-  try {
-    service = await getServiceDetail(ctx, actor, slug);
-  } catch (error) {
-    // The one refusal this screen translates. Anything else is a fault and
-    // belongs in the boundary with a digest rather than as a missing page.
-    if (error instanceof NotFoundError) notFound();
-    throw error;
-  }
+  // The same lookup the metadata made, deduped. It refuses there, before the
+  // response starts, so that the refusal carries a status; this is the guard
+  // for a render that somehow reached here anyway.
+  const found = await loadListing(slug);
+  if (!found) notFound();
+
+  const { service, actor, viewer } = found;
 
   const [active, events] = await Promise.all([
     resolveActiveEvent(ctx, actor),
