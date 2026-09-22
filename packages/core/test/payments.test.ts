@@ -381,14 +381,18 @@ describe.skipIf(!url)("orders and payments", () => {
       // An order carries a single `policy_template_id`. Two services under one
       // business with different terms would have to be charged at one of them,
       // and the customer was shown both.
+      // Published, like the listing it is copied from: a draft is not bookable
+      // at all, so an unpublished fixture would be refused for the wrong reason
+      // and this case would stop being about mixed terms.
       const [second] = await sql<{ id: string }[]>`
         insert into app.planning_org_services
           (vendor_id, category_id, slug, title, base_price, price_unit, booking_mode,
-           policy_template_id)
+           policy_template_id, published_at)
         select
           s.vendor_id, s.category_id, 'mixed-policy-fixture', 'Mixed policy fixture',
           s.base_price, s.price_unit, s.booking_mode,
-          (select id from app.planning_org_policy_templates where tier = 'strict')
+          (select id from app.planning_org_policy_templates where tier = 'strict'),
+          s.published_at
         from app.planning_org_services s where s.id = ${bloomServiceId}
         returning id
       `;

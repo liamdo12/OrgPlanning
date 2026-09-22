@@ -1,18 +1,27 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { categories, services, vendors } from "@occasion/db/schema";
 import type { CoreContext } from "../context.js";
 import { NotFoundError } from "../errors.js";
+import type { Actor } from "../identity/actor.js";
 import { publiclyListable } from "../vendors/transitions.js";
 
 /**
  * What a customer may find.
  *
- * Only the listability rule lives here for now — the discovery screens are a
- * later phase. It is here rather than there because the rule belongs to the
- * vendor queue that this phase built: approving a business is what puts its
- * services in front of customers, and suspending one has to take them away
- * again. A rule written when the search screen is built is a rule that was
- * missing for every phase in between.
+ * Two conditions decide it, and they are separate on purpose: the business has
+ * to be approved, and the listing has to be published. The first is the
+ * platform's decision about a vendor and the second is the vendor's decision
+ * about one of its own services, so a suspension hides a whole catalogue while
+ * a draft hides one row.
+ *
+ * Both are also applied by `catalog.bookable()`, which is what the checkout
+ * gates on. A rule enforced on reads alone leaves a service that no screen will
+ * show and any id will still buy.
+ *
+ * Every function here takes an actor even though none of them consults one:
+ * `ANONYMOUS` is a legal caller of a public catalogue, and an export with no
+ * actor parameter is invisible to the two suites that check every way into a
+ * row goes past a gate.
  */
 
 export type PublicService = {
@@ -32,24 +41,18 @@ export type PublicService = {
 /**
  * Everything a customer may be shown.
  *
- * One condition today, and it is the vendor's rather than the service's: the
- * business has to be approved. Filtering in the query rather than after it
- * matters — a suspended vendor's rows must not reach the caller at all, because
- * a caller that receives them will eventually forget to drop one.
- *
- * Publication is the second condition and is **not** applied yet, because
- * nothing sets it: `services.published_at` is written by no code path, so a
- * query that required it would return an empty catalogue and the vendor rule
- * below it would never run. Phase 8 owns publishing, and adding
- * `isNotNull(services.publishedAt)` here is that phase's change — along with
- * making the column a timestamp, which it is not.
+ * Filtering in the query rather than after it matters — a suspended vendor's
+ * rows or a draft listing must not reach the caller at all, because a caller
+ * that receives them will eventually forget to drop one.
  */
 export async function listPublicServices(
   ctx: CoreContext,
+  _actor: Actor,
   filter: { categorySlug?: string | undefined } = {},
 ): Promise<PublicService[]> {
   const conditions = [
     eq(vendors.status, "approved"),
+    isNotNull(services.publishedAt),
     ...(filter.categorySlug ? [eq(categories.slug, filter.categorySlug)] : []),
   ];
 
@@ -77,13 +80,15 @@ export async function listPublicServices(
 /**
  * One service, for a public page.
  *
- * `NotFoundError` whether the row is absent or belongs to a vendor who is no
- * longer approved. The two are deliberately the same answer: a suspended
- * business's page must not become a way to learn that the business exists and
- * has been suspended.
+ * `NotFoundError` whether the row is absent, belongs to a vendor who is no
+ * longer approved, or has never been published. All three are deliberately the
+ * same answer: a suspended business's page must not become a way to learn that
+ * the business exists and has been suspended, and a draft's slug must not
+ * become a way to learn what a vendor is about to launch.
  */
 export async function getPublicService(
   ctx: CoreContext,
+  _actor: Actor,
   slug: string,
 ): Promise<PublicService | undefined> {
   const [row] = await ctx.db
@@ -100,6 +105,7 @@ export async function getPublicService(
       bookingMode: services.bookingMode,
       areaLabel: services.areaLabel,
       vendorStatus: vendors.status,
+      publishedAt: services.publishedAt,
     })
     .from(services)
     .innerJoin(vendors, eq(vendors.id, services.vendorId))
@@ -109,8 +115,8 @@ export async function getPublicService(
 
   if (!row) throw new NotFoundError("No such service.");
 
-  const { vendorStatus, ...service } = row;
-  if (!publiclyListable(vendorStatus)) {
+  const { vendorStatus, publishedAt, ...service } = row;
+  if (!publiclyListable(vendorStatus) || publishedAt === null) {
     throw new NotFoundError("No such service.");
   }
 

@@ -47,9 +47,7 @@ export const services = app.table(
      * comparing a cursor against NULL matches neither side of the boundary, so
      * the row was unreachable at any offset.
      */
-    ratingAverage: numeric("rating_average", { precision: 2, scale: 1 })
-      .notNull()
-      .default("0"),
+    ratingAverage: numeric("rating_average", { precision: 2, scale: 1 }).notNull().default("0"),
     reviewCount: integer("review_count").notNull().default(0),
     /** Gradient stops the prototype renders in place of photography. */
     toneStart: text("tone_start"),
@@ -57,10 +55,12 @@ export const services = app.table(
     /**
      * When the vendor made this service visible to customers.
      *
-     * A timestamp, not the text it was declared as: nothing writes it yet —
-     * publishing belongs to the vendor catalogue screen — and a column that
-     * will hold an instant should not be the one place in the schema where a
-     * date is a string waiting to be compared as one.
+     * Null is a draft, and a draft is neither findable nor bookable: the
+     * discovery reads and `catalog.bookable()` all require this column, so a
+     * listing nobody has published cannot be reached by searching for it or by
+     * holding its id. The vendor catalogue screen is what will set it; the seed
+     * sets it too, because a demo catalogue that never did would return nothing
+     * on every screen.
      */
     publishedAt: timestamp("published_at", { withTimezone: true }),
     /**

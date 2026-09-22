@@ -163,6 +163,42 @@ describe.skipIf(!url)("seed", () => {
     expect(rows).toEqual([]);
   });
 
+  it("publishes eleven of the twelve services, leaving one a draft", async () => {
+    // Both numbers, not just the first. Publication and vendor standing are two
+    // separate conditions on every discovery query, and a seed that published
+    // everything would leave the first satisfied by every row — so a test that
+    // an unpublished service is absent would be asserting nothing. A seed that
+    // published nothing empties the catalogue, which is the other half.
+    const [row] = await sql<{ published: string; draft: string }[]>`
+      select
+        count(*) filter (where published_at is not null)::text as published,
+        count(*) filter (where published_at is null)::text as draft
+      from app.planning_org_services
+    `;
+
+    expect([Number(row?.published), Number(row?.draft)]).toEqual([11, 1]);
+  });
+
+  it("publishes every listing before the oldest booking against it was made", async () => {
+    // Anchor-relative like every other seeded instant, and earlier than the
+    // orders: a booking recorded against a listing that was not yet on sale is
+    // a demo that contradicts its own rule.
+    const rows = await sql<{ published_at: Date }[]>`
+      select published_at from app.planning_org_services where published_at is not null
+    `;
+    const [earliest] = await sql<{ created_at: Date }[]>`
+      select min(created_at) as created_at from app.planning_org_orders
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.published_at.getTime()).toBeLessThan(anchorAt.getTime());
+      expect(row.published_at.getTime()).toBeLessThanOrEqual(
+        (earliest as { created_at: Date }).created_at.getTime(),
+      );
+    }
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'

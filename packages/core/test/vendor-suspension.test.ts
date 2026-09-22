@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type postgres from "postgres";
 import { NotFoundError, ValidationError } from "../src/errors.js";
 import { getActor } from "../src/identity/service.js";
-import type { Actor } from "../src/identity/actor.js";
+import { ANONYMOUS, type Actor } from "../src/identity/actor.js";
 import type { CoreContext } from "../src/context.js";
 import { getPublicService, listPublicServices } from "../src/catalog/service.js";
 import {
@@ -575,25 +575,25 @@ describe.skipIf(!url)("vendor standing", () => {
     it("drops a vendor's services the moment they are suspended", async () => {
       const bloom = idOf("Bloom & Co");
 
-      const before = await listPublicServices(ctx);
+      const before = await listPublicServices(ctx, ANONYMOUS);
       const theirs = before.filter((service) => service.vendorId === bloom);
       expect(theirs.length).toBeGreaterThan(0);
       const slug = theirs[0]!.slug;
 
-      await expect(getPublicService(ctx, slug)).resolves.toBeDefined();
+      await expect(getPublicService(ctx, ANONYMOUS, slug)).resolves.toBeDefined();
 
       await suspendVendor(ctx, admin, bloom, "Chargebacks");
 
-      const after = await listPublicServices(ctx);
+      const after = await listPublicServices(ctx, ANONYMOUS);
       expect(after.filter((service) => service.vendorId === bloom)).toHaveLength(0);
 
       // The same answer as a slug that never existed: a suspended business's
       // page must not become a way to learn it was suspended.
-      await expect(getPublicService(ctx, slug)).rejects.toBeInstanceOf(NotFoundError);
+      await expect(getPublicService(ctx, ANONYMOUS, slug)).rejects.toBeInstanceOf(NotFoundError);
     });
 
     it("never lists a pending or blocked vendor", async () => {
-      const listed = await listPublicServices(ctx);
+      const listed = await listPublicServices(ctx, ANONYMOUS);
       const statuses = await sql<{ id: string; status: string }[]>`
         select id, status from app.planning_org_vendors
       `;

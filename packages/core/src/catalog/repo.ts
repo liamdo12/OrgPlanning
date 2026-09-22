@@ -33,6 +33,14 @@ export type PricedLine = {
    * could name a cheaper one. Null prices at the platform's own deposit rate.
    */
   policyTemplateId: string | null;
+  /**
+   * When the vendor made this listing visible, or null while it is a draft.
+   *
+   * Here rather than only on the read path because a draft that still prices
+   * still holds the vendor's date and still takes a deposit — and `bookable()`
+   * is the one place the booking path asks whether a service may be sold.
+   */
+  publishedAt: Date | null;
 };
 
 /**
@@ -55,6 +63,7 @@ export async function priceServices(
       basePrice: services.basePrice,
       currency: services.currency,
       policyTemplateId: services.policyTemplateId,
+      publishedAt: services.publishedAt,
       vendorId: vendors.id,
       vendorName: vendors.name,
       vendorStatus: vendors.status,
@@ -78,6 +87,7 @@ export async function priceServices(
         unitPrice: row.basePrice,
         currency: row.currency,
         policyTemplateId: row.policyTemplateId,
+        publishedAt: row.publishedAt,
       },
     ]),
   );
@@ -127,13 +137,13 @@ export async function pricePackages(
 /**
  * Whether a service is one a customer may book at all.
  *
- * The vendor's standing, and only that. Publication is the second condition and
- * is deliberately **not** applied: `services.published_at` is written by no code
- * path in this milestone — publishing belongs to the vendor catalogue screen —
- * so requiring it would make every service unbookable and take the rule below
- * it out of service too. Recorded in `docs/design-gaps.md`; the screen that
- * starts writing that column is the change that adds the condition here.
+ * Two conditions, and both belong here rather than only on the read path. A
+ * business that is not approved may not sell; a listing its owner has not
+ * published is not on sale yet. Requiring publication only where the catalogue
+ * is *read* would leave a draft invisible on every screen and still bookable by
+ * anyone holding its id — priced, holding the vendor's date, and charged a
+ * deposit against a listing nobody offered.
  */
-export function bookable(line: Pick<PricedLine, "vendorStatus">): boolean {
-  return line.vendorStatus === "approved";
+export function bookable(line: Pick<PricedLine, "vendorStatus" | "publishedAt">): boolean {
+  return line.vendorStatus === "approved" && line.publishedAt !== null;
 }
