@@ -61,6 +61,15 @@ import {
   resolveDispute,
   startDisputeReview,
 } from "../src/disputes/service.js";
+import {
+  addItemToPlan,
+  cancelEvent,
+  createEvent,
+  eventHub,
+  getEvent,
+  removeItemFromPlan,
+  updateEvent,
+} from "../src/planning/service.js";
 import { decideReport, getReport, reportContent } from "../src/moderation/service.js";
 import { deleteCategory, moveCategory, updateCategory } from "../src/reference/service.js";
 import { getEmailView, setMarketingConsent } from "../src/email/service.js";
@@ -142,6 +151,8 @@ type Subjects = {
   /** Jonah Tran — never the admin, so self-action is not what refuses. */
   targetUserId: string;
   eventId: string;
+  /** Where a new event is held. Reference data, and no authority of its own. */
+  neighbourhoodId: string;
   serviceId: string;
   jobId: string;
   inviteId: string;
@@ -177,6 +188,31 @@ const READ_ORDER: readonly Identity[] = ["customer", "vendorMember", ...ADMIN];
 const ACT_ON_ORDER: readonly Identity[] = ["vendorMember", ...ADMIN];
 /** `assertCanPayOrder`: the customer whose card it is, plus an administrator. */
 const PAY_ORDER: readonly Identity[] = ["customer", ...ADMIN];
+/**
+ * `assertCanActOnEvent`: the event's owner, and nobody else.
+ *
+ * No administrator, under either label. The planner's every button acts on the
+ * event — it books against it, moves its date, closes it — so the read half is
+ * guarded by the write policy too, and an administrator is refused the whole
+ * screen rather than given a view of it that nothing can do anything with.
+ */
+const OWN_EVENT: readonly Identity[] = ["customer"];
+
+/**
+ * Planning an event of one's own: anybody signed in except an administrator.
+ *
+ * The owner is always the actor, so no identity here can create an event for
+ * somebody else. An administrator is left out because the policy above refuses
+ * them on every event including their own — creating one would only manufacture
+ * an event its owner could never open.
+ */
+const PLANS_OWN_EVENT: readonly Identity[] = [
+  "customer",
+  "otherCustomer",
+  "vendorMember",
+  "otherVendor",
+];
+
 /** Anybody signed in and in good standing — no role required. */
 const SIGNED_IN: readonly Identity[] = [
   "customer",
@@ -332,6 +368,36 @@ const REGISTRY: readonly Entry[] = [
     call: (c, a, s) => resolveOrderIssue(c, a, s.orderId, "fulfilled", "matrix"),
   },
   { name: "retryBalance", allow: ADMIN, call: (c, a, s) => retryBalance(c, a, s.orderId) },
+
+  // ---- planning ------------------------------------------------------------
+  {
+    name: "addItemToPlan",
+    allow: OWN_EVENT,
+    call: (c, a, s) => addItemToPlan(c, a, { eventId: s.eventId, serviceId: s.serviceId }),
+  },
+  { name: "cancelEvent", allow: OWN_EVENT, call: (c, a, s) => cancelEvent(c, a, s.eventId) },
+  {
+    name: "createEvent",
+    allow: PLANS_OWN_EVENT,
+    call: (c, a, s) =>
+      createEvent(c, a, {
+        name: "Matrix party",
+        eventDate: "2027-06-01",
+        neighbourhoodId: s.neighbourhoodId,
+      }),
+  },
+  { name: "eventHub", allow: OWN_EVENT, call: (c, a, s) => eventHub(c, a, s.eventId) },
+  { name: "getEvent", allow: OWN_EVENT, call: (c, a, s) => getEvent(c, a, s.eventId) },
+  {
+    name: "removeItemFromPlan",
+    allow: OWN_EVENT,
+    call: (c, a, s) => removeItemFromPlan(c, a, { eventId: s.eventId, categoryId: s.categoryId }),
+  },
+  {
+    name: "updateEvent",
+    allow: OWN_EVENT,
+    call: (c, a, s) => updateEvent(c, a, s.eventId, { guestCount: 61 }),
+  },
 
   // ---- money -------------------------------------------------------------
   { name: "chargeDeposit", allow: PAY_ORDER, call: (c, a, s) => chargeDeposit(c, a, s.orderId) },
@@ -559,6 +625,9 @@ describe.skipIf(!url)("authorization matrix", () => {
     const [category] = await sql<{ id: string }[]>`
       select id from app.planning_org_categories where slug = 'decorations'
     `;
+    const [neighbourhood] = await sql<{ id: string }[]>`
+      select id from app.planning_org_neighbourhoods where slug = 'liberty-village'
+    `;
 
     // Onboard one vendor through the fake so the provider has heard of it.
     await sql`
@@ -576,6 +645,7 @@ describe.skipIf(!url)("authorization matrix", () => {
       connectedVendorId: lens?.id as string,
       targetUserId: jonah?.id as string,
       eventId: order?.event_id as string,
+      neighbourhoodId: neighbourhood?.id as string,
       serviceId: service?.id as string,
       jobId: job?.id as string,
       inviteId: invite.id,

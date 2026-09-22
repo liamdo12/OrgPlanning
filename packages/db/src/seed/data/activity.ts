@@ -53,6 +53,14 @@ export const RULES = {
   hstBps: setting("hst_bps"),
 } as const;
 
+/**
+ * Events.
+ *
+ * `visibility` spans all three values deliberately. Private is the prototype's
+ * own selection for Sarah's 30th (line 1887); a seed where every row were
+ * private would leave the shared and public paths with no row to read, and a
+ * list nothing exercises is one that silently stops working.
+ */
 export const EVENTS = [
   {
     key: "sarahs-30th",
@@ -64,6 +72,7 @@ export const EVENTS = [
     neighbourhoodSlug: "liberty-village",
     guestCount: 60,
     budget: 400_000n,
+    visibility: "private",
   },
   {
     key: "okafor-wedding",
@@ -75,6 +84,7 @@ export const EVENTS = [
     neighbourhoodSlug: "casa-loma",
     guestCount: 120,
     budget: 1_800_000n,
+    visibility: "shared",
   },
   {
     key: "okafor-anniversary",
@@ -86,6 +96,7 @@ export const EVENTS = [
     neighbourhoodSlug: "evergreen-brick-works",
     guestCount: 120,
     budget: 600_000n,
+    visibility: "private",
   },
   {
     key: "office-social",
@@ -97,6 +108,7 @@ export const EVENTS = [
     neighbourhoodSlug: "steam-whistle-brewing",
     guestCount: 80,
     budget: 500_000n,
+    visibility: "public",
   },
   {
     key: "baby-shower",
@@ -108,6 +120,7 @@ export const EVENTS = [
     neighbourhoodSlug: "leslieville",
     guestCount: 25,
     budget: 120_000n,
+    visibility: "private",
   },
   {
     key: "corporate-launch",
@@ -119,6 +132,7 @@ export const EVENTS = [
     neighbourhoodSlug: "the-great-hall",
     guestCount: 150,
     budget: 900_000n,
+    visibility: "public",
   },
 ] as const;
 

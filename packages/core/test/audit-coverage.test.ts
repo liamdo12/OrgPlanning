@@ -51,6 +51,13 @@ import {
 } from "../src/disputes/service.js";
 import { decideReport, reportContent } from "../src/moderation/service.js";
 import {
+  addItemToPlan,
+  cancelEvent,
+  createEvent,
+  removeItemFromPlan,
+  updateEvent,
+} from "../src/planning/service.js";
+import {
   createCategory,
   deleteCategory,
   moveCategory,
@@ -118,6 +125,19 @@ type Subjects = {
   /** A category nothing is filed under, so deleting it is allowed. */
   emptyCategoryId: string;
   reviewId: string;
+  /** Sarah's 30th, which the account holder owns. */
+  eventId: string;
+  /**
+   * An event of hers with nothing live against it.
+   *
+   * Closing one is refused while any booking is still in flight, so the case
+   * would fail on that rather than on the audit entry.
+   */
+  closableEventId: string;
+  /** A bookable service, its category, and the slot on her event for it. */
+  plannableServiceId: string;
+  plannedCategoryId: string;
+  plannedEventItemId: string;
 };
 
 /**
@@ -368,6 +388,66 @@ const CASES: readonly Case[] = [
         amount: 500n,
         reason: "goodwill",
       }),
+  },
+
+  // ---- planning ------------------------------------------------------------
+  //
+  // All of these run as the account holder rather than as an administrator, and
+  // that is the point: the policy behind them refuses administrators outright,
+  // so an entry naming one could only have come from a path that should not
+  // exist.
+  {
+    screen: "planner",
+    what: "starting an event",
+    actor: "accountHolder",
+    action: "planning.event.create",
+    entityType: "event",
+    run: (c, a) => createEvent(c, a, { name: "Audit party", eventDate: "2027-07-04" }),
+  },
+  {
+    screen: "planner",
+    what: "changing an event's details",
+    actor: "accountHolder",
+    action: "planning.event.update",
+    entityType: "event",
+    entity: "eventId",
+    before: true,
+    run: (c, a, s) => updateEvent(c, a, s.eventId, { guestCount: 61 }),
+  },
+  {
+    screen: "planner",
+    what: "closing an event",
+    actor: "accountHolder",
+    action: "planning.event.cancel",
+    entityType: "event",
+    entity: "closableEventId",
+    before: true,
+    run: (c, a, s) => cancelEvent(c, a, s.closableEventId),
+  },
+  {
+    screen: "planner",
+    what: "putting a service in the plan",
+    actor: "accountHolder",
+    action: "planning.item.add",
+    entityType: "event_item",
+    entity: "plannedEventItemId",
+    run: (c, a, s) =>
+      addItemToPlan(c, a, { eventId: s.eventId, serviceId: s.plannableServiceId, quantity: 2 }),
+  },
+  {
+    screen: "planner",
+    what: "taking a service back out of the plan",
+    actor: "accountHolder",
+    action: "planning.item.remove",
+    entityType: "event_item",
+    entity: "plannedEventItemId",
+    before: true,
+    prepare: (c, a, s) =>
+      addItemToPlan(c, a, { eventId: s.eventId, serviceId: s.plannableServiceId }).then(
+        () => undefined,
+      ),
+    run: (c, a, s) =>
+      removeItemFromPlan(c, a, { eventId: s.eventId, categoryId: s.plannedCategoryId }),
   },
 
   // ---- operations and email ----------------------------------------------
@@ -659,6 +739,28 @@ describe.skipIf(!url)("audit coverage", () => {
         returning id
       `),
       reviewId: await one(sql`select id from app.planning_org_reviews limit 1`),
+      eventId: await one(sql`
+        select id from app.planning_org_events where name = 'Sarah''s 30th'
+      `),
+      closableEventId: await one(sql`
+        select id from app.planning_org_events where name = 'Baby shower'
+      `),
+      plannableServiceId: await one(sql`
+        select s.id from app.planning_org_services s
+        join app.planning_org_vendors v on v.id = s.vendor_id
+        join app.planning_org_categories c on c.id = s.category_id
+        where v.status = 'approved' and c.slug = 'cakes'
+        limit 1
+      `),
+      plannedCategoryId: await one(sql`
+        select id from app.planning_org_categories where slug = 'cakes'
+      `),
+      plannedEventItemId: await one(sql`
+        select i.id from app.planning_org_event_items i
+        join app.planning_org_events e on e.id = i.event_id
+        join app.planning_org_categories c on c.id = i.category_id
+        where e.name = 'Sarah''s 30th' and c.slug = 'cakes'
+      `),
     };
 
     for (const [key, value] of Object.entries(subjects)) {
