@@ -100,7 +100,11 @@ describe("the columns the feed selects off an event", () => {
 
   it("shows only events whose owner made them public", () => {
     expect(statement).toContain(`"planning_org_events"."visibility"`);
-    expect(statement).toContain("'public'");
+    // Bound, not inlined: the predicate compares against the enum itself now
+    // that it carries the value, so the comparand travels as a parameter.
+    // Reading it off `params` also proves what reaches Postgres, rather than
+    // only what the statement happens to spell.
+    expect(built.params).toContain("public");
   });
 
   it("asks for a page rather than every public event ever planned", () => {

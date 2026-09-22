@@ -75,7 +75,7 @@ const LIVE_STATES = ORDER_STATES.filter((state) => !releasesCapacity(state));
  * enum as its own label — so this selects the same rows the typed predicate
  * will, both before the value exists (none) and after.
  */
-const IS_PUBLIC = sql`${events.visibility}::text = 'public'`;
+const IS_PUBLIC = eq(events.visibility, "public");
 
 /** One page of the feed. The prototype draws four of these; the screen slices. */
 export const PUBLIC_FEED_SIZE = 12;

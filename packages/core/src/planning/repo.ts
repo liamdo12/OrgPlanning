@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import {
   categories,
   eventItems,
@@ -519,7 +519,13 @@ export async function loadBookableService(
     })
     .from(services)
     .innerJoin(vendors, eq(vendors.id, services.vendorId))
-    .where(and(eq(services.id, serviceId), eq(vendors.status, "approved")))
+    .where(
+      and(
+        eq(services.id, serviceId),
+        eq(vendors.status, "approved"),
+        isNotNull(services.publishedAt),
+      ),
+    )
     .limit(1);
 
   return row;

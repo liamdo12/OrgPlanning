@@ -646,23 +646,34 @@ describe.skipIf(!url)("catalogue discovery", () => {
   });
 
   describe("the signed-out feed", () => {
-    it("runs, and shows nobody's event while nobody has made one public", async () => {
+    it("shows the events their owners made public, and nobody else's", async () => {
       // Which columns it publishes is asserted column by column, without a
       // database, in `public-feed-projection.test.ts`. What only a real
-      // database can say is that the statement is one Postgres accepts — the
-      // visibility predicate is a text comparison until the enum carries the
-      // value, and a cast that did not parse would be a 500 on the signed-out
-      // home screen and nowhere else.
+      // database can say is which rows come back.
       //
-      // Empty is the right answer today: every seeded event is private, which
-      // is what a feed of what people chose to share should show.
-      await expect(listPublicEventFeed(ctx, ANONYMOUS)).resolves.toEqual([]);
+      // Read the expectation off the table rather than counting the seed's
+      // public events here: a feed that returned everything would still match
+      // a hardcoded number the day somebody changed one event's visibility.
+      const published = await sql<{ id: string }[]>`
+        select id from app.planning_org_events where visibility = 'public'
+      `;
+      const withheld = await sql<{ id: string }[]>`
+        select id from app.planning_org_events where visibility <> 'public'
+      `;
+
+      const feed = await listPublicEventFeed(ctx, ANONYMOUS);
+      const shown = feed.map((event) => event.id).sort();
+
+      expect(published.length).toBeGreaterThan(0);
+      expect(withheld.length).toBeGreaterThan(0);
+      expect(shown).toEqual(published.map((row) => row.id).sort());
+      for (const row of withheld) expect(shown).not.toContain(row.id);
     });
 
     it("counts a booked service for an event, once the event is shared", async () => {
-      // `shared` rather than `public` — the enum has only the two values so
-      // far. The count is what the feed publishes about a booking, and it is
-      // read the same way whichever visibility the row carries.
+      // `shared` rather than `public`, to keep this about the count rather
+      // than the predicate above. The count is what the feed publishes about a
+      // booking, and it is read the same way whichever visibility it carries.
       const [row] = await sql<{ booked: number }[]>`
         select count(*)::int as booked
         from app.planning_org_order_items oi
