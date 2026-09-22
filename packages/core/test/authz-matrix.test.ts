@@ -15,6 +15,9 @@ import {
   suspendAccount,
 } from "../src/identity/admin-service.js";
 import { inviteAdmin, revokeAdminInvite } from "../src/identity/invites.js";
+import { serviceAvailability } from "../src/catalog/availability.js";
+import { quoteCheckout } from "../src/catalog/quote-checkout.js";
+import { toggleSaved } from "../src/catalog/saved.js";
 import {
   approveVendor,
   blockVendor,
@@ -185,6 +188,23 @@ const SIGNED_IN: readonly Identity[] = [
   "otherVendor",
   ...ADMIN,
 ];
+/**
+ * Nobody is refused — the answer is public.
+ *
+ * A legitimate entry for a read whose subject is a listing the whole internet
+ * can already open. It still has to be listed, because the claim being made is
+ * "this was decided", and an id-taking export missing from the registry makes
+ * the same claim by silence.
+ */
+const EVERYONE: readonly Identity[] = IDENTITIES;
+
+/**
+ * An arbitrary day for the availability read.
+ *
+ * Which day it is does not matter: every identity has to get the same answer,
+ * so the row is about who may ask rather than about what they are told.
+ */
+const ANY_DAY = "2099-06-01";
 
 const REGISTRY: readonly Entry[] = [
   // ---- accounts ----------------------------------------------------------
@@ -263,6 +283,36 @@ const REGISTRY: readonly Entry[] = [
         refreshUrl: "https://example.test/refresh",
         returnUrl: "https://example.test/return",
       }),
+  },
+
+  // ---- the catalogue -------------------------------------------------------
+  {
+    name: "quoteCheckout",
+    // `assertCanActOnEvent`, exactly as `createCheckout` does — and that is the
+    // point of pricing through a shared path. A quote names an event's date and
+    // its guest count, so quoting somebody else's is reading somebody else's
+    // event with a price on it.
+    allow: ["customer"],
+    call: (c, a, s) =>
+      quoteCheckout(c, a, {
+        eventId: s.eventId,
+        lines: [{ serviceId: s.serviceId, quantity: 1 }],
+      }),
+  },
+  {
+    name: "serviceAvailability",
+    // A listing's own calendar, on a page anybody can open. It refuses a draft
+    // and a suspended business's service, which is a fact about the row rather
+    // than about who asked.
+    allow: EVERYONE,
+    call: (c, a, s) => serviceAvailability(c, a, s.serviceId, ANY_DAY),
+  },
+  {
+    name: "toggleSaved",
+    // A shortlist belongs to a person, so it needs one — but no role. Anonymous
+    // is told to sign in and a suspended account is refused.
+    allow: SIGNED_IN,
+    call: (c, a, s) => toggleSaved(c, a, s.serviceId),
   },
 
   // ---- orders, through the lifecycle -------------------------------------

@@ -85,6 +85,11 @@ const EXEMPT: Readonly<Record<string, { ground: Ground; because: string }>> = {
     because:
       "The other half of the sweep's bookkeeping, on the same db handle and the same table. Nothing about a person is reachable through it.",
   },
+  openPaymentLink: {
+    ground: GROUNDS.token,
+    because:
+      "The emailed token is the authority, and requiring a session would mean the one person who needs this page is the one who cannot open it. Every reason a token is not payable answers `NotFoundError`, so it confirms nothing about which tokens are real.",
+  },
   previewNow: {
     ground: GROUNDS.provenance,
     because:
@@ -109,6 +114,16 @@ const EXEMPT: Readonly<Record<string, { ground: Ground; because: string }>> = {
     ground: GROUNDS.provenance,
     because:
       "`triggeredByUserId` and `overrideActorId` are what the run records about itself. The runner acts as `SYSTEM`; what it may touch is decided per job by the demo flag, not by these.",
+  },
+  startLinkCheckout: {
+    ground: GROUNDS.token,
+    because:
+      "The other half of the same page, and the same token. It reads the link's state under the order's own lock and hands the customer to the provider's hosted page; the session that pays is the provider's, not ours.",
+  },
+  unsubscribe: {
+    ground: GROUNDS.token,
+    because:
+      "An unsubscribe link has to work from a mail client with no session, which is the whole reason the token exists. It answers the same way whether the token was real, so it cannot be used to test which ones are.",
   },
   vendorIdForStripeAccount: {
     ground: GROUNDS.repository,

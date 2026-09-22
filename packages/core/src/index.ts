@@ -149,6 +149,51 @@ export {
   type VendorFilter,
 } from "./vendors/service.js";
 
+export {
+  serviceAvailability,
+  SERVICE_DAY_STATES,
+  type ServiceDayAvailability,
+  type ServiceDayState,
+} from "./catalog/availability.js";
+
+export { listCategoriesForBrowse, type BrowseCategory } from "./catalog/categories.js";
+
+export {
+  getServiceDetail,
+  type ServiceDetail,
+  type ServiceDetailMedia,
+  type ServiceDetailPackage,
+  type ServiceDetailReview,
+  type VendorPublicFacts,
+} from "./catalog/detail.js";
+
+export {
+  guestBand,
+  listPublicEventFeed,
+  PUBLIC_FEED_SIZE,
+  type PublicEvent,
+} from "./catalog/feed.js";
+
+export {
+  quoteCheckout,
+  type CheckoutQuote,
+  type QuotedLine,
+  type QuotedOrder,
+} from "./catalog/quote-checkout.js";
+
+export { listSaved, toggleSaved, type SavedService, type SaveResult } from "./catalog/saved.js";
+
+export {
+  DEFAULT_SERVICE_SORT,
+  SEARCH_FILTER_FIELDS,
+  searchServices,
+  type ServiceCard,
+  type ServiceCardMedia,
+  type ServicePage,
+  type ServiceSearchFilter,
+  type ServiceSort,
+} from "./catalog/search.js";
+
 export { getPublicService, listPublicServices, type PublicService } from "./catalog/service.js";
 
 export {
