@@ -9,6 +9,7 @@ import { requireAdmin } from "../identity/service.js";
 import * as ordering from "../ordering/repo.js";
 import { applyTransition } from "../ordering/service.js";
 import { payoutAllowed as orderPayoutAllowed, parseOrderState } from "../ordering/transitions.js";
+import type { CancelIntentResult } from "../ports.js";
 import { payoutAllowed as vendorPayoutAllowed, type VendorStatus } from "../vendors/transitions.js";
 import { formatMoney, sliceOrderMoney } from "./money.js";
 import { mintPaymentLinkToken, paymentLinkDigest, paymentLinkState } from "./payment-links.js";
@@ -233,6 +234,99 @@ async function paymentForEvent(
 
   const payments = await repo.listPayments(ctx.db, order.id);
   return payments.find((payment) => payment.providerPaymentIntentId === input.paymentIntentId);
+}
+
+/**
+ * What became of trying to release an order's unpaid charge.
+ *
+ * `in_flight` is the one the caller has to treat differently: the provider
+ * refused to cancel because the money is already moving, and the booking is
+ * about to be real.
+ */
+export type IntentRelease =
+  | { kind: "released"; detail: string }
+  | { kind: "in_flight"; detail: string }
+  | { kind: "error"; detail: string };
+
+/**
+ * Gives up on the charge behind a checkout nobody finished.
+ *
+ * Called by the expiry, which has no business knowing which attempt row holds
+ * an intent or how a provider spells a refusal — that is this module's, and the
+ * handler stays a decision about the order rather than a second payments
+ * implementation.
+ *
+ * **A provider fault is an outcome, not a throw.** The caller's choice is
+ * between releasing somebody's date and leaving it held, and a timeout is not a
+ * reason to leave it held: the intent expires on the provider's own schedule,
+ * and if it captures after all, the webhook refunds it. So a fault comes back
+ * as `error` with its message, and only the refusal — the money is moving —
+ * comes back as `in_flight`.
+ *
+ * No actor: it takes an order id and is package-internal, called from a handler
+ * that has already loaded the order under the runner's own principal.
+ */
+export async function releaseUnpaidIntent(
+  ctx: CoreContext,
+  orderId: string,
+): Promise<IntentRelease> {
+  const attempts = await repo.listPayments(ctx.db, orderId);
+
+  // A failed attempt has an answer already and nothing left to cancel; a
+  // refunded one belongs to an order that was paid for. Everything else that
+  // reached the provider is a charge that might still land.
+  const live = attempts.filter(
+    (attempt) =>
+      attempt.providerPaymentIntentId !== null &&
+      attempt.state !== "failed" &&
+      attempt.state !== "refunded",
+  );
+
+  if (live.length === 0) return { kind: "released", detail: "no charge was ever opened" };
+
+  const faults: string[] = [];
+  let cancelled = 0;
+
+  /**
+   * The call, with a fault turned into a value.
+   *
+   * `try`/`catch` around the call rather than `.catch()` on its result: an
+   * adapter is free to raise before it ever returns a promise, and a handler
+   * attached to a promise that was never made does not run. The difference is
+   * invisible until it strands a date.
+   */
+  const cancel = async (intentId: string): Promise<CancelIntentResult | Error> => {
+    try {
+      return await ctx.stripe.cancelPaymentIntent(intentId);
+    } catch (error) {
+      return error instanceof Error ? error : new Error("The provider did not answer.");
+    }
+  };
+
+  for (const attempt of live) {
+    const result = await cancel(attempt.providerPaymentIntentId as string);
+
+    if (result instanceof Error) {
+      faults.push(result.message);
+      continue;
+    }
+
+    // One in-flight charge is enough. The order holds a date per service and a
+    // cancellation would take all of them back, so the first charge that may
+    // yet succeed stops the whole release.
+    if (result.outcome === "refused") {
+      return {
+        kind: "in_flight",
+        detail: result.status ? `the charge is ${result.status}` : result.reason,
+      };
+    }
+
+    if (result.outcome === "canceled") cancelled += 1;
+  }
+
+  return faults.length > 0
+    ? { kind: "error", detail: faults.join("; ") }
+    : { kind: "released", detail: `${cancelled} charge(s) cancelled` };
 }
 
 export type BalanceResult = {
