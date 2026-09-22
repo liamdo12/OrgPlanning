@@ -289,7 +289,17 @@ export async function listItems(db: DbExecutor, eventId: string): Promise<ItemRo
         select count(*)::int from ${quoteOffers}
         where ${quoteOffers.quoteRequestId} = ${eventItems.quoteRequestId}
       )`,
-      unitPrice: sql<bigint | null>`coalesce(${servicePackages.unitPrice}, ${services.basePrice})`,
+      /**
+       * Rendered as text and converted below.
+       *
+       * A raw expression carries no Drizzle column type, so the driver hands
+       * back whatever it decides a `bigint` looks like — which is not a
+       * `bigint`, and multiplying it by a quantity then raises rather than
+       * quietly rounding. Text is the one rendering that survives the trip.
+       */
+      unitPrice: sql<
+        string | null
+      >`coalesce(${servicePackages.unitPrice}, ${services.basePrice})::text`,
     })
     .from(eventItems)
     .innerJoin(categories, eq(categories.id, eventItems.categoryId))
@@ -301,7 +311,10 @@ export async function listItems(db: DbExecutor, eventId: string): Promise<ItemRo
     .where(eq(eventItems.eventId, eventId))
     .orderBy(asc(eventItems.sortOrder), asc(categories.slug));
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    unitPrice: row.unitPrice === null ? null : BigInt(row.unitPrice),
+  }));
 }
 
 /** One slot, by the category it is for, with what it currently holds. */
