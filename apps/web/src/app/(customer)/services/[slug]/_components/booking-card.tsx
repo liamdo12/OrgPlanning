@@ -2,7 +2,7 @@ import Link from "next/link";
 import { formatMoney, type QuotedOrder, type ServiceDayState } from "@occasion/core";
 import { PriceLockup, Toast, type PriceRow } from "@occasion/ui";
 import { formatCalendarDay, formatDay } from "../../../../../lib/format-moment";
-import { EventSwitcher } from "../../../_components/event-switcher";
+import { selectActiveEventAction } from "../../../actions";
 import { DeferredAction } from "../../../_components/deferred-action";
 import { addItemToPlanAction } from "../actions";
 import { MAX_QUANTITY } from "../booking-selection";
@@ -24,7 +24,7 @@ import type { ArrivalOption } from "../booking-selection";
  * header's is desktop-only (line 2322), so without this one a customer on a
  * phone holding two events prices a deposit against whichever event a cookie
  * set on a laptop last named, adds a caterer to it, and is taken to that
- * event's hub. The same component, with the same action behind it.
+ * event's hub. The same cookie and the same action behind it.
  *
  * Three states, and only the first shows money:
  *
@@ -80,14 +80,7 @@ export function BookingCard({
 
       <AvailabilityLine state={availability} eventDate={event?.eventDate} />
 
-      {signedIn ? (
-        <>
-          <p className="oc-label mb-[6px]">Event</p>
-          <div className="mb-[14px]">
-            <EventSwitcher events={events} activeEventId={event?.id} />
-          </div>
-        </>
-      ) : null}
+      {signedIn ? <EventChoice events={events} chosen={event} /> : null}
 
       {event ? (
         <>
@@ -177,6 +170,79 @@ export function BookingCard({
         You won&rsquo;t be charged until checkout.
       </p>
     </aside>
+  );
+}
+
+/**
+ * Which event this is being priced for. Line 819.
+ *
+ * A disclosure and a form, with no state of its own, and that is the point:
+ * the shell's switcher holds its open/closed in a client component, and its
+ * event buttons close the panel on click — which unmounts the form before the
+ * browser dispatches the submit, so nothing is ever posted. That defect is
+ * invisible in the header today, because the shell passes it at most one event
+ * and it draws a link instead. This card is the first place the list is real.
+ *
+ * `<details>` also means the control works before hydration, which the money
+ * beside it does not need but a person on a slow phone does.
+ */
+function EventChoice({
+  events,
+  chosen,
+}: {
+  events: readonly { id: string; name: string }[];
+  chosen: { id: string; name: string; eventDate: string; guestCount: number | null } | undefined;
+}) {
+  if (events.length === 0) {
+    return (
+      <>
+        <p className="oc-label mb-[6px]">Event</p>
+        <p className="mt-0 mb-[14px] text-[14px] text-body">
+          You have no events yet. One is where the vendors you book are gathered.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <p className="oc-label mb-[6px]" id="event-choice">
+        Event
+      </p>
+      <details className="mb-[14px]">
+        <summary className="w-full cursor-pointer list-none rounded-card border border-glass-edge-soft bg-field px-[13px] py-[11px] text-[14px] font-semibold">
+          {chosen
+            ? [
+                chosen.name,
+                formatCalendarDay(chosen.eventDate),
+                chosen.guestCount === null ? null : `${chosen.guestCount} guests`,
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : "Choose an event"}{" "}
+          <span aria-hidden="true">▾</span>
+        </summary>
+
+        <form
+          action={selectActiveEventAction}
+          aria-labelledby="event-choice"
+          className="mt-[8px] grid gap-[6px]"
+        >
+          {events.map((candidate) => (
+            <button
+              key={candidate.id}
+              type="submit"
+              name="eventId"
+              value={candidate.id}
+              aria-pressed={candidate.id === chosen?.id}
+              className="oc-chip w-full truncate text-left"
+            >
+              {candidate.name}
+            </button>
+          ))}
+        </form>
+      </details>
+    </>
   );
 }
 
