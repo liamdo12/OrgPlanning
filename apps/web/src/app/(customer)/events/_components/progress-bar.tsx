@@ -40,11 +40,7 @@ export function ProgressBar({
       aria-valuetext={valueText}
       className="block h-[9px] overflow-hidden rounded-pill bg-track"
     >
-      <span
-        aria-hidden="true"
-        className="block h-full bg-role"
-        style={{ width: `${filled}%` }}
-      />
+      <span aria-hidden="true" className="block h-full bg-role" style={{ width: `${filled}%` }} />
     </span>
   );
 }

@@ -20,11 +20,7 @@ export const dynamic = "force-dynamic";
  * the budget, and which categories have a vendor booked in — which is what
  * decides whether a date change is going to be refused.
  */
-export default async function EditEventPage({
-  params,
-}: {
-  params: Promise<{ eventId: string }>;
-}) {
+export default async function EditEventPage({ params }: { params: Promise<{ eventId: string }> }) {
   const actor = await requireCustomerPage();
   const ctx = createRequestContext();
   const { eventId } = await params;

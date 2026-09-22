@@ -3,11 +3,7 @@
 import { useActionState, useId, useState } from "react";
 import Link from "next/link";
 import { Button, Input, Stepper } from "@occasion/ui";
-import {
-  createEventAction,
-  updateEventAction,
-  type EventFormState,
-} from "../actions";
+import { createEventAction, updateEventAction, type EventFormState } from "../actions";
 import { dirtyWarning } from "./dirty-warning";
 
 /**

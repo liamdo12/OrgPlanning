@@ -10,7 +10,11 @@ import type { ReactNode } from "react";
  * time and the thing that happens at it are read as a pair instead of as four
  * separate sentences.
  */
-export function Timeline({ entries }: { entries: ReadonlyArray<{ time: string; what: ReactNode }> }) {
+export function Timeline({
+  entries,
+}: {
+  entries: ReadonlyArray<{ time: string; what: ReactNode }>;
+}) {
   return (
     <dl className="m-0">
       {entries.map((entry, index) => (

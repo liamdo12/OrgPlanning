@@ -24,7 +24,9 @@ export function DaySchedule({ entries }: { entries: readonly ScheduleEntry[] }) 
           what fill this in.
         </p>
       ) : (
-        <Timeline entries={entries.map((entry) => ({ time: clock(entry.time), what: what(entry) }))} />
+        <Timeline
+          entries={entries.map((entry) => ({ time: clock(entry.time), what: what(entry) }))}
+        />
       )}
     </GlassPanel>
   );

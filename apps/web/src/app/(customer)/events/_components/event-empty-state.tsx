@@ -75,7 +75,9 @@ export function EventEmptyState() {
         ))}
       </ol>
 
-      <p className="mt-5 mb-0 text-row text-body">Nothing is charged until you confirm a booking.</p>
+      <p className="mt-5 mb-0 text-row text-body">
+        Nothing is charged until you confirm a booking.
+      </p>
     </section>
   );
 }

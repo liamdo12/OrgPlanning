@@ -38,7 +38,9 @@ export function BudgetBar({ budget, currency }: { budget: EventBudget; currency:
         <span className="font-bold">Budget {total}</span>
         <span className="text-body">
           {committed} committed ·{" "}
-          {over ? `${formatMoney(-remaining, currency)} over` : `${formatMoney(remaining, currency)} left`}
+          {over
+            ? `${formatMoney(-remaining, currency)} over`
+            : `${formatMoney(remaining, currency)} left`}
         </span>
       </p>
 
