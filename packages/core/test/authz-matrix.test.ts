@@ -145,6 +145,17 @@ type Subjects = {
   /** Jonah Tran — never the admin, so self-action is not what refuses. */
   targetUserId: string;
   eventId: string;
+  /**
+   * An event of the same customer's, on a date nothing has booked.
+   *
+   * Every seeded order now holds its date in `capacity_blocks`, so booking
+   * `serviceId` against `eventId` is booking the date TO-4192 is already
+   * holding. The permitted identity would be turned away by the exclusion
+   * constraint — which is not a refusal, so the row would still pass while
+   * proving only that the *other* identities are refused earlier. A free date
+   * keeps "does not refuse the customer" a claim about authorization.
+   */
+  freeEventId: string;
   serviceId: string;
   jobId: string;
   inviteId: string;
@@ -295,7 +306,7 @@ const REGISTRY: readonly Entry[] = [
     allow: ["customer"],
     call: (c, a, s) =>
       quoteCheckout(c, a, {
-        eventId: s.eventId,
+        eventId: s.freeEventId,
         lines: [{ serviceId: s.serviceId, quantity: 1 }],
       }),
   },
@@ -344,7 +355,7 @@ const REGISTRY: readonly Entry[] = [
     allow: ["customer"],
     call: (c, a, s) =>
       createCheckout(c, a, {
-        eventId: s.eventId,
+        eventId: s.freeEventId,
         lines: [{ serviceId: s.serviceId, quantity: 1 }],
       }),
   },
@@ -610,6 +621,16 @@ describe.skipIf(!url)("authorization matrix", () => {
       select id from app.planning_org_categories where slug = 'decorations'
     `;
 
+    // An event of the order's customer, far enough out that no seeded booking
+    // is holding the date. See `freeEventId`.
+    const [free] = await sql<{ id: string }[]>`
+      insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+      select o.user_id, 'Matrix fixture', (now() + interval '500 days')::date, '17:00',
+             'America/Toronto'
+      from app.planning_org_orders o where o.reference = 'TO-4192'
+      returning id
+    `;
+
     // Onboard one vendor through the fake so the provider has heard of it.
     await sql`
       update app.planning_org_vendors set stripe_account_id = null where id = ${lens?.id as string}
@@ -626,6 +647,7 @@ describe.skipIf(!url)("authorization matrix", () => {
       connectedVendorId: lens?.id as string,
       targetUserId: jonah?.id as string,
       eventId: order?.event_id as string,
+      freeEventId: free?.id as string,
       serviceId: service?.id as string,
       jobId: job?.id as string,
       inviteId: invite.id,
