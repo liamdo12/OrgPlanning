@@ -39,7 +39,17 @@ export const services = app.table(
     badge: text("badge"),
     /** Human service-area line, e.g. "Serves Downtown & West End". */
     areaLabel: text("area_label"),
-    ratingAverage: numeric("rating_average", { precision: 2, scale: 1 }),
+    /**
+     * The catalogue's headline sort, and so never null.
+     *
+     * Zero is what "nobody has reviewed this yet" means. Nullable, it sorted
+     * above every rated business — `desc` puts NULLs first — and a keyset page
+     * comparing a cursor against NULL matches neither side of the boundary, so
+     * the row was unreachable at any offset.
+     */
+    ratingAverage: numeric("rating_average", { precision: 2, scale: 1 })
+      .notNull()
+      .default("0"),
     reviewCount: integer("review_count").notNull().default(0),
     /** Gradient stops the prototype renders in place of photography. */
     toneStart: text("tone_start"),
@@ -73,6 +83,27 @@ export const services = app.table(
     index("services_vendor_idx").on(table.vendorId),
     index("services_category_idx").on(table.categoryId),
     index("services_policy_template_idx").on(table.policyTemplateId),
+    // One per sort the discovery screen offers, each carrying the publication
+    // condition every one of those queries also carries. An index on
+    // `published_at` alone would have nothing to discriminate on — almost every
+    // row is published — so the planner would never choose it; folded into the
+    // sort key it satisfies the filter and the ordering in one scan.
+    //
+    // Both members run the same way, because the keyset predicate is a row
+    // comparison: `(rating, id) < (value, id)` is the page after the cursor
+    // only when the ordering is `rating desc, id desc`. `nullsFirst` on the
+    // descending pair is not cosmetic — plain `order by x desc` means
+    // `desc nulls first`, and an index built the other way round cannot satisfy
+    // that ordering, so it is never chosen and every page sorts the table.
+    index("services_rating_idx")
+      .on(table.ratingAverage.desc().nullsFirst(), table.id.desc().nullsFirst())
+      .where(sql`${table.publishedAt} is not null`),
+    index("services_reviews_idx")
+      .on(table.reviewCount.desc().nullsFirst(), table.id.desc().nullsFirst())
+      .where(sql`${table.publishedAt} is not null`),
+    index("services_price_idx")
+      .on(table.basePrice.asc().nullsLast(), table.id.asc().nullsLast())
+      .where(sql`${table.publishedAt} is not null`),
   ],
 );
 
@@ -109,7 +140,14 @@ export const serviceMedia = app.table(
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestamps,
   },
-  (table) => [index("service_media_service_idx").on(table.serviceId)],
+  (table) => [
+    index("service_media_service_idx").on(table.serviceId),
+    // The results page reads up to three pictures per card in the same query as
+    // the cards, by a lateral join ordered on `sort_order`. With the order in
+    // the key that scan stops after three; on `service_id` alone it finds every
+    // row for the service and sorts them, once per card.
+    index("service_media_service_sort_idx").on(table.serviceId, table.sortOrder),
+  ],
 );
 
 /** Where a service will travel. */
