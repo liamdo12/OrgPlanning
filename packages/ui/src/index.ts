@@ -42,6 +42,8 @@ export {
 } from "./components/data-table.js";
 export { ListRow, ListStack } from "./components/list-row.js";
 export { PageHeader, Toolbar } from "./components/page-header.js";
+export { PriceLockup, type PriceRow } from "./components/price-lockup.js";
+export { Rating } from "./components/rating.js";
 export { SectionNav, type SectionItem, type LinkProps } from "./components/section-nav.js";
 export { Dialog, Sheet, useDismissable } from "./components/overlay.js";
 export {

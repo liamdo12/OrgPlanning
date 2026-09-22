@@ -48,6 +48,8 @@ const PUBLIC_PAGES: Readonly<Record<string, string>> = {
     "Explore is the front door; refusing a visitor here is the point of having one.",
   "src/app/(customer)/services/page.tsx":
     "Browsing what is on offer is how somebody decides to have an account.",
+  "src/app/(customer)/services/[slug]/page.tsx":
+    "A listing is the thing that gets shared; behind a gate it could not be.",
 };
 
 const pages = pagesUnder(customerRoot).map((path) => ({ path, name: label(path) }));

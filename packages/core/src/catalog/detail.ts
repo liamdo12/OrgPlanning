@@ -2,6 +2,7 @@ import { and, asc, desc, eq, isNotNull, sql } from "drizzle-orm";
 import {
   categories,
   orders,
+  policyTemplates,
   reviews,
   savedServices,
   serviceMedia,
@@ -69,6 +70,33 @@ export type VendorPublicFacts = {
   completedOrders: number;
 };
 
+/**
+ * The cancellation terms this listing is sold under.
+ *
+ * Projected here rather than derived on the screen, because it is the
+ * listing's own `policy_template_id` and it genuinely varies: the same page
+ * shows a flexible florist and a strict quartet, and a heading that always
+ * reads "Moderate" would be wrong for two thirds of the catalogue.
+ *
+ * The same template the checkout prices against, so the deposit percentage a
+ * visitor reads here is the one `quoteCheckout` will charge. Null when a
+ * listing has no template attached — the checkout falls back to the platform
+ * default there, which is a rate this page has no business claiming is the
+ * vendor's policy.
+ */
+type ServiceCancellationPolicy = {
+  /** `flexible` · `moderate` · `strict`. */
+  tier: string;
+  name: string;
+  summary: string;
+  /** The deposit, in basis points of the total. */
+  depositBps: number;
+  /** Hours after booking during which cancelling costs nothing. */
+  freeCancellationHours: number;
+  /** What is refunded after that window, in basis points. */
+  lateRefundBps: number;
+};
+
 export type ServiceDetail = {
   id: string;
   slug: string;
@@ -87,6 +115,8 @@ export type ServiceDetail = {
   toneStart: string | null;
   toneEnd: string | null;
   vendor: VendorPublicFacts;
+  /** Null when the listing names no template; never invented from a default. */
+  policy: ServiceCancellationPolicy | null;
   packages: ServiceDetailPackage[];
   media: ServiceDetailMedia[];
   /** Approved only. A rejected review is not content the platform still shows. */
@@ -124,6 +154,12 @@ export async function getServiceDetail(
       vendorTagline: vendors.tagline,
       vendorBaseArea: vendors.baseArea,
       vendorApprovedAt: vendors.approvedAt,
+      policyTier: policyTemplates.tier,
+      policyName: policyTemplates.name,
+      policySummary: policyTemplates.summary,
+      policyDepositBps: policyTemplates.depositBps,
+      policyFreeCancellationHours: policyTemplates.freeCancellationHours,
+      policyLateRefundBps: policyTemplates.lateRefundBps,
       // Correlated, and safe because the outer query has joins: Drizzle
       // qualifies both sides with their tables, so `vendor_id` inside resolves
       // to the orders table and the one outside to the vendors table.
@@ -135,6 +171,10 @@ export async function getServiceDetail(
     .from(services)
     .innerJoin(vendors, eq(vendors.id, services.vendorId))
     .innerJoin(categories, eq(categories.id, services.categoryId))
+    // Left, because `policy_template_id` is nullable and a listing without one
+    // still has a page. An inner join would make the whole listing vanish and
+    // answer `NotFoundError`, which is the refusal a draft gets.
+    .leftJoin(policyTemplates, eq(policyTemplates.id, services.policyTemplateId))
     .where(
       and(eq(services.slug, slug), eq(vendors.status, "approved"), isNotNull(services.publishedAt)),
     )
@@ -192,6 +232,12 @@ export async function getServiceDetail(
     vendorBaseArea,
     vendorApprovedAt,
     completedOrders,
+    policyTier,
+    policyName,
+    policySummary,
+    policyDepositBps,
+    policyFreeCancellationHours,
+    policyLateRefundBps,
     ...service
   } = row;
 
@@ -206,6 +252,26 @@ export async function getServiceDetail(
       approvedAt: vendorApprovedAt,
       completedOrders,
     },
+    // Every column is null together or present together — a left join that
+    // matched nothing — but the row type says so of each one separately. The
+    // whole conjunction rather than a cast on five of them: a column later
+    // made nullable in its own right would then stop being assumed.
+    policy:
+      policyTier !== null &&
+      policyName !== null &&
+      policySummary !== null &&
+      policyDepositBps !== null &&
+      policyFreeCancellationHours !== null &&
+      policyLateRefundBps !== null
+        ? {
+            tier: policyTier,
+            name: policyName,
+            summary: policySummary,
+            depositBps: policyDepositBps,
+            freeCancellationHours: policyFreeCancellationHours,
+            lateRefundBps: policyLateRefundBps,
+          }
+        : null,
     packages,
     media,
     reviews: approvedReviews,
