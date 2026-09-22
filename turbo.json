@@ -23,6 +23,17 @@
       "dependsOn": ["^build"],
       "env": ["TEST_DATABASE_URL"]
     },
+    // The db and core suites rebuild the same database -- each calls
+    // resetDatabase(), which drops the app schema. Run concurrently they
+    // race, and the failures look like assertion bugs in whichever suite
+    // was mid-run rather than like a torn-down schema. vitest's
+    // fileParallelism:false only orders files inside one package, so the
+    // ordering between the two packages has to be declared here. Only
+    // these two read TEST_DATABASE_URL; web and ui still run alongside.
+    "@occasion/core#test": {
+      "dependsOn": ["^build", "@occasion/db#test"],
+      "env": ["TEST_DATABASE_URL"]
+    },
     "e2e": {
       "dependsOn": ["^build"],
       "cache": false,
