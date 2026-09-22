@@ -143,12 +143,22 @@ export function BookingCard({
 
       <div className="mt-[8px] grid gap-[8px]">
         {event ? null : signedIn ? (
-          <Link
-            href="/events"
-            className="oc-button oc-button--primary oc-button--lg w-full justify-center no-underline"
-          >
-            Create an event to book
-          </Link>
+          // Two different situations, and offering to create an event to
+          // somebody who has three is the wrong one: the choice is right above
+          // this button, and the button should say so rather than send them to
+          // a screen they do not need.
+          events.length > 0 ? (
+            <p className="m-0 text-center text-[14px] text-body">
+              Choose an event above and the deposit will be worked out for its date.
+            </p>
+          ) : (
+            <Link
+              href="/events"
+              className="oc-button oc-button--primary oc-button--lg w-full justify-center no-underline"
+            >
+              Create an event to book
+            </Link>
+          )
         ) : (
           <Link
             href={`/login?next=${encodeURIComponent(`/services/${slug}`)}`}

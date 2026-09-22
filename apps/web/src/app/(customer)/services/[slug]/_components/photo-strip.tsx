@@ -51,13 +51,15 @@ export function PhotoStrip({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-[10px]">
+      {/* Two rows filling the hero's height, line 762 — not four squares,
+          which leave the right column taller than the picture beside it. */}
+      <div className="grid grid-cols-2 grid-rows-2 gap-[10px]">
         {/* Three picture cells, padded with gradients so the block keeps its
             shape while a business is still building up its photography. */}
         {Array.from({ length: SHOWN - 1 }, (_cell, at) => {
           const photo = thumbs[at];
           return (
-            <div key={at} className="relative aspect-square overflow-hidden rounded-tile">
+            <div key={at} className="relative min-h-[110px] overflow-hidden rounded-tile">
               {photo ? (
                 <img
                   src={photo.url}
@@ -71,7 +73,7 @@ export function PhotoStrip({
           );
         })}
 
-        <div className="relative aspect-square overflow-hidden rounded-tile">
+        <div className="relative min-h-[110px] overflow-hidden rounded-tile">
           <MediaPlaceholder toneStart={toneStart} toneEnd={toneEnd} />
           {photos.length > 0 ? (
             <PhotoLightbox

@@ -158,7 +158,9 @@ export default async function ServiceDetailPage({
       <div className="grid items-start gap-[28px] [grid-template-columns:repeat(auto-fit,minmax(300px,1fr))]">
         <div>
           <div className="relative">
-            <h1 className="m-0 mb-[6px] font-display text-[clamp(27px,3.6vw,38px)] leading-[1.1] font-normal">
+            {/* Room on the right for the heart, which is positioned over this
+                block: without it a long title runs under a 44px control. */}
+            <h1 className="m-0 mb-[6px] pr-[52px] font-display text-[clamp(27px,3.6vw,38px)] leading-[1.1] font-normal">
               {service.title}
             </h1>
 
