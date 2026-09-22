@@ -49,9 +49,17 @@ export function EventEmptyState() {
           <Link href="/events/new" className="oc-button oc-button--md bg-surface text-ink">
             Create an event
           </Link>
+          {/*
+            Outlined, with **no translucent fill**. The prototype washes this
+            button with 12% of the surface colour over the green (line 866),
+            which lightens the background just enough to take its own label
+            under the contrast floor — axe catches it at both widths. The label
+            on the plain fill clears it, and the border carries the edge the
+            wash was there for.
+          */}
           <Link
             href="/services"
-            className="oc-button oc-button--md border border-[rgb(244_241_233/0.45)] bg-[rgb(244_241_233/0.12)] text-surface"
+            className="oc-button oc-button--md border border-[rgb(244_241_233/0.7)] text-surface"
           >
             Browse services first
           </Link>

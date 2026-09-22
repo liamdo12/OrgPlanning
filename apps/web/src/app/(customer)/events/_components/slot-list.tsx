@@ -12,8 +12,8 @@ import { removeFromPlanAction } from "../actions";
  * and promoting it would be a second answer to a documented shape.
  *
  * **Five presentations, four badge tones.** `Empty` takes the existing neutral
- * pair and is told apart by its actions and a muted row rather than by a fifth
- * tone — a tone is a colour pair in the shared stylesheet, and adding one for
+ * pair and is told apart by its actions and a faded category tile rather than
+ * by a fifth tone — a tone is a colour pair in the shared stylesheet, and adding one for
  * one screen is what the four exist to prevent. The danger tone on a quote
  * count is not a failure: it is a countdown, and it is the only thing on this
  * screen that says decide now.
@@ -48,14 +48,17 @@ function Slot({ eventId, item }: { eventId: string; item: PlanItem }) {
 
   return (
     <ListRow
-      // The muted treatment is on the row, not on the badge: overriding a badge
-      // pair from a utility class loses to the stylesheet's own specificity,
-      // and a half-applied colour pair is the one failure mode a tone has.
-      className={cx(empty && "opacity-[0.72]")}
+      // **The muting is on the tile alone**, which is decorative and
+      // `aria-hidden`, and nowhere near a colour pair somebody has to read.
+      // Fading the whole row was the obvious reading of "muted" and axe caught
+      // it at both widths: opacity composites through every child, so the row's
+      // own primary action — a vetted pair on the role fill — dropped under the
+      // contrast floor. The same trap the disabled-button tokens exist for.
       leading={
         <Swatch
           name={item.categoryName}
           size={42}
+          className={cx(empty && "opacity-50")}
           {...(item.categoryTone ? { tone: item.categoryTone } : {})}
         />
       }
