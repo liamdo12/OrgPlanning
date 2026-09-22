@@ -6,3 +6,5 @@ pnpm-lock.yaml
 design/
 plans/
 *.pdf
+apps/e2e/.auth/
+apps/e2e/test-results/
