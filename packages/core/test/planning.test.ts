@@ -47,9 +47,9 @@ describe.skipIf(!url)("planning", () => {
   let cakeServiceId: string;
   let cakesCategoryId: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     sql = ownerSql(dbUrl);
-  }, 120_000);
+  });
 
   afterAll(async () => {
     await database?.close();

@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as OccasionCore from "@occasion/core";
 import type { Actor, CoreContext } from "@occasion/core";
 import { APP_ROOT, exportedFunctions, parse } from "../authorization-registry.js";
 
@@ -51,7 +52,7 @@ const EVENTS: Record<string, { id: string; ownerUserId: string; name: string }> 
 };
 
 vi.mock("@occasion/core", async () => {
-  const actual = await vi.importActual<typeof import("@occasion/core")>("@occasion/core");
+  const actual = await vi.importActual<typeof OccasionCore>("@occasion/core");
 
   return {
     ...actual,
