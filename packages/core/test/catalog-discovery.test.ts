@@ -356,7 +356,7 @@ describe.skipIf(!url)("catalogue discovery", () => {
       expect(ids).toContain(await serviceIdOf(LISTABLE_SLUG));
     });
 
-    it("asks the capacity tables nothing", async () => {
+    it("asks the capacity tables nothing", () => {
       // The reason there is no date filter, stated as a property of the query
       // rather than of the type. An anonymous "free on this date" answered from
       // the same rows a booking writes lets two queries be differenced into
@@ -700,7 +700,7 @@ describe.skipIf(!url)("catalogue discovery", () => {
       expect(result.orders).toHaveLength(1);
     });
 
-    it("classifies every order state the way the lifecycle does", async () => {
+    it("classifies every order state the way the lifecycle does", () => {
       // The seed cannot import the domain, so it repeats the classification.
       // Nothing but this holds the two together, and a tenth state added later
       // would otherwise be seeded with whatever answer somebody typed.

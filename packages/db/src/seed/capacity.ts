@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import type { Db } from "../client.js";
 import { capacityBlocks, events, orderItems, orders } from "../schema/index.js";
-import { orderState } from "../schema/enums.js";
+import type { orderState } from "../schema/enums.js";
 import { seedId } from "./ids.js";
 
 /**
@@ -100,7 +100,7 @@ export async function seedCapacityBlocks(db: Db): Promise<Record<string, number>
     // keep `ordering` and `catalog` from importing each other.
     orderId: line.orderId,
     during: line.during,
-    active: HOLDS_CAPACITY[line.state as OrderStateName],
+    active: HOLDS_CAPACITY[line.state],
   }));
 
   await db

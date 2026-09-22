@@ -316,35 +316,41 @@ describe.skipIf(!url)("the catalogue's index scans", () => {
     await sql?.end({ timeout: 5 });
   }, 120_000);
 
-  /** Every `Index Name` anywhere in the plan tree, however deeply nested. */
-  function indexesUsed(node: Record<string, unknown>): string[] {
-    const found: string[] = [];
-    const nodeType = String(node["Node Type"] ?? "");
+  /** As much of Postgres' JSON plan as anything here reads. */
+  type PlanNode = { "Node Type"?: string; "Index Name"?: string; [key: string]: unknown };
 
-    if (nodeType.includes("Index") && typeof node["Index Name"] === "string") {
+  /** Every `Index Name` anywhere in the plan tree, however deeply nested. */
+  function indexesUsed(node: PlanNode): string[] {
+    const found: string[] = [];
+
+    // Catches `Index Scan`, `Index Only Scan` and `Bitmap Index Scan` alike —
+    // all three mean the planner reached the rows through the index rather than
+    // reading the table.
+    if ((node["Node Type"] ?? "").includes("Index") && node["Index Name"] !== undefined) {
       found.push(node["Index Name"]);
     }
 
     for (const value of Object.values(node)) {
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (child && typeof child === "object") {
-            found.push(...indexesUsed(child as Record<string, unknown>));
-          }
+      for (const child of Array.isArray(value) ? value : [value]) {
+        if (child !== null && typeof child === "object") {
+          found.push(...indexesUsed(child as PlanNode));
         }
-      } else if (value && typeof value === "object") {
-        found.push(...indexesUsed(value as Record<string, unknown>));
       }
     }
 
     return found;
   }
 
-  async function explain(built: { sql: string; params: unknown[] }): Promise<string[]> {
+  /** The plan Postgres would use, as a tree. */
+  async function planFor(built: { sql: string; params: unknown[] }): Promise<PlanNode> {
     const rows = await sql.unsafe(`explain (format json) ${built.sql}`, built.params as never);
-    const plan = (rows[0] as Record<string, unknown>)["QUERY PLAN"];
-    const parsed = typeof plan === "string" ? JSON.parse(plan) : plan;
-    return indexesUsed((parsed as Array<Record<string, unknown>>)[0] as Record<string, unknown>);
+    const column = (rows[0] as Record<string, unknown>)["QUERY PLAN"];
+    const tree = (typeof column === "string" ? JSON.parse(column) : column) as PlanNode[];
+    return tree[0] as PlanNode;
+  }
+
+  async function explain(built: { sql: string; params: unknown[] }): Promise<string[]> {
+    return indexesUsed(await planFor(built));
   }
 
   it("actually loaded the data", async () => {
@@ -389,16 +395,13 @@ describe.skipIf(!url)("the catalogue's index scans", () => {
     "returns a page of %s without sorting the catalogue",
     async (name) => {
       const plan = plans.find((candidate) => candidate.name === name) as Plan;
-      const built = plan.build();
-      const rows = await sql.unsafe(`explain (format json) ${built.sql}`, built.params as never);
-      const raw = (rows[0] as Record<string, unknown>)["QUERY PLAN"];
-      const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const tree = await planFor(plan.build());
 
       // A `Sort` keyed on the catalogue is what an index in the wrong direction
       // looks like: the right rows, in the right order, and the whole table read
       // to get them. The lateral is allowed its own sort of three pictures — the
       // claim is about the page, not about every node in the tree.
-      const sortKeys = JSON.stringify(parsed).match(/"Sort Key":\[[^\]]*\]/g) ?? [];
+      const sortKeys = JSON.stringify(tree).match(/"Sort Key":\[[^\]]*\]/g) ?? [];
 
       expect(sortKeys.filter((key) => key.includes("planning_org_services."))).toEqual([]);
     },
