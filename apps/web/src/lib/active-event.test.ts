@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as OccasionCore from "@occasion/core";
 import type { Actor, CoreContext } from "@occasion/core";
 import { APP_ROOT, exportedFunctions, parse } from "../authorization-registry.js";
 
@@ -27,22 +28,77 @@ vi.mock("next/headers", () => ({ cookies: () => Promise.resolve(store) }));
 const tier = { value: "local" as "local" | "preview" | "production" };
 vi.mock("./env", () => ({ getEnv: () => ({ APP_TIER: tier.value }) }));
 
-const { clearActiveEvent, resolveActiveEvent, setActiveEvent } = await import("./active-event.js");
-
 const COOKIE = "occasion.active-event";
 const EVENT_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+const OTHER_EVENT_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3302";
+/** An id whose load fails outright, rather than being refused. */
+const BROKEN_EVENT_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3303";
+const SARAH_ID = "b06d5225-044b-58c1-bff8-24a6bf3c63ee";
+const ADA_ID = "b06d5225-044b-58c1-bff8-24a6bf3c63ef";
+
+/**
+ * The domain read, with its database replaced and its policy left alone.
+ *
+ * `apps/web`'s suite has no database, so the row lookup is a fixture. What is
+ * emphatically **not** replaced is `assertCanActOnEvent`: the refusals this file
+ * asserts — another customer's event, an administrator's request — have to be
+ * the real policy's answer, or the test passes against a mock that agrees with
+ * it by construction. The end-to-end version runs in `packages/core`, where
+ * there is a database.
+ */
+const EVENTS: Record<string, { id: string; ownerUserId: string; name: string }> = {
+  [EVENT_ID]: { id: EVENT_ID, ownerUserId: SARAH_ID, name: "Sarah's 30th" },
+  [OTHER_EVENT_ID]: { id: OTHER_EVENT_ID, ownerUserId: ADA_ID, name: "Okafor wedding" },
+};
+
+vi.mock("@occasion/core", async () => {
+  const actual = await vi.importActual<typeof OccasionCore>("@occasion/core");
+
+  return {
+    ...actual,
+    getEvent: (_ctx: CoreContext, actor: Actor, eventId: string) => {
+      if (eventId === BROKEN_EVENT_ID) throw new Error("the database is down");
+
+      const row = EVENTS[eventId];
+      if (!row) throw new actual.NotFoundError("No such event.");
+      actual.assertCanActOnEvent(actor, row);
+      return Promise.resolve({ ...row, items: [] });
+    },
+  };
+});
+
+const { clearActiveEvent, resolveActiveEvent, setActiveEvent } = await import("./active-event.js");
 
 const ctx = {} as CoreContext;
 
 const customer: Actor = {
   kind: "user",
-  userId: "b06d5225-044b-58c1-bff8-24a6bf3c63ee",
+  userId: SARAH_ID,
   email: "sarah@example.ca",
   status: "active",
   roles: ["customer"],
   activeRole: "customer",
   vendorIds: [],
 };
+
+/** Another customer, signed in and in good standing. */
+const otherCustomer: Actor = { ...customer, userId: ADA_ID, email: "ada.okafor@example.ca" };
+
+/**
+ * The identity the first draft of this file never constructed.
+ *
+ * An administrator is refused, and refused under both labels: the customer chip
+ * is the same authority wearing a different name.
+ */
+const administrator: Actor = {
+  ...customer,
+  userId: "b06d5225-044b-58c1-bff8-24a6bf3c63e0",
+  email: "admin@occasion.test",
+  roles: ["admin", "customer"],
+  activeRole: "admin",
+};
+
+const administratorAsCustomer: Actor = { ...administrator, activeRole: "customer" };
 
 function cookieIs(value: string | undefined) {
   store.get.mockImplementation((name) =>
@@ -106,12 +162,41 @@ describe("resolving the selection", () => {
     ["not an id at all", "the-okafor-wedding"],
     ["an id with a trailing character", `${EVENT_ID}x`],
     ["sql", "' or true--"],
-    ["a well-formed id nobody has checked", EVENT_ID],
+    ["a well-formed id naming no event", "3f2504e0-4f89-41d3-9a0c-0305e82c3399"],
   ])("answers the same way when the cookie is %s", async (_name, value) => {
     cookieIs(value);
-    // The point of the row above this one: a forged id must be indistinguishable
-    // from no cookie, or the response becomes a way to ask which ids exist.
+    // A forged id must be indistinguishable from no cookie, or the response
+    // becomes a way to ask which ids exist.
     await expect(resolveActiveEvent(ctx, customer)).resolves.toBeUndefined();
+  });
+
+  it("resolves the owner's own event", async () => {
+    cookieIs(EVENT_ID);
+    await expect(resolveActiveEvent(ctx, customer)).resolves.toEqual({
+      id: EVENT_ID,
+      name: "Sarah's 30th",
+    });
+  });
+
+  it.each([
+    ["an event somebody else owns", OTHER_EVENT_ID, () => customer],
+    ["a cookie naming an event they do not own", EVENT_ID, () => otherCustomer],
+    ["an administrator", EVENT_ID, () => administrator],
+    ["an administrator browsing as a customer", EVENT_ID, () => administratorAsCustomer],
+  ])("resolves to nothing for %s", async (_name, cookie, actor) => {
+    cookieIs(cookie);
+    // The same answer the absent cookie gets, and the real policy's answer
+    // rather than the fixture's: `assertCanActOnEvent` is not mocked.
+    await expect(resolveActiveEvent(ctx, actor())).resolves.toBeUndefined();
+  });
+
+  it("lets a real fault reach the error boundary", async () => {
+    // A refusal is an ordinary answer; a database that is down is not. Folding
+    // the second into "no active event" would draw an outage as an empty chip
+    // and nobody would hear about it.
+    cookieIs(BROKEN_EVENT_ID);
+
+    await expect(resolveActiveEvent(ctx, customer)).rejects.toThrow("the database is down");
   });
 
   it("does not even look at the cookie for an anonymous visitor", async () => {

@@ -126,7 +126,13 @@ export const quoteOfferState = app.enum("quote_offer_state", [
   "expired",
 ]);
 
-export const eventVisibility = app.enum("event_visibility", ["private", "shared"]);
+/**
+ * Who can see an event.
+ *
+ * `shared` is "guests with the link"; `public` lists it in Toronto. Source: the
+ * visibility selector, line 2384.
+ */
+export const eventVisibility = app.enum("event_visibility", ["private", "shared", "public"]);
 
 /** Cancellation policy family. Source: policy selector, line 1889 (`Moderate`). */
 export const policyTier = app.enum("policy_tier", ["flexible", "moderate", "strict"]);

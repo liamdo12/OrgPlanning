@@ -10,6 +10,7 @@ import { ADMIN_USER, ADMIN_VENDORS, CATALOG_VENDORS, USERS } from "./data/accoun
 import { SERVICES } from "./data/catalog.js";
 import { EVENTS, ORDERS, QUOTE_REQUEST, RULES } from "./data/activity.js";
 import { CONTENT_REPORTS, DISPUTES, REVIEWS } from "./data/trust.js";
+import { seedEventPlan } from "./event-plan.js";
 
 /**
  * Rebuilds the demo data.
@@ -434,6 +435,7 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
       set: { eventDate: sql`excluded.event_date`, name: sql`excluded.name` },
     });
   counts["events"] = eventRows.length;
+  counts["event_items"] = await seedEventPlan(db);
 
   // ---- orders, payments, transfers, refunds -------------------------------
 

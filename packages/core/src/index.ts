@@ -286,6 +286,36 @@ export {
   type VendorOption,
 } from "./ordering/admin-repo.js";
 
+export {
+  addItemToPlan,
+  cancelEvent,
+  createEvent,
+  eventHub,
+  getEvent,
+  listEventsForOwner,
+  removeItemFromPlan,
+  updateEvent,
+  type AddItemInput,
+  type CreateEventInput,
+  type EventDetail,
+  type EventHub,
+  type EventPayments,
+  type EventSummary,
+  type EventVisibility,
+  type PlanItem,
+  type UpdateEventInput,
+} from "./planning/service.js";
+
+// `planning/repo.js` stays off, for the reason the ordering repository does: it
+// takes an executor and asks nobody's permission. The three modules below are
+// pure projections over rows a caller has already been allowed to read.
+
+export { eventBudget, lineSubtotal, type BudgetLine, type EventBudget } from "./planning/budget.js";
+
+export { dayOfSchedule, type ScheduleEntry, type ScheduleItem } from "./planning/schedule.js";
+
+export { slotState, type QuoteState, type SlotFacts, type SlotState } from "./planning/slots.js";
+
 export type { PaymentRow, RefundRow, TransferRow } from "./payments/repo.js";
 
 export { buildPaymentPlan, type PaymentPlan, type PaymentPlanKind } from "./payments/plan.js";
