@@ -163,6 +163,23 @@ describe.skipIf(!url)("seed", () => {
     expect(rows).toEqual([]);
   });
 
+  it("leaves no listing without a rating", async () => {
+    // The column the catalogue's headline sort leads on. Nullable, an unrated
+    // listing sorted above every rated business — `desc` puts NULLs first — and
+    // a keyset page comparing a cursor against NULL matched neither side of the
+    // boundary, so that row was unreachable at any offset.
+    const [column] = await sql<{ is_nullable: string; column_default: string }[]>`
+      select is_nullable, column_default
+      from information_schema.columns
+      where table_schema = 'app'
+        and table_name = 'planning_org_services'
+        and column_name = 'rating_average'
+    `;
+
+    expect(column?.is_nullable).toBe("NO");
+    expect(column?.column_default).toBe("0");
+  });
+
   it("holds a date for every seeded booking, and frees the cancelled one", async () => {
     // Without these rows the exclusion constraint has nothing to collide with,
     // so every seeded booking's date reads as free and can be booked a second
