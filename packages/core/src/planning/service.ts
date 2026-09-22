@@ -58,6 +58,14 @@ export type PlanItem = {
   categoryId: string;
   categoryName: string;
   categorySlug: string;
+  /**
+   * The category's own colour, as a CSS background.
+   *
+   * Carried on the slot because the planner draws a tile per slot in it, and
+   * the value is reference data an administrator edits. A screen holding its
+   * own copy would be right until the first edit.
+   */
+  categoryTone: string | null;
   state: SlotState;
   serviceId: string | null;
   serviceName: string | null;
@@ -75,8 +83,17 @@ export type EventDetail = EventSummary & { items: PlanItem[] };
 export type EventPayments = {
   /** What actually settled, summed from the payments rather than the orders. */
   captured: bigint;
+  /** When the soonest outstanding balance is taken. Read from the order. */
   nextChargeAt: Date | null;
   nextCharge: bigint;
+  /**
+   * Whether that charge is still waiting its turn or has already failed.
+   *
+   * Null when there is nothing left to take. `attention` is the case a screen
+   * must not print as an ordinary deadline: the date has passed, the card was
+   * declined, and the money is owed now.
+   */
+  nextChargeStatus: repo.NextChargeStatus | null;
 };
 
 /**
@@ -589,6 +606,7 @@ function present(row: repo.ItemRow): PlanItem {
     categoryId: row.categoryId,
     categoryName: row.categoryName,
     categorySlug: row.categorySlug,
+    categoryTone: row.categoryTone,
     state: slotState({
       orderState: row.orderState ?? undefined,
       hasService: row.serviceId !== null,
