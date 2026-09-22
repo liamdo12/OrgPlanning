@@ -8,6 +8,7 @@ import { getActor } from "../src/identity/service.js";
 import { serviceAvailability } from "../src/catalog/availability.js";
 import { listCategoriesForBrowse } from "../src/catalog/categories.js";
 import { getServiceDetail } from "../src/catalog/detail.js";
+import { listPublicEventFeed } from "../src/catalog/feed.js";
 import { quoteCheckout } from "../src/catalog/quote-checkout.js";
 import { listSaved, toggleSaved } from "../src/catalog/saved.js";
 import { searchServices, searchServicesQuery, SERVICE_SORTS } from "../src/catalog/search.js";
@@ -641,6 +642,38 @@ describe.skipIf(!url)("catalogue discovery", () => {
       await expect(
         createCheckout(ctx, sarah, { eventId: adas?.id as string, lines }),
       ).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  describe("the signed-out feed", () => {
+    it("runs, and shows nobody's event while nobody has made one public", async () => {
+      // Which columns it publishes is asserted column by column, without a
+      // database, in `public-feed-projection.test.ts`. What only a real
+      // database can say is that the statement is one Postgres accepts — the
+      // visibility predicate is a text comparison until the enum carries the
+      // value, and a cast that did not parse would be a 500 on the signed-out
+      // home screen and nowhere else.
+      //
+      // Empty is the right answer today: every seeded event is private, which
+      // is what a feed of what people chose to share should show.
+      await expect(listPublicEventFeed(ctx, ANONYMOUS)).resolves.toEqual([]);
+    });
+
+    it("counts a booked service for an event, once the event is shared", async () => {
+      // `shared` rather than `public` — the enum has only the two values so
+      // far. The count is what the feed publishes about a booking, and it is
+      // read the same way whichever visibility the row carries.
+      const [row] = await sql<{ booked: number }[]>`
+        select count(*)::int as booked
+        from app.planning_org_order_items oi
+        join app.planning_org_orders o on o.id = oi.order_id
+        where o.event_id = (select event_id from app.planning_org_orders where reference = 'TO-4192')
+          and o.state not in ('cancelled', 'refunded')
+      `;
+
+      // Sarah's 30th carries two live bookings, and neither vendor's name nor
+      // either amount is anywhere in what the feed would publish about it.
+      expect(row?.booked).toBe(2);
     });
   });
 
