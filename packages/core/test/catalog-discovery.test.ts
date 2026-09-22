@@ -444,6 +444,46 @@ describe.skipIf(!url)("catalogue discovery", () => {
       expect((await getServiceDetail(ctx, sarah, LISTABLE_SLUG)).saved).toBe(true);
       expect((await getServiceDetail(ctx, ANONYMOUS, LISTABLE_SLUG)).saved).toBe(false);
     });
+
+    it("carries the terms the listing is sold under", async () => {
+      const [expected] = await sql<
+        { tier: string; name: string; deposit_bps: number; free_cancellation_hours: number }[]
+      >`
+        select t.tier, t.name, t.deposit_bps, t.free_cancellation_hours
+        from app.planning_org_services s
+        join app.planning_org_policy_templates t on t.id = s.policy_template_id
+        where s.slug = ${LISTABLE_SLUG}
+      `;
+      expect(expected).toBeDefined();
+
+      const detail = await getServiceDetail(ctx, ANONYMOUS, LISTABLE_SLUG);
+
+      // Read off the row the listing names rather than writing the numbers
+      // here. The tiers vary across the catalogue, so a literal deposit would
+      // be right for one listing and quietly assert the wrong thing for the
+      // rest — which is the defect that attaching the policy to the service
+      // existed to fix.
+      expect(detail.policy).toMatchObject({
+        tier: expected?.tier,
+        name: expected?.name,
+        depositBps: expected?.deposit_bps,
+        freeCancellationHours: expected?.free_cancellation_hours,
+      });
+    });
+
+    it("keeps the page for a listing that names no policy", async () => {
+      await sql`
+        update app.planning_org_services set policy_template_id = null where slug = ${LISTABLE_SLUG}
+      `;
+
+      // The join has to be a left one. A listing with no template still has a
+      // page and prices at the platform's own fallback; an inner join would
+      // answer a published listing the same refusal a withdrawn one gets.
+      const detail = await getServiceDetail(ctx, ANONYMOUS, LISTABLE_SLUG);
+
+      expect(detail.policy).toBeNull();
+      expect(detail.title.length).toBeGreaterThan(0);
+    });
   });
 
   describe("the shortlist", () => {
