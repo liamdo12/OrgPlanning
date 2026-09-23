@@ -11,6 +11,7 @@ import { SERVICES } from "./data/catalog.js";
 import { EVENTS, ORDERS, QUOTE_REQUEST, RULES } from "./data/activity.js";
 import { CONTENT_REPORTS, DISPUTES, REVIEWS } from "./data/trust.js";
 import { seedEventPlan } from "./event-plan.js";
+import { seedCustomerRows } from "./data/planning.js";
 
 /**
  * Rebuilds the demo data.
@@ -759,6 +760,12 @@ async function seedDemo(db: Db, anchorAt: Date): Promise<Record<string, number>>
     payload: { quoteRequestId },
     isDemo: true,
   });
+
+  // The rows the customer's screens read: pictures, closed days, the shortlist
+  // and the state of every slot on the planner. After the catalogue, the events
+  // and their slots, the orders and the quote request, because it points at all
+  // of them.
+  Object.assign(counts, await seedCustomerRows(db, anchorAt));
 
   // ---- trust: reviews, complaints and reported content --------------------
 

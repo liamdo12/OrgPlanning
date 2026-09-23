@@ -345,13 +345,25 @@ describe.skipIf(!url)("planning", () => {
       const booked = await slotFor(flowersCategoryId);
       expect(booked?.state).toEqual({ kind: "booked" });
 
-      // Cancelling the order gives the slot back, with nothing written to it.
+      // Cancelling the order gives the slot back. It falls to whatever the slot
+      // still holds — here the service the customer chose — rather than to
+      // empty, which is what makes a cancelled booking something they can buy
+      // again from the planner instead of having to find twice.
       await sql`
         update app.planning_org_orders set state = 'cancelled' where id = ${orderId}
       `;
       const released = await slotFor(flowersCategoryId);
-      expect(released?.state).toEqual({ kind: "empty" });
+      expect(released?.state).toEqual({ kind: "in_plan" });
 
+      // And to empty once the slot holds nothing else either.
+      await sql`
+        update app.planning_org_event_items set service_id = null, service_package_id = null
+        where event_id = ${sarahsThirtiethId} and category_id = ${flowersCategoryId}
+      `;
+      expect((await slotFor(flowersCategoryId))?.state).toEqual({ kind: "empty" });
+
+      // Through all of it the order is still named. Nothing clears the column,
+      // because the state is read from the order rather than stored.
       const stillNamed = await one(sql`
         select order_id as id from app.planning_org_event_items
         where event_id = ${sarahsThirtiethId} and category_id = ${flowersCategoryId}
@@ -388,13 +400,19 @@ describe.skipIf(!url)("planning", () => {
 
   describe("the budget", () => {
     it("sums the pre-tax subtotals of the bookings that still hold their dates", async () => {
-      // The event's two live orders are TO-4192 and TO-4191, whose subtotals are
-      // C$290.00 and C$450.00 — so C$740.00 committed, pre-tax.
+      // Three sources on this event: the two live orders TO-4192 and TO-4191,
+      // whose pre-tax subtotals are C$290.00 and C$450.00, and the decorations
+      // slot chosen and not yet bought at C$340.00. C$1,080.00 against a
+      // C$4,000.00 budget.
+      //
+      // Hand-checked literals rather than the same sum recomputed in SQL:
+      // re-deriving them here would reimplement in the test the rule the test
+      // exists to check.
       const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
 
-      expect(hub.budget.committed).toBe(74_000n);
+      expect(hub.budget.committed).toBe(29_000n + 45_000n + 34_000n);
       expect(hub.budget.budget).toBe(400_000n);
-      expect(hub.budget.remaining).toBe(326_000n);
+      expect(hub.budget.remaining).toBe(400_000n - 108_000n);
     });
 
     it("counts no tax", async () => {
@@ -410,13 +428,57 @@ describe.skipIf(!url)("planning", () => {
     });
 
     it("gives the money back when a booking is cancelled", async () => {
+      // The slot is emptied first, so what this measures is the order leaving
+      // the figure — not the slot it was bought from re-entering the figure as
+      // a line the customer still has in the plan, which is the case below.
+      const photographyCategoryId = await one(
+        sql`select id from app.planning_org_categories where slug = 'photography'`,
+      );
+      await sql`
+        update app.planning_org_event_items
+        set service_id = null, service_package_id = null
+        where event_id = ${sarahsThirtiethId} and category_id = ${photographyCategoryId}
+      `;
+
+      // That booking's own pre-tax subtotal, read off the order rather than
+      // written here: the claim is that cancelling returns what the booking
+      // took, whatever else the event has committed.
+      const before = await eventHub(ctx, sarah, sarahsThirtiethId);
+      const [cancelled] = await sql<{ subtotal: string }[]>`
+        select subtotal::text from app.planning_org_orders where reference = 'TO-4191'
+      `;
+
       await sql`
         update app.planning_org_orders set state = 'cancelled'
         where reference = 'TO-4191'
       `;
 
-      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
-      expect(hub.budget.committed).toBe(29_000n);
+      const after = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(before.budget.committed - after.budget.committed).toBe(
+        BigInt(cancelled?.subtotal as string),
+      );
+    });
+
+    it("keeps a cancelled booking's slot in the figure, priced as a plan again", async () => {
+      // The money moves side rather than away. A cancelled order releases its
+      // date, and its slot falls back to the service the customer chose — which
+      // they still want and would still have to buy — so the slot is costed at
+      // what buying it would charge. The figure drops only once the slot itself
+      // is emptied, which is what the Remove control on the planner does.
+      const before = await eventHub(ctx, sarah, sarahsThirtiethId);
+
+      await sql`
+        update app.planning_org_orders set state = 'cancelled' where reference = 'TO-4191'
+      `;
+
+      const after = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(after.budget.committed).toBe(before.budget.committed);
+
+      const photographyCategoryId = await one(
+        sql`select id from app.planning_org_categories where slug = 'photography'`,
+      );
+      const slot = after.items.find((item) => item.categoryId === photographyCategoryId);
+      expect(slot?.state).toEqual({ kind: "in_plan" });
     });
 
     it("counts a slot in plan at what buying it would charge", async () => {
@@ -441,23 +503,35 @@ describe.skipIf(!url)("planning", () => {
     it("does not count a bought slot twice", async () => {
       // A slot whose order exists is counted from the order side. Counting the
       // slot as well would charge the budget twice for one booking.
+      //
+      // Measured as the difference the link makes rather than against a
+      // constant: unlink the seeded booking from its slot and the same service
+      // is counted a second time, as a line still to buy. What that gap is
+      // worth is read off the slot, so the claim holds whatever else the event
+      // has committed.
       const flowersCategoryId = await one(
         sql`select id from app.planning_org_categories where slug = 'flowers'`,
       );
-      const orderId = await one(
-        sql`select id from app.planning_org_orders where reference = 'TO-4192'`,
-      );
-      const serviceId = await one(sql`
-        select service_id as id from app.planning_org_order_items where order_id = ${orderId}
-      `);
+      const linked = await eventHub(ctx, sarah, sarahsThirtiethId);
+
+      const [line] = await sql<{ price: string; quantity: number }[]>`
+        select coalesce(p.unit_price, s.base_price)::text as price, i.quantity
+        from app.planning_org_event_items i
+        join app.planning_org_services s on s.id = i.service_id
+        left join app.planning_org_service_packages p on p.id = i.service_package_id
+        where i.event_id = ${sarahsThirtiethId} and i.category_id = ${flowersCategoryId}
+      `;
+      expect(line).toBeDefined();
+
       await sql`
-        update app.planning_org_event_items
-        set order_id = ${orderId}, service_id = ${serviceId}
+        update app.planning_org_event_items set order_id = null
         where event_id = ${sarahsThirtiethId} and category_id = ${flowersCategoryId}
       `;
 
-      const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
-      expect(hub.budget.committed).toBe(74_000n);
+      const unlinked = await eventHub(ctx, sarah, sarahsThirtiethId);
+      expect(unlinked.budget.committed - linked.budget.committed).toBe(
+        BigInt(line?.price as string) * BigInt(line?.quantity as number),
+      );
     });
   });
 
@@ -588,17 +662,41 @@ describe.skipIf(!url)("planning", () => {
         kind: "venue",
         venueName: "Liberty Village loft",
       });
-      expect(hub.schedule.slice(1).map((entry) => entry.time)).toEqual(["16:30:00", "18:30:00"]);
+
+      // Ordered against the times the slots actually carry, read back off the
+      // table. A literal pair would only be the whole day while this event has
+      // exactly two things arriving on it.
+      const arrivals = await sql<{ time: string }[]>`
+        select arrival_time::text as time from app.planning_org_event_items
+        where event_id = ${sarahsThirtiethId} and arrival_time is not null
+        order by arrival_time asc
+      `;
+      expect(arrivals.length).toBeGreaterThan(1);
+      expect(hub.schedule.slice(1).map((entry) => entry.time)).toEqual(
+        arrivals.map((row) => row.time),
+      );
     });
 
     it("leaves out a slot with no arrival time", async () => {
+      const before = await eventHub(ctx, sarah, sarahsThirtiethId);
+      const scheduled = before.schedule.filter((entry) => entry.kind === "arrival").length;
+
       await addItemToPlan(ctx, sarah, {
         eventId: sarahsThirtiethId,
         serviceId: cakeServiceId,
       });
 
       const hub = await eventHub(ctx, sarah, sarahsThirtiethId);
-      expect(hub.schedule.filter((entry) => entry.kind === "arrival")).toEqual([]);
+      const arrivals = hub.schedule.filter((entry) => entry.kind === "arrival");
+
+      // The new slot adds nothing to the day, and the day still has exactly one
+      // entry per slot that carries a time.
+      expect(arrivals).toHaveLength(scheduled);
+      const [row] = await sql<{ n: number }[]>`
+        select count(*)::int as n from app.planning_org_event_items
+        where event_id = ${sarahsThirtiethId} and arrival_time is not null
+      `;
+      expect(arrivals).toHaveLength(row?.n as number);
     });
   });
 
@@ -814,16 +912,16 @@ describe.skipIf(!url)("planning", () => {
   });
 
   describe("what the seed writes", () => {
-    it("gives every seeded event one empty slot per category", async () => {
+    it("gives every seeded event one slot per category, and leaves some of them empty", async () => {
       const expected = await activeCategoryCount();
 
-      const rows = await sql<{ name: string; slots: number; filled: number }[]>`
+      const rows = await sql<{ name: string; slots: number; empty: number }[]>`
         select e.name,
                count(i.id)::int as slots,
                count(i.id) filter (
-                 where i.service_id is not null or i.order_id is not null
-                    or i.quote_request_id is not null or i.arrival_time is not null
-               )::int as filled
+                 where i.service_id is null and i.order_id is null
+                   and i.quote_request_id is null and i.arrival_time is null
+               )::int as empty
         from app.planning_org_events e
         join app.planning_org_event_items i on i.event_id = e.id
         group by e.name
@@ -832,10 +930,24 @@ describe.skipIf(!url)("planning", () => {
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) {
         expect([row.name, row.slots]).toEqual([row.name, expected]);
-        // Structure only. The slot states belong to the phase that owns the
-        // rest of these screens, and both writing them here would collide.
-        expect([row.name, row.filled]).toEqual([row.name, 0]);
+        // Every event still has a category nobody has decided yet, which is the
+        // state the planner's empty card is drawn from. A seed that filled one
+        // event completely would leave that card with nothing to render on it.
+        expect([row.name, row.empty > 0]).toEqual([row.name, true]);
       }
+    });
+
+    it("gives a slot an arrival time only when something is arriving", async () => {
+      // A time with nothing attached draws a line on the day that names no
+      // business and no category anybody chose — an entry the customer cannot
+      // act on and cannot remove.
+      const rows = await sql<{ id: string }[]>`
+        select id from app.planning_org_event_items
+        where arrival_time is not null
+          and service_id is null and order_id is null and quote_request_id is null
+      `;
+
+      expect(rows).toEqual([]);
     });
 
     it("makes a second slot for one category impossible rather than silent", async () => {
