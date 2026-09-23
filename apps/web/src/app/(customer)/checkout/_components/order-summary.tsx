@@ -68,7 +68,7 @@ export function OrderSummary({
         Order summary
       </h2>
 
-      <PriceLockup rows={rows} group={group} className="border-t-0 pt-0" />
+      <PriceLockup rows={rows} group={group} />
 
       {children}
 

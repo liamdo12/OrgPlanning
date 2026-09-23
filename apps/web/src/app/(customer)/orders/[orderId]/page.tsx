@@ -14,6 +14,8 @@ import { formatCalendarDay, formatDay, formatMoment } from "../../../../lib/form
 import { toneFor } from "../../../../lib/order-state-tone";
 import { CancelDialog } from "../_components/cancel-dialog";
 
+export const metadata = { title: "Your booking · Occasion" };
+
 export const dynamic = "force-dynamic";
 
 /**
