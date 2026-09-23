@@ -36,6 +36,14 @@ export type PaymentRow = {
   providerChargeId: string | null;
   failureCode: string | null;
   failureMessage: string | null;
+  /**
+   * The last four digits of the card this attempt settled on, if known.
+   *
+   * Null while an attempt is open, and null when the provider did not report a
+   * card — a declined off-session charge does not always come back with one
+   * attached, and a message says "your card" then.
+   */
+  cardLast4: string | null;
   succeededAt: Date | null;
   /**
    * When the attempt row was written, which is how old its idempotency key is.
@@ -59,6 +67,7 @@ const paymentColumns = {
   providerChargeId: payments.providerChargeId,
   failureCode: payments.failureCode,
   failureMessage: payments.failureMessage,
+  cardLast4: payments.cardLast4,
   succeededAt: payments.succeededAt,
   openedAt: payments.createdAt,
 };

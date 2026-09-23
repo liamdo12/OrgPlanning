@@ -458,9 +458,28 @@ describe.skipIf(!url)("orders and payments", () => {
 
     it("refuses a second booking of the same service on the same day", async () => {
       await book();
-      // The exclusion constraint, not an application check: two requests that
-      // both passed a "is it free?" test still cannot both commit.
-      await expect(book()).rejects.toThrow();
+
+      // Another party, the same day, the same florist. Deliberately a second
+      // event rather than the same request twice: the same customer re-entering
+      // their own unfinished checkout resumes it, so repeating `book()` would
+      // be testing that path instead of this one. What the exclusion constraint
+      // refuses is a second *hold* on a date one order already has — an
+      // application-level "is it free?" check cannot, because two requests can
+      // both pass one and still both try to commit.
+      const [clashing] = await sql<{ id: string }[]>`
+        insert into app.planning_org_events (owner_user_id, name, event_date, start_time, timezone)
+        select owner_user_id, 'Same day, another party', event_date, start_time, timezone
+        from app.planning_org_events where id = ${eventId}
+        returning id
+      `;
+
+      signInAs("sarah@example.ca");
+      await expect(
+        createCheckout(ctx, customer, {
+          eventId: clashing?.id as string,
+          lines: [{ serviceId: bloomServiceId, quantity: 4 }],
+        }),
+      ).rejects.toThrow();
     });
   });
 
