@@ -36,7 +36,7 @@ import {
   retiresPaymentLinks,
   type OrderState,
 } from "./transitions.js";
-import { retirePaymentLinks } from "../payments/repo.js";
+import { netCaptured, retirePaymentLinks } from "../payments/repo.js";
 import * as reference from "../reference/repo.js";
 
 /**
@@ -808,15 +808,72 @@ export async function resolveIssue(
   });
 }
 
-/** Ends a booking. The refund, if there is one, is the payments domain's call. */
+/**
+ * Ends a booking. The refund, if there is one, is the payments domain's call.
+ *
+ * **One case is recorded for a person rather than settled here.** A booking
+ * under the flexible policy has a hundred and sixty-eight hours of free
+ * cancellation; a balance that fails has seventy-two hours of grace. So an
+ * event a fortnight out can have the platform cancel for non-payment while the
+ * customer's own policy still promised their money back — the two windows are
+ * set by different rules and neither knows about the other.
+ *
+ * What is owed then depends on why the card failed and whether the customer
+ * still wants the booking, which nothing here can derive. Refunding
+ * automatically would give money back on a booking somebody still wants;
+ * refunding nothing would keep money a policy promised to return. So the fact
+ * is written onto the cancellation's own audit entry, where somebody can read
+ * it: the window, when it closes, and how much is actually held.
+ *
+ * On the entry rather than in a second row, because two audit rows for one
+ * decision is two things that can be read apart. And guarded by what has
+ * actually been captured, so an unpaid checkout expiring thirty minutes into
+ * its own cooling window — every one of them — does not raise a question about
+ * money nobody ever paid.
+ */
 export async function cancelOrder(
   ctx: CoreContext,
   actor: Actor,
   orderId: string,
   action = "order.cancel",
 ): Promise<OrderChange> {
-  assertCanActOnOrder(actor, await parties(ctx, orderId));
-  return applyTransition(ctx, actor, orderId, "cancelled", { action });
+  const order = await repo.load(ctx.db, orderId);
+  if (!order) throw new NotFoundError("No such order.");
+
+  assertCanActOnOrder(actor, { id: order.id, userId: order.userId, vendorId: order.vendorId });
+
+  const review = await refundReview(ctx, order);
+
+  return applyTransition(ctx, actor, orderId, "cancelled", {
+    action,
+    ...(review ? { auditAfter: review } : {}),
+  });
+}
+
+/**
+ * The fact a cancellation inside an open free window has to carry.
+ *
+ * Read outside the transition's own lock, which is safe because
+ * `cooling_window_ends_at` is immutable after checkout — `repo.setState` never
+ * writes it — so there is no later value for this to be stale against.
+ */
+async function refundReview(
+  ctx: CoreContext,
+  order: repo.OrderRow,
+): Promise<Record<string, unknown> | undefined> {
+  const endsAt = order.coolingWindowEndsAt;
+  if (!endsAt || endsAt.getTime() <= ctx.clock.now().getTime()) return undefined;
+
+  const held = await netCaptured(ctx.db, order.id);
+  if (held <= 0n) return undefined;
+
+  return {
+    refundReview: "free_window_open",
+    freeWindowEndsAt: endsAt.toISOString(),
+    // `jsonb` holds no `bigint`, and the amount is the whole reason somebody
+    // would open this entry.
+    capturedAmount: held.toString(),
+  };
 }
 
 export type OrderDetail = {

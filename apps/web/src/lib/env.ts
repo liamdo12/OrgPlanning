@@ -65,6 +65,18 @@ const envSchema = z
     STRIPE_SECRET_KEY: z.string().min(1),
     STRIPE_WEBHOOK_SECRET: z.string().min(1),
 
+    /**
+     * The key the card form runs on, in the browser.
+     *
+     * Public by design — it is meant to reach a page — so it is not a secret
+     * and is deliberately absent from the server-only list. It is still
+     * validated here and passed to the client as a **prop** rather than as a
+     * `NEXT_PUBLIC_` variable: those inline at build time, and the container is
+     * built with no environment at all, so the deployed checkout would render
+     * with no card field while `pnpm dev` and CI both looked fine.
+     */
+    STRIPE_PUBLISHABLE_KEY: z.string().min(1),
+
     RESEND_API_KEY: z.string().min(1),
 
     /** The `From:` on every message the platform sends. */
@@ -171,6 +183,18 @@ const envSchema = z
         code: "custom",
         path: ["STRIPE_SECRET_KEY"],
         message: "must be a Stripe test-mode key (sk_test_…); live mode is out of scope",
+      });
+    }
+
+    // The same gate on the other half of the pair. A test secret key beside a
+    // live publishable key is a card form collecting real card numbers for
+    // intents that do not exist, which fails only after somebody has typed one
+    // in — and mismatched modes are exactly what a copy-paste produces.
+    if (!value.STRIPE_PUBLISHABLE_KEY.startsWith("pk_test_")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["STRIPE_PUBLISHABLE_KEY"],
+        message: "must be a Stripe test-mode key (pk_test_…); live mode is out of scope",
       });
     }
   });

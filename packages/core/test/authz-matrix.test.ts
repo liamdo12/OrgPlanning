@@ -36,6 +36,11 @@ import {
   resolveIssue,
 } from "../src/ordering/service.js";
 import {
+  extendCheckoutWindow,
+  getOrderForCustomer,
+  listOrdersForCustomer,
+} from "../src/ordering/customer-service.js";
+import {
   getOrderDetail,
   listOrdersForAdmin,
   markOrderFulfilled,
@@ -364,6 +369,33 @@ const REGISTRY: readonly Entry[] = [
 
   // ---- orders, through the lifecycle -------------------------------------
   { name: "getOrder", allow: READ_ORDER, call: (c, a, s) => getOrder(c, a, s.orderId) },
+  {
+    name: "getOrderForCustomer",
+    // The read policy, not the pay policy. The projection carries nothing a
+    // vendor's staff may not see — payments, refunds and what is held, and no
+    // transfers — so it is the same set `getOrder` admits.
+    allow: READ_ORDER,
+    call: (c, a, s) => getOrderForCustomer(c, a, s.orderId),
+  },
+  {
+    name: "listOrdersForCustomer",
+    // It names an event, so the mechanical gate catches it — correctly, and the
+    // answer is that there is nothing to refuse. The query is keyed on the
+    // caller's own user id as well, so somebody else's event id returns an
+    // empty list rather than somebody else's bookings, and the only refusals
+    // are the ones `requireUser` makes: anonymous, and suspended.
+    allow: SIGNED_IN,
+    call: (c, a, s) => listOrdersForCustomer(c, a, { eventId: s.eventId }),
+  },
+  {
+    name: "extendCheckoutWindow",
+    // Extending the time to pay is part of paying, so it is the customer whose
+    // card it is, or an administrator helping them. Never the vendor: a vendor
+    // who could hold their own date open indefinitely is a vendor taking it off
+    // the market for nothing.
+    allow: PAY_ORDER,
+    call: (c, a, s) => extendCheckoutWindow(c, a, s.orderId),
+  },
   { name: "autoComplete", allow: ACT_ON_ORDER, call: (c, a, s) => autoComplete(c, a, s.orderId) },
   {
     name: "cancelOrder",
