@@ -539,13 +539,23 @@ export async function paymentSummary(db: DbExecutor, eventId: string): Promise<P
       due: orders.balanceDueAt,
       amount: orders.balanceAmount,
       state: orders.state,
-      // A correlated subquery rather than a second round trip: this screen is
-      // one domain call per render, and a join would multiply the order by its
-      // payments. `refunded` counts, because a partly refunded booking is still
-      // charged on the card its deposit was taken on.
+      /**
+       * A correlated subquery rather than a second round trip: this screen is
+       * one domain call per render, and a join would multiply the order by its
+       * payments. `refunded` counts, because a partly refunded booking is still
+       * charged on the card its deposit was taken on.
+       *
+       * **The outer column is written through the table, not through the
+       * column.** A column object inside a fragment is rendered *unqualified*
+       * when the query it sits in has no joins — so `${orders.id}` becomes a
+       * bare `"id"`, which inside this subquery binds to `p.id` instead. That
+       * compares a payment's own id to an order id, matches nothing, and
+       * answers null for every card there is: a silent wrong answer, with no
+       * error anywhere and a green query plan.
+       */
       card: sql<string | null>`(
         select p.card_last4 from ${payments} p
-        where p.order_id = ${orders.id}
+        where p.order_id = ${orders}."id"
           and p.state in ('succeeded', 'refunded')
           and p.card_last4 is not null
         order by p.succeeded_at desc nulls last
