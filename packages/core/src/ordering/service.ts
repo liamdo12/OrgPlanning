@@ -14,6 +14,7 @@ import {
   type OrderParties,
 } from "../identity/policies.js";
 import { isAuthenticated } from "../identity/actor.js";
+import { assertAgreement, type CheckoutExpectation } from "./agreement.js";
 import { priceCart } from "./cart.js";
 import * as repo from "./repo.js";
 import { orderEmailFacts } from "../email/order-facts.js";
@@ -169,6 +170,20 @@ function isCapacityOverlap(error: unknown): boolean {
 export type CheckoutRequest = {
   eventId: string;
   lines: readonly CheckoutLine[];
+  /**
+   * The figures the screen displayed, so the transaction can refuse to charge
+   * anything else.
+   *
+   * Optional: a caller with nothing on screen — a test, a job — has consented
+   * to nothing and states nothing, and no agreement is recorded for it. When it
+   * is present the four figures are compared against what this transaction
+   * would actually charge, and a difference aborts the whole checkout.
+   *
+   * It is not an input to the price. Prices come from the catalogue; this only
+   * decides whether to go ahead, so "a checkout that accepted an amount would
+   * accept a smaller one" still holds.
+   */
+  expectation?: CheckoutExpectation | undefined;
 };
 
 export type CheckoutResult = {
@@ -286,6 +301,15 @@ export async function createCheckout(
       timeZone,
     });
 
+    // One expectation describes one booking. A cart spanning two vendors is two
+    // orders with two totals, and applying one set of figures to both would
+    // either refuse a legitimate checkout or approve a charge nobody saw.
+    if (request.expectation && carts.length !== 1) {
+      throw new ValidationError("This cart is more than one booking, and was agreed as one.", {
+        expectation: "ambiguous",
+      });
+    }
+
     const checkout = await repo.insertCheckout(tx, {
       userId: actor.userId,
       eventId: request.eventId,
@@ -311,17 +335,36 @@ export async function createCheckout(
       });
 
       if (resumed) {
-        created.push({
-          id: resumed.id,
-          reference: resumed.reference,
-          vendorId,
+        // Checked against the order that exists rather than against the freshly
+        // computed figures: resuming charges what that order says, so that is
+        // what the customer has to have agreed to.
+        const figures = {
           total: resumed.total,
           depositAmount: resumed.depositAmount,
           balanceAmount: resumed.balanceAmount,
           balanceDueAt: resumed.balanceDueAt,
-        });
+        };
+
+        if (request.expectation) {
+          assertAgreement(request.expectation, figures);
+          await repo.recordAgreement(tx, resumed.id, { at: now, ...figures });
+        }
+
+        created.push({ id: resumed.id, reference: resumed.reference, vendorId, ...figures });
         continue;
       }
+
+      const figures = {
+        total: money.total,
+        depositAmount: plan.depositAmount,
+        balanceAmount: plan.balanceAmount,
+        balanceDueAt: plan.balanceDueAt,
+      };
+
+      // Before the row, the capacity hold and the queued work. Raised here, the
+      // transaction rolls all three back, so a refused agreement leaves no
+      // order behind and no date held.
+      if (request.expectation) assertAgreement(request.expectation, figures);
 
       const order = await repo.insertOrder(tx, {
         reference: await repo.nextReference(tx),
@@ -356,6 +399,10 @@ export async function createCheckout(
       });
 
       await repo.insertItems(tx, order.id, items);
+
+      if (request.expectation) {
+        await repo.recordAgreement(tx, order.id, { at: now, ...figures });
+      }
 
       // The date, held before anything is charged. A clash surfaces as the
       // exclusion constraint refusing the insert, which rolls the whole
@@ -405,20 +452,22 @@ export async function createCheckout(
             reference: order.reference,
             total: money.total.toString(),
             state: "pending_payment",
+            // `jsonb` holds no `bigint`, so cents travel as text rather than
+            // being narrowed to a `number` that silently rounds above C$90bn.
+            ...(request.expectation
+              ? {
+                  agreedTotal: figures.total.toString(),
+                  agreedDepositAmount: figures.depositAmount.toString(),
+                  agreedBalanceAmount: figures.balanceAmount.toString(),
+                  agreedBalanceDueAt: figures.balanceDueAt?.toISOString() ?? null,
+                }
+              : {}),
           },
         },
         tx,
       );
 
-      created.push({
-        id: order.id,
-        reference: order.reference,
-        vendorId,
-        total: money.total,
-        depositAmount: plan.depositAmount,
-        balanceAmount: plan.balanceAmount,
-        balanceDueAt: plan.balanceDueAt,
-      });
+      created.push({ id: order.id, reference: order.reference, vendorId, ...figures });
     }
 
     return { checkoutId: checkout.id, orders: created };

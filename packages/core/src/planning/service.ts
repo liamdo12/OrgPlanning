@@ -1,6 +1,6 @@
 import { record } from "../audit/service.js";
 import type { CoreContext, DbExecutor } from "../context.js";
-import { NotFoundError, ValidationError } from "../errors.js";
+import { BookingLiveError, NotFoundError, ValidationError } from "../errors.js";
 import { isAdmin, type Actor } from "../identity/actor.js";
 import { assertCanActOnEvent } from "../identity/policies.js";
 import { requireUser } from "../identity/service.js";
@@ -560,9 +560,9 @@ async function refuseWhileBooked(db: DbExecutor, eventId: string, attempt: strin
   const live = orders.find((order) => !isTerminal(order.state));
 
   if (live) {
-    throw new ValidationError(
+    throw new BookingLiveError(
       `${attempt} after cancelling ${live.reference}. A booking on this event is still live.`,
-      { eventDate: "booked", reference: live.reference },
+      live.reference,
     );
   }
 }

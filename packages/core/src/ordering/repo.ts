@@ -153,6 +153,31 @@ export type NewOrder = {
   isDemo: boolean;
 };
 
+/**
+ * Records what the customer was shown when they authorised the booking.
+ *
+ * Written in the checkout's own transaction, from the same figures it just
+ * compared against, so the order's terms and its consent record cannot
+ * disagree. Left unwritten when the caller stated nothing — an agreement
+ * nobody made is not a row to invent.
+ */
+export async function recordAgreement(
+  db: DbExecutor,
+  orderId: string,
+  agreement: { at: Date; total: bigint; depositAmount: bigint; balanceAmount: bigint; balanceDueAt: Date | null },
+): Promise<void> {
+  await db
+    .update(orders)
+    .set({
+      agreedAt: agreement.at,
+      agreedTotal: agreement.total,
+      agreedDepositAmount: agreement.depositAmount,
+      agreedBalanceAmount: agreement.balanceAmount,
+      agreedBalanceDueAt: agreement.balanceDueAt,
+    })
+    .where(eq(orders.id, orderId));
+}
+
 export async function insertOrder(db: DbExecutor, input: NewOrder): Promise<OrderRow> {
   const [row] = await db
     .insert(orders)
