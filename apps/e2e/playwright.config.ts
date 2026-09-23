@@ -69,7 +69,7 @@ export default defineConfig({
       // every one of them would run three times, and the journeys move seeded
       // rows — so the second pass would find the state already moved and fail
       // for a reason that is not a regression.
-      testIgnore: [/auth\.setup\.ts/, /customer-.*\.spec\.ts/],
+      testIgnore: [/auth\.setup\.ts/, /customer\.setup\.ts/, /customer-.*\.spec\.ts/],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
@@ -81,19 +81,28 @@ export default defineConfig({
       // dialog can be driven.
       testMatch: /admin-a11y\.spec\.ts/,
     },
+    {
+      // Placed after the admin projects, because it undoes what one of them
+      // does: the MFA spec signs this account in and out again, which kills the
+      // session the first setup stored.
+      name: "customer-setup",
+      dependencies: ["setup"],
+      testMatch: /customer\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
+    },
     // The customer screens are drawn at their own two widths, and they are not
     // the admin ones. Widening `mobile` instead would audit them at 375 and
     // report the result as though it were 360 — a claim about a layout nobody
     // vetted, made in the name of one somebody did.
     {
       name: "customer-mobile",
-      dependencies: ["setup"],
+      dependencies: ["customer-setup"],
       testMatch: /customer-.*\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 } },
     },
     {
       name: "customer-desktop",
-      dependencies: ["setup"],
+      dependencies: ["customer-setup"],
       testMatch: /customer-.*\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
     },

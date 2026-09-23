@@ -28,6 +28,19 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * be reported against every screen while being unfixable from this repository.
  */
 export async function audit(page: Page): ReturnType<AxeBuilder["analyze"]> {
+  // Audited once the screen has settled. Cards enter on a 0.3s fade, and
+  // `opacity` composites through every child — so text that passes at rest is
+  // measured part-transparent and reported as a contrast failure, on a
+  // different number of elements every run depending on where the frame fell.
+  // An animation that repeats for ever is excluded rather than waited on,
+  // because waiting for it is waiting for nothing.
+  await page.waitForFunction(() =>
+    document.getAnimations().every((animation) => {
+      if (animation.playState !== "running") return true;
+      return animation.effect?.getComputedTiming().iterations === Number.POSITIVE_INFINITY;
+    }),
+  );
+
   return new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .exclude("nextjs-portal")
@@ -44,7 +57,16 @@ export async function audit(page: Page): ReturnType<AxeBuilder["analyze"]> {
 export function serious(results: Awaited<ReturnType<typeof audit>>): string[] {
   return results.violations
     .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
-    .map((violation) => `${violation.id}: ${violation.help} (${violation.nodes.length})`);
+    .map((violation) => {
+      // The offending elements, not only how many. A contrast failure reported
+      // as a number sends whoever reads it hunting through a whole screen for
+      // the pair that broke.
+      const where = violation.nodes
+        .slice(0, 3)
+        .map((node) => node.target.join(" "))
+        .join(" | ");
+      return `${violation.id}: ${violation.help} (${violation.nodes.length}) — ${where}`;
+    });
 }
 
 /**
@@ -89,13 +111,28 @@ export async function makeEventActive(page: Page, name: string): Promise<void> {
 }
 
 /**
+ * One category's row on the planner.
+ *
+ * Scoped rather than taken by position: a journey that clicked "the first
+ * Remove" would be asserting about whichever slot happened to be sorted first,
+ * and would keep passing after it changed.
+ */
+export function plannerSlot(page: Page, categoryName: string) {
+  return page.getByRole("listitem").filter({ hasText: categoryName });
+}
+
+/**
  * Opens the first seeded listing in a category, and returns its slug.
  *
  * The card's title is its link — the whole card is deliberately not one control
  * — so this follows what a person would click.
  */
 export async function openSeededListing(page: Page, category?: string): Promise<string> {
-  await page.goto(category ? `/services?category=${encodeURIComponent(category)}` : "/services");
+  // `cat`, which is the name the results page reads. Spelling it `category`
+  // narrows nothing and draws the "a parameter this screen does not offer"
+  // warning instead, so a journey written that way opens whatever listing
+  // happened to sort first and still looks like it worked.
+  await page.goto(category ? `/services?cat=${encodeURIComponent(category)}` : "/services");
 
   const first = page.locator("article a[href^='/services/']").first();
   await expect(first, "the results page showed no listing").toBeVisible();
