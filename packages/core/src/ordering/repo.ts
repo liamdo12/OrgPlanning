@@ -197,6 +197,91 @@ export function listItems(db: DbExecutor, orderId: string) {
 }
 
 /**
+ * A `pending_payment` order of this customer's that is the same cart again.
+ *
+ * The exclusion constraint is on `(service_id, during)` and does not know whose
+ * order holds the block, so a customer who abandons a checkout and comes back
+ * collides with **their own** hold and is told the date is gone — for thirty
+ * minutes, with no way out, because a customer cannot cancel a
+ * `pending_payment` order. Resuming is what gives them the date back.
+ *
+ * **The item set has to match exactly**, because resuming means charging the
+ * order that already exists: its lines, its total and its terms. Returning it
+ * for a *different* cart would take a deposit for something other than what was
+ * on screen.
+ *
+ * Every candidate is locked. The expiry job cancels through `loadForUpdate`, so
+ * without the lock a checkout could resume an order the runner is in the middle
+ * of releasing and hand back a client secret for a booking that no longer holds
+ * a date. The lock is taken after the event's, never before, which is the same
+ * order `loadEventForOrder({forUpdate})` establishes — `applyTransition` locks
+ * the order and reads the event unlocked, so no path takes the pair the other
+ * way round.
+ */
+export async function findResumableOrder(
+  db: DbExecutor,
+  input: {
+    userId: string;
+    eventId: string;
+    vendorId: string;
+    lines: ReadonlyArray<{
+      serviceId: string;
+      servicePackageId: string | null;
+      quantity: number;
+    }>;
+  },
+): Promise<OrderRow | undefined> {
+  const candidates = await db
+    .select(orderColumns)
+    .from(orders)
+    .where(
+      and(
+        eq(orders.userId, input.userId),
+        eq(orders.eventId, input.eventId),
+        eq(orders.vendorId, input.vendorId),
+        eq(orders.state, "pending_payment"),
+      ),
+    )
+    .for("update");
+
+  const wanted = cartFingerprint(input.lines);
+
+  for (const candidate of candidates) {
+    const items = await listItems(db, candidate.id);
+    if (
+      cartFingerprint(
+        items.map((item) => ({
+          serviceId: item.serviceId ?? "",
+          servicePackageId: item.servicePackageId,
+          quantity: item.quantity,
+        })),
+      ) === wanted
+    ) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * What a cart contains, as one comparable value.
+ *
+ * Sorted, so two carts holding the same lines in a different order are the same
+ * cart — a customer re-entering a checkout has no control over the order their
+ * plan's slots come back in. The quantity is part of the key: the same service
+ * twice over is a different booking and a different price.
+ */
+function cartFingerprint(
+  lines: ReadonlyArray<{ serviceId: string; servicePackageId: string | null; quantity: number }>,
+): string {
+  return lines
+    .map((line) => `${line.serviceId}:${line.servicePackageId ?? ""}:${line.quantity}`)
+    .sort()
+    .join("|");
+}
+
+/**
  * Writes the new state and the timestamps that belong to it.
  *
  * The timestamps are set here rather than by each caller so that a state and

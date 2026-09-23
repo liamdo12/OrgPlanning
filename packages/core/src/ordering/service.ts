@@ -201,6 +201,11 @@ export type CheckoutResult = {
  * **The date is held before the money is taken.** The capacity block goes in
  * inside this transaction; if the exclusion constraint refuses it, nobody has
  * been charged, because nothing has been charged yet.
+ *
+ * And one rule about coming back: **the customer's own unfinished attempt at
+ * the same cart is resumed, not repeated.** The capacity constraint does not
+ * know whose order holds a date, so without this a customer who closed the tab
+ * is refused their own hold for thirty minutes with no way out.
  */
 export async function createCheckout(
   ctx: CoreContext,
@@ -294,6 +299,30 @@ export async function createCheckout(
     const created: CheckoutResult["orders"] = [];
 
     for (const { vendorId, lines: items, template, money, plan, currency } of carts) {
+      // The customer's own abandoned attempt at this exact cart, if there is
+      // one. Returned as it stands rather than re-priced: resuming means paying
+      // the order that already holds the date, and `chargeDeposit` finds its
+      // open attempt and hands back the same client secret.
+      const resumed = await repo.findResumableOrder(tx, {
+        userId: actor.userId,
+        eventId: request.eventId,
+        vendorId,
+        lines: items,
+      });
+
+      if (resumed) {
+        created.push({
+          id: resumed.id,
+          reference: resumed.reference,
+          vendorId,
+          total: resumed.total,
+          depositAmount: resumed.depositAmount,
+          balanceAmount: resumed.balanceAmount,
+          balanceDueAt: resumed.balanceDueAt,
+        });
+        continue;
+      }
+
       const order = await repo.insertOrder(tx, {
         reference: await repo.nextReference(tx),
         userId: actor.userId,
