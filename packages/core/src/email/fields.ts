@@ -64,6 +64,15 @@ export const MERGE_FIELDS: readonly MergeField[] = [
   { name: "quote_expiry", label: "Quote expiry", class: "open", sample: "Mar 13, 2027" },
   { name: "grace_deadline", label: "Grace deadline", class: "open", sample: "Mar 9, 2027" },
   { name: "policy_link", label: "Policy link", class: "open", sample: "occasion.ca/policy" },
+  /**
+   * The cancellation policy a booking was made under, by name.
+   *
+   * Open: it is a term of the sale the recipient already agreed to, and every
+   * customer under the same template sees the same word. `policy_link` points
+   * at what the terms say; this says which of them applies, which is what a
+   * confirmation has to state and a link cannot.
+   */
+  { name: "policy_name", label: "Cancellation policy", class: "open", sample: "Flexible" },
   { name: "review_link", label: "Review link", class: "open", sample: "occasion.ca/r/4192" },
   {
     name: "calendar_link",
