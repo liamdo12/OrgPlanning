@@ -12,11 +12,12 @@ import { checkoutHref } from "./slot-list";
  * the panel is a render over what the planner already loaded, so a provider
  * timeout cannot take the hub down with it.
  *
- * **No card-on-file line.** The prototype draws "•••• 4242" (line 927) and
- * there is no column behind it: the schema states out loud that no card data
- * is stored anywhere in it. The two ways to draw that line today are a live
- * provider call per order on a screen that makes one domain call, or four
- * digits typed in — a fake. It arrives with the column.
+ * **The card-on-file line is read, not asked for.** The prototype draws
+ * "•••• 4242" (line 927); the four digits behind it are recorded when the
+ * deposit settles and come back on the same domain call as everything else. A
+ * live provider call per order would put a Stripe timeout on this screen, and
+ * typed-in digits would be a fake. When no charge is coming there is no card to
+ * name, and the line is not drawn.
  */
 
 const dayFormat = new Intl.DateTimeFormat("en-CA", {
@@ -70,6 +71,10 @@ export function PaymentsPanel({
             value={formatMoney(payments.nextCharge, currency)}
           />
         )}
+
+        {payments.nextChargeCard ? (
+          <Line label="Card on file" value={`•••• ${payments.nextChargeCard}`} />
+        ) : null}
       </dl>
 
       {/*

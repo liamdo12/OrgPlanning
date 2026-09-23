@@ -119,6 +119,26 @@ export async function attachProviderIntent(
     .where(eq(payments.id, paymentId));
 }
 
+/**
+ * Records which card a charge settled on, once and only once.
+ *
+ * `is null` in the predicate rather than a plain `set`: the provider is asked
+ * about an intent more than once over a booking's life, and a later answer that
+ * came back without a card — an expand that was left off, a retrieve after the
+ * method was detached — must not overwrite digits already known. A row that
+ * already has them is left alone.
+ */
+export async function attachCardLast4(
+  db: DbExecutor,
+  paymentId: string,
+  last4: string,
+): Promise<void> {
+  await db
+    .update(payments)
+    .set({ cardLast4: last4 })
+    .where(and(eq(payments.id, paymentId), isNull(payments.cardLast4)));
+}
+
 export async function markPaymentSucceeded(
   db: DbExecutor,
   paymentId: string,

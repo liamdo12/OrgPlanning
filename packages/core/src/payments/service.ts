@@ -178,6 +178,7 @@ export async function confirmFromWebhook(
 
   if (payment.state !== "succeeded") {
     await repo.markPaymentSucceeded(ctx.db, payment.id, { chargeId: input.chargeId, now });
+    await rememberCard(ctx, payment.id, input.paymentIntentId);
   }
 
   // A charge that landed after the booking had already gone.
@@ -222,6 +223,33 @@ export async function confirmFromWebhook(
   }
 
   return { orderId: order.id, applied: true };
+}
+
+/**
+ * Writes down which card a charge settled on.
+ *
+ * Asked once, when the charge settles, rather than on the render path: the
+ * planner says which card the balance will be taken on, and a live provider
+ * call per order would put a Stripe timeout on a screen that is otherwise one
+ * database round trip. The digits do not change afterwards — a card that is
+ * replaced produces a new intent and a new attempt row.
+ *
+ * **A failure here is not a failed payment.** The money has settled and the
+ * order is about to be confirmed; four digits for a message weeks away are not
+ * worth answering the webhook 5xx for and having the provider retry a
+ * confirmation for three days.
+ */
+async function rememberCard(
+  ctx: CoreContext,
+  paymentId: string,
+  paymentIntentId: string,
+): Promise<void> {
+  try {
+    const intent = await ctx.stripe.retrievePaymentIntent(paymentIntentId);
+    if (intent?.cardLast4) await repo.attachCardLast4(ctx.db, paymentId, intent.cardLast4);
+  } catch {
+    // Deliberately swallowed, and deliberately not retried: see above.
+  }
 }
 
 /**

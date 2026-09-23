@@ -98,6 +98,15 @@ export type EventPayments = {
    * declined, and the money is owed now.
    */
   nextChargeStatus: repo.NextChargeStatus | null;
+  /**
+   * The card that charge will be taken on, as its last four digits.
+   *
+   * Recorded when the deposit settled rather than asked of the provider here: a
+   * live retrieve per order would put a provider timeout on a screen that is
+   * one domain call, and the digits do not change — a replaced card is a new
+   * attempt with a new intent.
+   */
+  nextChargeCard: string | null;
 };
 
 /**
