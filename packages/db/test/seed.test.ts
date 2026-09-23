@@ -334,6 +334,66 @@ describe.skipIf(!url)("seed", () => {
     expect(Number(row?.generated)).toBeGreaterThan(0);
   });
 
+  it("closes a business only on a day somebody is planning, and only one a customer can ask about", async () => {
+    // A blackout on any other date is invisible: the service page asks about
+    // the active event's own day, so a closed day that falls on none of them
+    // is a row that answers nobody. And the availability read refuses outright
+    // for a business that is not approved or a listing that is not published,
+    // so a blackout on one of those never gets as far as being consulted.
+    const rows = await sql<{ vendor: string; planned: boolean; listable: boolean }[]>`
+      select v.slug as vendor,
+             exists (select 1 from app.planning_org_events e where e.event_date = b.day) as planned,
+             exists (
+               select 1 from app.planning_org_services s
+               where s.vendor_id = b.vendor_id and s.published_at is not null
+             ) and v.status = 'approved' as listable
+      from app.planning_org_blackout_dates b
+      join app.planning_org_vendors v on v.id = b.vendor_id
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => !row.planned)).toEqual([]);
+    expect(rows.filter((row) => !row.listable)).toEqual([]);
+  });
+
+  it("puts all three availability answers on one date", async () => {
+    // Free, booked and closed, on the same day and on listings a stranger can
+    // open. Two of the three had rows before this seed; a demo where the third
+    // never happens is a screen state nobody has ever seen.
+    const [day] = await sql<{ event_date: string }[]>`
+      select event_date::text from app.planning_org_events where name = 'Sarah''s 30th'
+    `;
+
+    const rows = await sql<{ slug: string; closed: boolean; held: boolean }[]>`
+      select s.slug,
+             exists (
+               select 1 from app.planning_org_blackout_dates b
+               where b.vendor_id = s.vendor_id and b.day = ${day?.event_date as string}
+             ) as closed,
+             exists (
+               select 1 from app.planning_org_capacity_blocks cb
+               where cb.service_id = s.id and cb.active
+                 and cb.during && tstzrange(
+                   (${day?.event_date as string}::date)::timestamp at time zone 'America/Toronto',
+                   (${day?.event_date as string}::date + 1)::timestamp at time zone 'America/Toronto',
+                   '[)')
+             ) as held
+      from app.planning_org_services s
+      join app.planning_org_vendors v on v.id = s.vendor_id
+      where v.status = 'approved' and s.published_at is not null
+    `;
+
+    // Closed wins over held in the read, so the three groups are counted the
+    // way the answer is decided rather than as three independent flags.
+    const closed = rows.filter((row) => row.closed);
+    const booked = rows.filter((row) => !row.closed && row.held);
+    const free = rows.filter((row) => !row.closed && !row.held);
+
+    expect(closed.length).toBeGreaterThan(0);
+    expect(booked.length).toBeGreaterThan(0);
+    expect(free.length).toBeGreaterThan(0);
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'

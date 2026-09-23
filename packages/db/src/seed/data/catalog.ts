@@ -321,3 +321,25 @@ export const SERVICE_MEDIA = [
   { key: "f2", pictures: 3 },
   { key: "k2", pictures: 1 },
 ] as const;
+
+/**
+ * Days a business will not take work.
+ *
+ * The availability line has three answers and until these rows existed it could
+ * only ever give two: free always, booked from the seeded capacity blocks, and
+ * closed never. A blackout is only visible on a day one of the customer's own
+ * events falls on, because that is the date the service page asks about — so
+ * each one names the event whose date it borrows rather than a date of its own,
+ * and the writer reads that date back off the `events` row.
+ *
+ * Both businesses are approved and both list something published, which is what
+ * the availability read requires before it will answer about a service at all.
+ * Studio Halo is deliberately not here: it is the vendor behind the one slot
+ * the planner shows in plan, and a business closed on the day of the event
+ * somebody is planning to buy from it is a contradiction the checkout would not
+ * refuse.
+ */
+export const BLACKOUTS = [
+  { vendorKey: "wildwood", eventKey: "sarahs-30th", reason: "Closed — studio inventory" },
+  { vendorKey: "northside", eventKey: "office-social", reason: "Closed — crew at a wedding" },
+] as const;

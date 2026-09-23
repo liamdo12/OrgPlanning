@@ -584,6 +584,35 @@ describe.skipIf(!url)("catalogue discovery", () => {
       expect(answer.state).toBe("blacked_out");
     });
 
+    it("gives every answer it has on one seeded date", async () => {
+      // Asked of every listing a stranger can open, on the day of the event the
+      // demo opens on. Before the seed wrote a closed day, two of the three
+      // answers had rows behind them and the third was a screen state nothing
+      // in the database could produce — so the strings were reachable in the
+      // type and unreachable in the demo.
+      const [event] = await sql<{ event_date: string }[]>`
+        select event_date::text from app.planning_org_events where name = 'Sarah''s 30th'
+      `;
+      const listable = await sql<{ id: string }[]>`
+        select s.id from app.planning_org_services s
+        join app.planning_org_vendors v on v.id = s.vendor_id
+        where v.status = 'approved' and s.published_at is not null
+      `;
+
+      const answers = new Set<string>();
+      for (const service of listable) {
+        const answer = await serviceAvailability(
+          ctx,
+          ANONYMOUS,
+          service.id,
+          event?.event_date as string,
+        );
+        answers.add(answer.state);
+      }
+
+      expect([...answers].sort()).toEqual(["blacked_out", "booked", "free"]);
+    });
+
     it("refuses a draft rather than answering about it", async () => {
       await expect(
         serviceAvailability(ctx, ANONYMOUS, await serviceIdOf(DRAFT_SLUG), "2099-06-01"),

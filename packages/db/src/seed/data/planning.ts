@@ -1,8 +1,8 @@
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { Db } from "../../client.js";
 import * as s from "../../schema/index.js";
 import { seedId } from "../ids.js";
-import { SERVICE_MEDIA, SERVICES } from "./catalog.js";
+import { BLACKOUTS, SERVICE_MEDIA, SERVICES } from "./catalog.js";
 
 /**
  * The rows the customer's own screens read.
@@ -102,6 +102,49 @@ async function writeServiceMedia(db: Db): Promise<number> {
 }
 
 /**
+ * The days a business is closed, on the dates its customers are planning.
+ *
+ * The day is **read off the `events` row**, never computed here. The event's own
+ * date is already the anchor's offset resolved in the event's timezone, and
+ * repeating that arithmetic would be a second copy of the seed's DST handling,
+ * free to drift from the first across a March or November boundary.
+ */
+async function writeBlackoutDates(db: Db): Promise<number> {
+  const wanted = BLACKOUTS.map((blackout) => seedId(`event:${blackout.eventKey}`));
+
+  const dates = await db
+    .select({ id: s.events.id, day: s.events.eventDate })
+    .from(s.events)
+    .where(inArray(s.events.id, wanted));
+
+  const dayOf = new Map(dates.map((event) => [event.id, event.day] as const));
+
+  const rows = BLACKOUTS.map((blackout) => {
+    const day = dayOf.get(seedId(`event:${blackout.eventKey}`));
+    if (!day) throw new Error(`Blackout names event ${blackout.eventKey}, which is not seeded.`);
+
+    return {
+      id: seedId(`blackout:${blackout.vendorKey}:${blackout.eventKey}`),
+      vendorId: seedId(`vendor:${blackout.vendorKey}`),
+      day,
+      reason: blackout.reason,
+    };
+  });
+
+  if (rows.length === 0) return 0;
+
+  // The day moves with the anchor, so reseeding into a database that already
+  // holds these rows has to move it rather than leave the business closed on a
+  // date no event falls on any more.
+  await db
+    .insert(s.blackoutDates)
+    .values(rows)
+    .onConflictDoUpdate({ target: s.blackoutDates.id, set: { day: sql`excluded.day` } });
+
+  return rows.length;
+}
+
+/**
  * Everything the customer's screens read that earlier passes left empty, in one
  * call so `seed/index.ts` gains a line rather than forty.
  *
@@ -110,5 +153,6 @@ async function writeServiceMedia(db: Db): Promise<number> {
 export async function seedCustomerRows(db: Db, _anchorAt: Date): Promise<Record<string, number>> {
   return {
     service_media: await writeServiceMedia(db),
+    blackout_dates: await writeBlackoutDates(db),
   };
 }
