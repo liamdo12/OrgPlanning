@@ -266,3 +266,58 @@ export const SERVICES = [
     packages: [{ name: "Lounge set", unitPrice: 48_000n, description: "Seating for 20." }],
   },
 ] as const;
+
+/**
+ * How many pictures each listing carries.
+ *
+ * Only listings a customer can actually reach are here: published, and belonging
+ * to an approved business. A draft listing and a listing whose vendor is pending
+ * or blocked are refused by discovery and by the detail page alike, so pictures
+ * on them would be rows no screen ever reads.
+ *
+ * Three shapes on purpose, because the components degrade in three different
+ * ways and a seed that gave every listing the same count would exercise one of
+ * them:
+ *
+ *   `f1` has **none** — the card draws a single gradient frame and no dots, and
+ *   the detail strip draws four gradients and no gallery control. That is the
+ *   honest empty state, and it is also the shape the discovery suite asserts
+ *   against: one test needs a listable card with no pictures, and another owns
+ *   this listing's media outright by inserting its own.
+ *
+ *   `k2` has **one** — a frame with no dots, which is not the same code path as
+ *   none and is where an off-by-one in the pager shows.
+ *
+ *   `d1` has **six** — more than the strip's four cells, so the last cell reads
+ *   "+2 photos" rather than the count it refuses to invent, and the card's
+ *   three-picture cap is cut in SQL over a listing that has more than three.
+ *
+ * The rest carry three: three dots on the card, a hero and two thumbnails on the
+ * detail page.
+ *
+ * `captions` is written on the one gallery big enough to be browsed, so the
+ * supplied-alt branch is exercised by real rows; everywhere else `alt_text` is
+ * left null and the components generate their own. Both branches ship, so both
+ * need a row behind them.
+ */
+export const SERVICE_MEDIA = [
+  { key: "f1", pictures: 0 },
+  { key: "p1", pictures: 3 },
+  { key: "c1", pictures: 3 },
+  { key: "k1", pictures: 3 },
+  { key: "e1", pictures: 3 },
+  {
+    key: "d1",
+    pictures: 6,
+    captions: [
+      "A balloon arch in blush and cream over a loft doorway.",
+      "A floral backdrop behind a cake table.",
+      "Ceiling balloons clustered above a dance floor.",
+      "A garland of eucalyptus along a banquet table.",
+      "A pastel balloon column beside a bar.",
+      "The finished install, lit for the evening.",
+    ],
+  },
+  { key: "f2", pictures: 3 },
+  { key: "k2", pictures: 1 },
+] as const;

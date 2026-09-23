@@ -262,6 +262,78 @@ describe.skipIf(!url)("seed", () => {
     }
   });
 
+  it("gives a listing pictures only where somebody can see them", async () => {
+    // Grouped off the table rather than counted by hand. What matters is the
+    // spread: the card and the detail strip degrade in three different ways —
+    // no pictures, exactly one, and more than the strip's four cells — and a
+    // seed that gave every listing the same count would leave two of those
+    // three exercised by nothing but a unit test over a literal array.
+    const rows = await sql<{ slug: string; listable: boolean; pictures: string }[]>`
+      select s.slug,
+             (v.status = 'approved' and s.published_at is not null) as listable,
+             count(m.id)::text as pictures
+      from app.planning_org_services s
+      join app.planning_org_vendors v on v.id = s.vendor_id
+      left join app.planning_org_service_media m on m.service_id = s.id
+      group by s.slug, listable
+    `;
+
+    const listable = rows.filter((row) => row.listable).map((row) => Number(row.pictures));
+    const hidden = rows.filter((row) => !row.listable).map((row) => Number(row.pictures));
+
+    expect(listable.length).toBeGreaterThan(0);
+    expect(listable.filter((count) => count === 0)).toHaveLength(1);
+    expect(listable.filter((count) => count === 1)).toHaveLength(1);
+    // The strip shows four; the "+N" tile has a number to say only past that.
+    expect(listable.filter((count) => count > 4)).toHaveLength(1);
+    // Everything that is not one of those two deliberate exceptions carries a
+    // carousel's worth: three dots on the card, a hero and two thumbnails on
+    // the detail page.
+    const rest = listable.filter((count) => count > 1);
+    expect(rest).toHaveLength(listable.length - 2);
+    expect(rest.filter((count) => count < 3)).toEqual([]);
+
+    // A draft listing, and one whose business is not approved, are refused by
+    // discovery and by the detail page alike. Pictures on them would be rows
+    // with no reader.
+    expect(hidden.length).toBeGreaterThan(0);
+    expect(hidden.filter((count) => count > 0)).toEqual([]);
+  });
+
+  it("numbers a listing's pictures from zero without a gap", async () => {
+    // The card pages by index and the strip slices by position, so a gap is a
+    // blank frame and a first picture at 1 is a hero nothing selects.
+    const rows = await sql<{ slug: string; pictures: string; lowest: string; highest: string }[]>`
+      select s.slug,
+             count(*)::text as pictures,
+             min(m.sort_order)::text as lowest,
+             max(m.sort_order)::text as highest
+      from app.planning_org_service_media m
+      join app.planning_org_services s on s.id = m.service_id
+      group by s.slug
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect([row.slug, Number(row.lowest)]).toEqual([row.slug, 0]);
+      expect([row.slug, Number(row.highest) + 1]).toEqual([row.slug, Number(row.pictures)]);
+    }
+  });
+
+  it("captions a gallery big enough to browse, and lets the rest generate theirs", async () => {
+    // Both branches of the alt text ship — a supplied caption and the one the
+    // components build from the title and the position — so both need rows.
+    const [row] = await sql<{ captioned: string; generated: string }[]>`
+      select
+        count(*) filter (where alt_text is not null)::text as captioned,
+        count(*) filter (where alt_text is null)::text as generated
+      from app.planning_org_service_media
+    `;
+
+    expect(Number(row?.captioned)).toBeGreaterThan(0);
+    expect(Number(row?.generated)).toBeGreaterThan(0);
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'
