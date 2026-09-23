@@ -64,7 +64,12 @@ export default defineConfig({
       // The width the prototype's admin screens are drawn at.
       name: "desktop",
       dependencies: ["setup"],
-      testIgnore: /auth\.setup\.ts/,
+      // The customer specs are ignored here, not because they would fail at
+      // 1440 but because they run under their own two projects below. Left in,
+      // every one of them would run three times, and the journeys move seeded
+      // rows — so the second pass would find the state already moved and fail
+      // for a reason that is not a regression.
+      testIgnore: [/auth\.setup\.ts/, /customer-.*\.spec\.ts/],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
     {
@@ -75,6 +80,22 @@ export default defineConfig({
       // asserts that the screens are usable and accessible, not that every
       // dialog can be driven.
       testMatch: /admin-a11y\.spec\.ts/,
+    },
+    // The customer screens are drawn at their own two widths, and they are not
+    // the admin ones. Widening `mobile` instead would audit them at 375 and
+    // report the result as though it were 360 — a claim about a layout nobody
+    // vetted, made in the name of one somebody did.
+    {
+      name: "customer-mobile",
+      dependencies: ["setup"],
+      testMatch: /customer-.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 } },
+    },
+    {
+      name: "customer-desktop",
+      dependencies: ["setup"],
+      testMatch: /customer-.*\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } },
     },
   ],
 
