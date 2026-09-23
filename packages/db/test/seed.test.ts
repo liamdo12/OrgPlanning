@@ -420,6 +420,133 @@ describe.skipIf(!url)("seed", () => {
     }
   });
 
+  it("names every booking on the planner, on the event it was placed against", async () => {
+    // A booking no slot names is one the customer cannot find from the event it
+    // was made for, which is the screen the whole spine is built around. And a
+    // slot naming an order from another event would draw somebody else's
+    // booking onto this party.
+    const unnamed = await sql<{ reference: string }[]>`
+      select o.reference from app.planning_org_orders o
+      where not exists (
+        select 1 from app.planning_org_event_items i where i.order_id = o.id
+      )
+    `;
+    expect(unnamed).toEqual([]);
+
+    const misplaced = await sql<{ reference: string }[]>`
+      select o.reference
+      from app.planning_org_event_items i
+      join app.planning_org_orders o on o.id = i.order_id
+      where o.event_id <> i.event_id
+    `;
+    expect(misplaced).toEqual([]);
+
+    // And in the category the thing it bought is sold under, or the planner
+    // shows a cake booked under flowers.
+    const miscategorised = await sql<{ reference: string }[]>`
+      select o.reference
+      from app.planning_org_event_items i
+      join app.planning_org_orders o on o.id = i.order_id
+      join app.planning_org_order_items oi on oi.order_id = o.id
+      join app.planning_org_services s on s.id = oi.service_id
+      where s.category_id <> i.category_id
+    `;
+    expect(miscategorised).toEqual([]);
+  });
+
+  it("updates the planner's slots and inserts none, leaving one per category", async () => {
+    // Existence belongs to the pass that created the slots; this one owns only
+    // their state. A second insert for the same event and category is refused
+    // by the unique key rather than merged, so a pass that inserted here would
+    // fail loudly — and one that inserted under a fresh id would leave two
+    // slots for one category and a planner that lists it twice.
+    const [categories] = await sql<{ count: string }[]>`
+      select count(*)::text as count from app.planning_org_categories where active
+    `;
+    const rows = await sql<{ name: string; slots: string }[]>`
+      select e.name, count(i.id)::text as slots
+      from app.planning_org_events e
+      join app.planning_org_event_items i on i.event_id = e.id
+      group by e.name
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect([row.name, row.slots]).toEqual([row.name, categories?.count]);
+    }
+  });
+
+  it("puts all four slot shapes on the one planner the demo opens on", async () => {
+    // Facts rather than states: this package may not import the domain that
+    // derives Booked, In plan, Quotes and Empty from them. What it can assert
+    // is that the raw material for each of the four is on one event — an order
+    // still holding its date, an open request, a service chosen and not bought,
+    // and a category nobody has decided.
+    const [row] = await sql<
+      {
+        booked: string;
+        quotes: string;
+        in_plan: string;
+        empty: string;
+      }[]
+    >`
+      select
+        count(*) filter (
+          where o.id is not null and o.state not in ('cancelled', 'refunded')
+        )::text as booked,
+        count(*) filter (
+          where o.id is null and i.quote_request_id is not null and q.state = 'open'
+        )::text as quotes,
+        count(*) filter (where o.id is null and i.service_id is not null)::text as in_plan,
+        count(*) filter (
+          where i.order_id is null and i.service_id is null and i.quote_request_id is null
+        )::text as empty
+      from app.planning_org_event_items i
+      join app.planning_org_events e on e.id = i.event_id
+      left join app.planning_org_orders o on o.id = i.order_id
+      left join app.planning_org_quote_requests q on q.id = i.quote_request_id
+      where e.name = 'Sarah''s 30th'
+    `;
+
+    expect(Number(row?.booked)).toBeGreaterThan(0);
+    expect(Number(row?.quotes)).toBe(1);
+    expect(Number(row?.in_plan)).toBe(1);
+    expect(Number(row?.empty)).toBeGreaterThan(0);
+  });
+
+  it("schedules the day from the arrival times the slots carry", async () => {
+    // Clock times on the event's own date, in the order the evening runs: the
+    // install before the guests, then the flowers, the photographer and the
+    // food. Asserted as an order rather than as four literals, because the
+    // times are the prototype's and the claim is that the day reads forwards.
+    const rows = await sql<{ arrival_time: string; category: string }[]>`
+      select i.arrival_time::text, c.slug as category
+      from app.planning_org_event_items i
+      join app.planning_org_events e on e.id = i.event_id
+      join app.planning_org_categories c on c.id = i.category_id
+      where e.name = 'Sarah''s 30th' and i.arrival_time is not null
+      order by i.arrival_time asc
+    `;
+
+    expect(rows.map((row) => row.category)).toEqual([
+      "decorations",
+      "flowers",
+      "photography",
+      "catering",
+    ]);
+
+    // The one with no business behind it is the open request: a time the event
+    // needs something to happen at, before anybody knows who is doing it.
+    const [unassigned] = await sql<{ count: string }[]>`
+      select count(*)::text as count
+      from app.planning_org_event_items i
+      join app.planning_org_events e on e.id = i.event_id
+      where e.name = 'Sarah''s 30th'
+        and i.arrival_time is not null and i.service_id is null
+    `;
+    expect(Number(unassigned?.count)).toBe(1);
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'
