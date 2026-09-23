@@ -239,6 +239,14 @@ export type ItemRow = {
   serviceName: string | null;
   servicePackageId: string | null;
   servicePackageName: string | null;
+  /**
+   * The business behind the chosen service.
+   *
+   * Carried because an order belongs to one vendor, so a checkout is started
+   * per vendor and the planner is where that control lives. One more column off
+   * a join the slot list already makes.
+   */
+  vendorId: string | null;
   vendorName: string | null;
   quantity: number;
   arrivalTime: string | null;
@@ -288,6 +296,7 @@ export async function listItems(db: DbExecutor, eventId: string): Promise<ItemRo
       serviceName: services.title,
       servicePackageId: eventItems.servicePackageId,
       servicePackageName: servicePackages.name,
+      vendorId: services.vendorId,
       vendorName: vendors.name,
       quantity: eventItems.quantity,
       arrivalTime: eventItems.arrivalTime,

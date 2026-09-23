@@ -404,6 +404,16 @@ export async function createCheckout(
         await repo.recordAgreement(tx, order.id, { at: now, ...figures });
       }
 
+      // The planner's slots, pointed at the booking they produced. Without this
+      // the hub shows `In plan` for a service that has been paid for, and the
+      // budget counts it as committed rather than spent.
+      await repo.linkEventItems(tx, {
+        orderId: order.id,
+        eventId: request.eventId,
+        serviceIds: items.map((item) => item.serviceId),
+        now,
+      });
+
       // The date, held before anything is charged. A clash surfaces as the
       // exclusion constraint refusing the insert, which rolls the whole
       // checkout back — including the orders already written above.

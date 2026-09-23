@@ -1,5 +1,6 @@
-import { Button } from "@occasion/ui";
+import Link from "next/link";
 import { formatMoney, type EventPayments } from "@occasion/core";
+import { checkoutHref } from "./slot-list";
 
 /**
  * What has been taken and what is coming, lines 923–931.
@@ -24,14 +25,19 @@ const dayFormat = new Intl.DateTimeFormat("en-CA", {
 });
 
 export function PaymentsPanel({
+  eventId,
   payments,
   currency,
   inPlan,
+  vendors,
 }: {
+  eventId: string;
   payments: EventPayments;
   currency: string;
   /** How many slots are chosen and not yet bought. */
   inPlan: number;
+  /** The businesses those slots belong to, one checkout each. */
+  vendors: ReadonlyArray<{ vendorId: string; vendorName: string }>;
 }) {
   return (
     <section className="rounded-panel bg-role p-5 text-surface" aria-labelledby="payments-heading">
@@ -80,22 +86,33 @@ export function PaymentsPanel({
         </p>
       ) : null}
 
-      {inPlan > 0 ? (
-        // `primary`, even though the prototype draws this one light on the
-        // green (line 930): every other variant is *faded* when disabled, and
-        // a faded label on this fill is well under the contrast floor. The
-        // primary variant is the one with a vetted disabled colour pair.
-        <Button
-          intent="primary"
-          disabled
-          title="Checkout arrives with the payment screens."
-          className="w-full justify-center rounded-card"
+      {/*
+        One button per business, because an order is a booking with one of them
+        and the prototype's single control (line 930) draws a cart that has
+        exactly one. Two businesses in plan is two bookings, and a control that
+        said "Check out 3 items" while starting one of them would be lying
+        about which three.
+      */}
+      {vendors.map((vendor) => (
+        <Link
+          key={vendor.vendorId}
+          href={checkoutHref(eventId, vendor.vendorId)}
+          // `primary`, even though the prototype draws this one light on the
+          // green (line 930): every other variant is *faded* when its state
+          // changes, and a faded label on this fill is well under the contrast
+          // floor. The primary variant is the one with a vetted colour pair.
+          className="oc-button oc-button--primary oc-button--md mb-2 w-full justify-center rounded-card no-underline"
         >
-          Check out {inPlan} {inPlan === 1 ? "item" : "items"} in plan
-        </Button>
-      ) : null}
+          Check out {vendors.length === 1 ? countLabel(inPlan) : vendor.vendorName}
+        </Link>
+      ))}
     </section>
   );
+}
+
+/** "3 items in plan", line 930. */
+function countLabel(inPlan: number): string {
+  return `${inPlan} ${inPlan === 1 ? "item" : "items"} in plan`;
 }
 
 function Line({ label, value, note }: { label: string; value: string; note?: string }) {

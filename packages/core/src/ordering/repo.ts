@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   capacityBlocks,
   checkouts,
+  eventItems,
   events,
   jobs,
   orderItems,
@@ -560,6 +561,44 @@ const ORDER_JOB_TYPES = [
   "balance_grace_expiry",
   "auto_complete_order",
 ] as const satisfies readonly ScheduledJobType[];
+
+/**
+ * Points the event's slots at the order that was placed from them.
+ *
+ * Written in the checkout's own transaction, because this is what makes the
+ * planner notice a booking at all: the slot's state is derived from the order
+ * it names, so a slot that names nothing still reads `In plan` after the
+ * deposit has been taken.
+ *
+ * Matched on the service rather than on the slot id, because the checkout
+ * request names services — the customer chose the listing, and which category
+ * slot it sits in is the planner's arrangement. Slots already naming an older
+ * order are repointed: the column is provenance for *this* slot, and a
+ * cancelled booking that has been replaced is not what the row should still
+ * be about.
+ *
+ * Answers how many slots it claimed, which is zero for a booking made from
+ * somewhere other than a plan.
+ */
+export async function linkEventItems(
+  db: DbExecutor,
+  input: { orderId: string; eventId: string; serviceIds: readonly string[]; now: Date },
+): Promise<number> {
+  if (input.serviceIds.length === 0) return 0;
+
+  const linked = await db
+    .update(eventItems)
+    .set({ orderId: input.orderId, updatedAt: input.now })
+    .where(
+      and(
+        eq(eventItems.eventId, input.eventId),
+        inArray(eventItems.serviceId, [...input.serviceIds]),
+      ),
+    )
+    .returning({ id: eventItems.id });
+
+  return linked.length;
+}
 
 /** Opens a cart. The draft is kept so an abandoned one stays explainable. */
 export async function insertCheckout(

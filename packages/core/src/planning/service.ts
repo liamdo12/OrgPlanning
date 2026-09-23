@@ -71,10 +71,14 @@ export type PlanItem = {
   serviceName: string | null;
   servicePackageId: string | null;
   servicePackageName: string | null;
+  /** Who would be booked. An order belongs to one vendor, so a checkout does. */
+  vendorId: string | null;
   vendorName: string | null;
   quantity: number;
   arrivalTime: string | null;
   notes: string | null;
+  /** The booking placed from this slot, so the row can link to it. */
+  orderId: string | null;
   orderReference: string | null;
 };
 
@@ -617,10 +621,12 @@ function present(row: repo.ItemRow): PlanItem {
     serviceName: row.serviceName,
     servicePackageId: row.servicePackageId,
     servicePackageName: row.servicePackageName,
+    vendorId: row.vendorId,
     vendorName: row.vendorName,
     quantity: row.quantity,
     arrivalTime: row.arrivalTime,
     notes: row.notes,
+    orderId: row.orderId,
     orderReference: row.orderReference,
   };
 }
