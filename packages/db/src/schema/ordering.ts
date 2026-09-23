@@ -78,6 +78,25 @@ export const orders = app.table(
     /** When an untouched fulfilled order completes itself. */
     autoCompleteAt: timestamp("auto_complete_at", { withTimezone: true }),
 
+    /**
+     * What the customer was shown when they consented, and when.
+     *
+     * The columns above are what the platform will charge; these are what the
+     * person agreed to. They are written in the same transaction and from the
+     * same computation, so an order where they differ is impossible — which is
+     * the point: the comparison happens *before* the row exists, and a mismatch
+     * aborts the checkout instead of recording a consent nobody gave.
+     *
+     * Null on every order written before consent was recorded. Nothing
+     * backfills them, because a fabricated agreement is worse than an absent
+     * one.
+     */
+    agreedAt: timestamp("agreed_at", { withTimezone: true }),
+    agreedTotal: money("agreed_total"),
+    agreedDepositAmount: money("agreed_deposit_amount"),
+    agreedBalanceAmount: money("agreed_balance_amount"),
+    agreedBalanceDueAt: timestamp("agreed_balance_due_at", { withTimezone: true }),
+
     fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
