@@ -40,6 +40,8 @@ const DRAFT_SLUG = "photo-booth-3h";
 const PENDING_VENDOR_SLUG = "string-quartet-two-sets";
 /** Published listing, vendor blocked. */
 const BLOCKED_VENDOR_SLUG = "lounge-furniture-package";
+/** Listable, and deliberately absent from the shortlist the seed writes. */
+const UNSAVED_SLUG = "three-tier-celebration-cake";
 
 describe.skipIf(!url)("catalogue discovery", () => {
   const dbUrl = url as string;
@@ -438,11 +440,14 @@ describe.skipIf(!url)("catalogue discovery", () => {
     });
 
     it("says whether the caller saved it, and false for a stranger", async () => {
-      const serviceId = await serviceIdOf(LISTABLE_SLUG);
+      // A listing the seed does not shortlist, so the toggle below is a save.
+      // Against one the seed already saved it would be an *un*save, and the
+      // assertion would read `true` from the row it had just removed.
+      const serviceId = await serviceIdOf(UNSAVED_SLUG);
       await toggleSaved(ctx, sarah, serviceId);
 
-      expect((await getServiceDetail(ctx, sarah, LISTABLE_SLUG)).saved).toBe(true);
-      expect((await getServiceDetail(ctx, ANONYMOUS, LISTABLE_SLUG)).saved).toBe(false);
+      expect((await getServiceDetail(ctx, sarah, UNSAVED_SLUG)).saved).toBe(true);
+      expect((await getServiceDetail(ctx, ANONYMOUS, UNSAVED_SLUG)).saved).toBe(false);
     });
 
     it("carries the terms the listing is sold under", async () => {
@@ -488,13 +493,21 @@ describe.skipIf(!url)("catalogue discovery", () => {
 
   describe("the shortlist", () => {
     it("saves, then unsaves, on the one control", async () => {
-      const serviceId = await serviceIdOf(LISTABLE_SLUG);
+      // Measured against whatever the caller had already shortlisted rather
+      // than against an empty list. A saved listing is the ordinary state of
+      // this screen, and the claim is that one control adds exactly one row and
+      // takes exactly that row back — which an equality against `[]` only
+      // states while the seed happens to save nothing.
+      const serviceId = await serviceIdOf(UNSAVED_SLUG);
+      const before = (await listSaved(ctx, sarah)).map((row) => row.id);
+      expect(before).not.toContain(serviceId);
 
       expect(await toggleSaved(ctx, sarah, serviceId)).toEqual({ serviceId, saved: true });
-      expect((await listSaved(ctx, sarah)).map((row) => row.id)).toEqual([serviceId]);
+      // Newest first, so the one just saved leads the ones saved before it.
+      expect((await listSaved(ctx, sarah)).map((row) => row.id)).toEqual([serviceId, ...before]);
 
       expect(await toggleSaved(ctx, sarah, serviceId)).toEqual({ serviceId, saved: false });
-      expect(await listSaved(ctx, sarah)).toEqual([]);
+      expect((await listSaved(ctx, sarah)).map((row) => row.id)).toEqual(before);
     });
 
     it("refuses to save a draft", async () => {
@@ -505,7 +518,7 @@ describe.skipIf(!url)("catalogue discovery", () => {
 
     it("drops a saved listing whose business is suspended, and keeps the row", async () => {
       const serviceId = await serviceIdOf(LISTABLE_SLUG);
-      await toggleSaved(ctx, sarah, serviceId);
+      expect((await listSaved(ctx, sarah)).map((row) => row.id)).toContain(serviceId);
 
       const [vendor] = await sql<{ id: string }[]>`
         select id from app.planning_org_vendors where slug = 'bloom-and-co'
@@ -514,10 +527,15 @@ describe.skipIf(!url)("catalogue discovery", () => {
 
       // Off the screen, because opening it would 404 — but still in the table,
       // so reinstating the business gives the shortlist back rather than having
-      // quietly emptied it.
-      expect(await listSaved(ctx, sarah)).toEqual([]);
+      // quietly emptied it. The rest of the shortlist is untouched: suspending
+      // one business does not empty somebody's saved list.
+      const after = await listSaved(ctx, sarah);
+      expect(after.map((row) => row.id)).not.toContain(serviceId);
+      expect(after.length).toBeGreaterThan(0);
+
       const [saved] = await sql<{ count: string }[]>`
         select count(*)::text as count from app.planning_org_saved_services
+        where user_id = ${sarahId} and service_id = ${serviceId}
       `;
       expect(Number(saved?.count)).toBe(1);
     });

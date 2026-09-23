@@ -343,3 +343,18 @@ export const BLACKOUTS = [
   { vendorKey: "wildwood", eventKey: "sarahs-30th", reason: "Closed — studio inventory" },
   { vendorKey: "northside", eventKey: "office-social", reason: "Closed — crew at a wedding" },
 ] as const;
+
+/**
+ * The listings a customer has shortlisted. Source: the prototype's own saved
+ * set, line 1882 — the bouquets and the coverage, both hearted.
+ *
+ * `savedDaysBeforeAnchor` is written rather than left to the column default.
+ * Every row in one seed lands in a single transaction, so defaulted timestamps
+ * are all equal and "newest first" degenerates into the tiebreak on the
+ * service's id — an ordering no test could assert and no screen could be shown
+ * to have got right.
+ */
+export const SHORTLIST = [
+  { userKey: "sarah", serviceKey: "f1", savedDaysBeforeAnchor: 9 },
+  { userKey: "sarah", serviceKey: "p1", savedDaysBeforeAnchor: 2 },
+] as const;

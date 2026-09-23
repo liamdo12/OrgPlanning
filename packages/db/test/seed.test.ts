@@ -394,6 +394,32 @@ describe.skipIf(!url)("seed", () => {
     expect(free.length).toBeGreaterThan(0);
   });
 
+  it("shortlists only listings the shortlist can show, newest first", async () => {
+    // The screen filters the saved set the way the catalogue is filtered, so a
+    // shortlisted draft — or one whose business is not approved — is a saved
+    // row that shows nothing and reads as an empty screen.
+    const rows = await sql<{ slug: string; listable: boolean; saved_at: Date }[]>`
+      select s.slug,
+             (v.status = 'approved' and s.published_at is not null) as listable,
+             sv.created_at as saved_at
+      from app.planning_org_saved_services sv
+      join app.planning_org_services s on s.id = sv.service_id
+      join app.planning_org_vendors v on v.id = s.vendor_id
+    `;
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => !row.listable)).toEqual([]);
+
+    // Distinct instants, offsets from the anchor rather than the column
+    // default. Saved in one transaction they would all be equal, and "newest
+    // first" would fall through to the tiebreak on the service id.
+    const instants = new Set(rows.map((row) => row.saved_at.getTime()));
+    expect(instants.size).toBe(rows.length);
+    for (const row of rows) {
+      expect(row.saved_at.getTime()).toBeLessThan(anchorAt.getTime());
+    }
+  });
+
   it("seeds at least one open quote request so the expiry job has work", async () => {
     const [row] = await sql<{ count: string }[]>`
       select count(*)::text as count from app.planning_org_quote_requests where state = 'open'

@@ -2,7 +2,7 @@ import { inArray, sql } from "drizzle-orm";
 import type { Db } from "../../client.js";
 import * as s from "../../schema/index.js";
 import { seedId } from "../ids.js";
-import { BLACKOUTS, SERVICE_MEDIA, SERVICES } from "./catalog.js";
+import { BLACKOUTS, SERVICE_MEDIA, SERVICES, SHORTLIST } from "./catalog.js";
 
 /**
  * The rows the customer's own screens read.
@@ -144,15 +144,40 @@ async function writeBlackoutDates(db: Db): Promise<number> {
   return rows.length;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The shortlist, with the instants the screen orders it by. */
+async function writeShortlist(db: Db, anchorAt: Date): Promise<number> {
+  const rows = SHORTLIST.map((saved) => ({
+    id: seedId(`saved:${saved.userKey}:${saved.serviceKey}`),
+    userId: seedId(`user:${saved.userKey}`),
+    serviceId: seedId(`service:${saved.serviceKey}`),
+    createdAt: new Date(anchorAt.getTime() - saved.savedDaysBeforeAnchor * DAY_MS),
+  }));
+
+  if (rows.length === 0) return 0;
+
+  await db
+    .insert(s.savedServices)
+    .values(rows)
+    .onConflictDoUpdate({
+      target: s.savedServices.id,
+      set: { createdAt: sql`excluded.created_at` },
+    });
+
+  return rows.length;
+}
+
 /**
  * Everything the customer's screens read that earlier passes left empty, in one
  * call so `seed/index.ts` gains a line rather than forty.
  *
  * Keys are table names.
  */
-export async function seedCustomerRows(db: Db, _anchorAt: Date): Promise<Record<string, number>> {
+export async function seedCustomerRows(db: Db, anchorAt: Date): Promise<Record<string, number>> {
   return {
     service_media: await writeServiceMedia(db),
     blackout_dates: await writeBlackoutDates(db),
+    saved_services: await writeShortlist(db, anchorAt),
   };
 }
