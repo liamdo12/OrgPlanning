@@ -101,6 +101,10 @@ const ROUTE_GATES: Readonly<Record<string, string>> = {
   "src/app/api/webhooks/stripe/route.ts": "ctx.stripe.parseWebhook",
   "src/app/api/webhooks/email/route.ts": "timingSafeEqual",
   "src/app/(auth)/auth-callback/route.ts": "verifyOtp",
+  // The one handler with an ordinary session behind it. It serves a customer
+  // their own booking as a calendar file, so the gate is the customer gate and
+  // the order's own read policy behind it.
+  "src/app/(customer)/orders/[orderId]/calendar/route.ts": "requireCustomerActor()",
 };
 
 describe("route handlers", () => {

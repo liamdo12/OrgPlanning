@@ -1,5 +1,6 @@
-import { Button } from "@occasion/ui";
+import Link from "next/link";
 import { formatMoney, type EventPayments } from "@occasion/core";
+import { checkoutHref } from "./slot-list";
 
 /**
  * What has been taken and what is coming, lines 923–931.
@@ -11,11 +12,12 @@ import { formatMoney, type EventPayments } from "@occasion/core";
  * the panel is a render over what the planner already loaded, so a provider
  * timeout cannot take the hub down with it.
  *
- * **No card-on-file line.** The prototype draws "•••• 4242" (line 927) and
- * there is no column behind it: the schema states out loud that no card data
- * is stored anywhere in it. The two ways to draw that line today are a live
- * provider call per order on a screen that makes one domain call, or four
- * digits typed in — a fake. It arrives with the column.
+ * **The card-on-file line is read, not asked for.** The prototype draws
+ * "•••• 4242" (line 927); the four digits behind it are recorded when the
+ * deposit settles and come back on the same domain call as everything else. A
+ * live provider call per order would put a Stripe timeout on this screen, and
+ * typed-in digits would be a fake. When no charge is coming there is no card to
+ * name, and the line is not drawn.
  */
 
 const dayFormat = new Intl.DateTimeFormat("en-CA", {
@@ -24,14 +26,19 @@ const dayFormat = new Intl.DateTimeFormat("en-CA", {
 });
 
 export function PaymentsPanel({
+  eventId,
   payments,
   currency,
   inPlan,
+  vendors,
 }: {
+  eventId: string;
   payments: EventPayments;
   currency: string;
   /** How many slots are chosen and not yet bought. */
   inPlan: number;
+  /** The businesses those slots belong to, one checkout each. */
+  vendors: ReadonlyArray<{ vendorId: string; vendorName: string }>;
 }) {
   return (
     <section className="rounded-panel bg-role p-5 text-surface" aria-labelledby="payments-heading">
@@ -64,6 +71,10 @@ export function PaymentsPanel({
             value={formatMoney(payments.nextCharge, currency)}
           />
         )}
+
+        {payments.nextChargeCard ? (
+          <Line label="Card on file" value={`•••• ${payments.nextChargeCard}`} />
+        ) : null}
       </dl>
 
       {/*
@@ -80,22 +91,33 @@ export function PaymentsPanel({
         </p>
       ) : null}
 
-      {inPlan > 0 ? (
-        // `primary`, even though the prototype draws this one light on the
-        // green (line 930): every other variant is *faded* when disabled, and
-        // a faded label on this fill is well under the contrast floor. The
-        // primary variant is the one with a vetted disabled colour pair.
-        <Button
-          intent="primary"
-          disabled
-          title="Checkout arrives with the payment screens."
-          className="w-full justify-center rounded-card"
+      {/*
+        One button per business, because an order is a booking with one of them
+        and the prototype's single control (line 930) draws a cart that has
+        exactly one. Two businesses in plan is two bookings, and a control that
+        said "Check out 3 items" while starting one of them would be lying
+        about which three.
+      */}
+      {vendors.map((vendor) => (
+        <Link
+          key={vendor.vendorId}
+          href={checkoutHref(eventId, vendor.vendorId)}
+          // `primary`, even though the prototype draws this one light on the
+          // green (line 930): every other variant is *faded* when its state
+          // changes, and a faded label on this fill is well under the contrast
+          // floor. The primary variant is the one with a vetted colour pair.
+          className="oc-button oc-button--primary oc-button--md mb-2 w-full justify-center rounded-card no-underline"
         >
-          Check out {inPlan} {inPlan === 1 ? "item" : "items"} in plan
-        </Button>
-      ) : null}
+          Check out {vendors.length === 1 ? countLabel(inPlan) : vendor.vendorName}
+        </Link>
+      ))}
     </section>
   );
+}
+
+/** "3 items in plan", line 930. */
+function countLabel(inPlan: number): string {
+  return `${inPlan} ${inPlan === 1 ? "item" : "items"} in plan`;
 }
 
 function Line({ label, value, note }: { label: string; value: string; note?: string }) {

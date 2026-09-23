@@ -1,5 +1,5 @@
 import { asc, eq, sql } from "drizzle-orm";
-import { events, orderItems, orders, vendors } from "@occasion/db/schema";
+import { events, orderItems, orders, policyTemplates, vendors } from "@occasion/db/schema";
 import type { DbExecutor } from "../context.js";
 import { formatMoney } from "../payments/money.js";
 import { DEFAULT_TIMEZONE } from "../ordering/schedule.js";
@@ -68,6 +68,7 @@ export async function orderEmailFacts(
       vendorArea: vendors.baseArea,
       eventName: events.name,
       eventDate: events.eventDate,
+      policyName: policyTemplates.name,
       // The first line of the order, which is what a customer calls the thing
       // they booked. The description is the copy taken at purchase, so it still
       // reads correctly after the catalogue has moved on.
@@ -78,6 +79,7 @@ export async function orderEmailFacts(
     .from(orders)
     .leftJoin(vendors, eq(vendors.id, orders.vendorId))
     .leftJoin(events, eq(events.id, orders.eventId))
+    .leftJoin(policyTemplates, eq(policyTemplates.id, orders.policyTemplateId))
     .where(eq(orders.id, orderId))
     .orderBy(asc(orders.id))
     .limit(1);
@@ -97,6 +99,12 @@ export async function orderEmailFacts(
     // missing value here would refuse the send — which would roll back the
     // cancellation, because the message is queued in its transaction.
     refund_amount: formatMoney(0n, row.currency),
+    // Always set, like every other field here. An order carries no template
+    // when its lines were sold under none — the platform's own deposit rate
+    // then applies — and a missing value would refuse the render *inside the
+    // transaction moving the order*, so the deposit would be captured at the
+    // provider and the booking would stay `pending_payment` for ever.
+    policy_name: row.policyName ?? "standard",
   };
 
   // `event_date` is a calendar date, not an instant: an event is on a day in

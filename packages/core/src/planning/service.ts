@@ -1,6 +1,6 @@
 import { record } from "../audit/service.js";
 import type { CoreContext, DbExecutor } from "../context.js";
-import { NotFoundError, ValidationError } from "../errors.js";
+import { BookingLiveError, NotFoundError, ValidationError } from "../errors.js";
 import { isAdmin, type Actor } from "../identity/actor.js";
 import { assertCanActOnEvent } from "../identity/policies.js";
 import { requireUser } from "../identity/service.js";
@@ -71,10 +71,14 @@ export type PlanItem = {
   serviceName: string | null;
   servicePackageId: string | null;
   servicePackageName: string | null;
+  /** Who would be booked. An order belongs to one vendor, so a checkout does. */
+  vendorId: string | null;
   vendorName: string | null;
   quantity: number;
   arrivalTime: string | null;
   notes: string | null;
+  /** The booking placed from this slot, so the row can link to it. */
+  orderId: string | null;
   orderReference: string | null;
 };
 
@@ -94,6 +98,15 @@ export type EventPayments = {
    * declined, and the money is owed now.
    */
   nextChargeStatus: repo.NextChargeStatus | null;
+  /**
+   * The card that charge will be taken on, as its last four digits.
+   *
+   * Recorded when the deposit settled rather than asked of the provider here: a
+   * live retrieve per order would put a provider timeout on a screen that is
+   * one domain call, and the digits do not change — a replaced card is a new
+   * attempt with a new intent.
+   */
+  nextChargeCard: string | null;
 };
 
 /**
@@ -560,9 +573,9 @@ async function refuseWhileBooked(db: DbExecutor, eventId: string, attempt: strin
   const live = orders.find((order) => !isTerminal(order.state));
 
   if (live) {
-    throw new ValidationError(
+    throw new BookingLiveError(
       `${attempt} after cancelling ${live.reference}. A booking on this event is still live.`,
-      { eventDate: "booked", reference: live.reference },
+      live.reference,
     );
   }
 }
@@ -617,10 +630,12 @@ function present(row: repo.ItemRow): PlanItem {
     serviceName: row.serviceName,
     servicePackageId: row.servicePackageId,
     servicePackageName: row.servicePackageName,
+    vendorId: row.vendorId,
     vendorName: row.vendorName,
     quantity: row.quantity,
     arrivalTime: row.arrivalTime,
     notes: row.notes,
+    orderId: row.orderId,
     orderReference: row.orderReference,
   };
 }

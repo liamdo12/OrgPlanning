@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppBackground, GlassChrome } from "@occasion/ui";
+import type { CustomerOrderRow } from "@occasion/core";
 import { AccountMenu } from "./account-menu";
+import { BookedStrip } from "./booked-strip";
 import { CustomerTabBar, CustomerTabs } from "./customer-tabs";
 import { EventSwitcher } from "./event-switcher";
 import { SearchPill } from "./search-pill";
@@ -13,20 +15,22 @@ import { SearchPill } from "./search-pill";
  * that need the current URL (the two navigations), local open/closed state
  * (the search panel, the two menus) or both. Nothing here fetches.
  *
- * Structure follows the prototype's header, lines 217–458: a sticky blurred
+ * Structure follows the prototype's header, lines 217–465: a sticky blurred
  * bar carrying the brand mark, the search control, the event chip and the
- * utility buttons, the tab row on its own line below, and the content in a
- * 1240px column. On a phone the tabs become the bottom bar.
+ * utility buttons, the tab row on its own line below, the booked-services strip
+ * under that, and the content in a 1240px column. On a phone the tabs become
+ * the bottom bar.
  *
- * The booked-services strip (line 465) is not here. It needs a read of the
- * customer's own orders, which does not exist yet, and a strip filled with
- * anything else would be three rows of fiction in the chrome of every screen.
+ * The strip (line 465) draws nothing until there is something booked. Three
+ * real rows or none — a placeholder there would be fiction in the chrome of
+ * every screen.
  */
 export function CustomerShell({
   email,
   events,
   activeEventId,
   today,
+  booked,
   children,
 }: {
   /** Absent when nobody is signed in, which is what the shell switches on. */
@@ -35,6 +39,8 @@ export function CustomerShell({
   activeEventId: string | undefined;
   /** Today, from the domain clock, so the date picker follows a demo override. */
   today: string;
+  /** The most recent bookings, for the strip. Empty draws nothing. */
+  booked: readonly CustomerOrderRow[];
   children: ReactNode;
 }) {
   const signedIn = email !== undefined;
@@ -107,6 +113,9 @@ export function CustomerShell({
         <div className="mx-auto max-w-[1240px] px-[clamp(14px,3.5vw,32px)]">
           <CustomerTabs signedIn={signedIn} />
         </div>
+
+        {/* Line 465, under the tabs and inside the same blurred bar. */}
+        <BookedStrip orders={booked} />
       </GlassChrome>
 
       {/*

@@ -188,7 +188,13 @@ export function createStripe(secretKey: string, webhookSecret: string): StripePo
     },
 
     async retrievePaymentIntent(id) {
-      const intent = await stripe.paymentIntents.retrieve(id).catch(missingToNull);
+      // Expanded, because `payment_method` comes back as a bare id otherwise
+      // and the card's last four digits live on the object. Without this,
+      // `cardLast4` is null on every real retrieve — silently, since the
+      // in-memory fake carries the whole object and cannot reproduce it.
+      const intent = await stripe.paymentIntents
+        .retrieve(id, { expand: ["payment_method"] })
+        .catch(missingToNull);
       return intent ? toPaymentIntent(intent) : null;
     },
 

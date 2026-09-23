@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { StatusBadge, type Column } from "@occasion/ui";
 import type { AdminOrderListItem } from "@occasion/core";
-import { toneFor } from "./state-tone";
+import { toneFor } from "../../../../../lib/order-state-tone";
 
 /**
  * One column spec, two layouts.

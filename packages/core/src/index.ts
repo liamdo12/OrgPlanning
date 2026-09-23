@@ -23,13 +23,16 @@ export type {
 } from "./ports.js";
 
 export {
+  AgreementMismatchError,
   AppError,
+  BookingLiveError,
   CapacityConflictError,
   ForbiddenError,
   NotFoundError,
   RateLimitedError,
   UnauthenticatedError,
   ValidationError,
+  type AgreedFigures,
 } from "./errors.js";
 
 export {
@@ -242,6 +245,18 @@ export {
   type OrderDetail,
   type OrderingPolicy,
 } from "./ordering/service.js";
+
+export { type CheckoutExpectation } from "./ordering/agreement.js";
+
+export {
+  extendCheckoutWindow,
+  getOrderForCustomer,
+  listOrdersForCustomer,
+  type CustomerOrderDetail,
+  type CustomerOrderRow,
+  type CustomerPayment,
+  type CustomerRefund,
+} from "./ordering/customer-service.js";
 
 export {
   allocate,

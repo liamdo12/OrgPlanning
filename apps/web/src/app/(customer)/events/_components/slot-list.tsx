@@ -18,18 +18,20 @@ import { removeFromPlanAction } from "../actions";
  * count is not a failure: it is a countdown, and it is the only thing on this
  * screen that says decide now.
  *
- * **Six of the eight actions have nowhere to go yet.** Four belong to the
- * comparison and messaging screens, which are a later plan; checkout and a
- * booking's own screen arrive with the payment screens and the orders list.
- * Each is a disabled control with the reason on it, never a link: a row action
- * that leads to a 404 is worse than one that says it is not ready, and hiding
- * them would misrepresent what the product does — the quote slot is real data
- * a customer can see and would reasonably expect to act on.
+ * **Four of the eight actions have nowhere to go yet**, all of them the
+ * comparison and messaging screens, which are a later plan. Each is a disabled
+ * control with the reason on it, never a link: a row action that leads to a 404
+ * is worse than one that says it is not ready, and hiding them would
+ * misrepresent what the product does — the quote slot is real data a customer
+ * can see and would reasonably expect to act on.
+ *
+ * **Checkout is per vendor**, because an order is a booking with one business.
+ * The control carries the event and the vendor; the checkout screen derives
+ * what it is pricing from the event's own slots rather than from either, so
+ * neither is a figure or a quantity a client gets to name.
  */
 
 const PLAN_B = "Comparing and messaging vendors is planned, and is not built yet.";
-const CHECKOUT_SOON = "Checkout arrives with the payment screens.";
-const ORDER_SOON = "A booking's own screen arrives with your orders list.";
 
 export function SlotList({ eventId, items }: { eventId: string; items: readonly PlanItem[] }) {
   return (
@@ -120,7 +122,17 @@ function actions(eventId: string, item: PlanItem) {
       return (
         <>
           <Deferred label="Message" reason={PLAN_B} />
-          <Deferred label="View order" reason={ORDER_SOON} intent="primary" />
+          {/* A slot can read `Booked` from a quote that was accepted rather
+              than from an order of its own, so the link is drawn only when
+              there is a booking to open. */}
+          {item.orderId ? (
+            <Link
+              href={`/orders/${item.orderId}`}
+              className="oc-button oc-button--primary oc-button--sm"
+            >
+              View order
+            </Link>
+          ) : null}
         </>
       );
 
@@ -142,7 +154,14 @@ function actions(eventId: string, item: PlanItem) {
               Remove
             </Button>
           </form>
-          <Deferred label="Check out" reason={CHECKOUT_SOON} intent="primary" />
+          {item.vendorId ? (
+            <Link
+              href={checkoutHref(eventId, item.vendorId)}
+              className="oc-button oc-button--primary oc-button--sm"
+            >
+              Check out
+            </Link>
+          ) : null}
         </>
       );
 
@@ -181,6 +200,36 @@ function Deferred({
 /** Exported for the panel, which counts the same slots the rows draw. */
 export function inPlanCount(items: readonly PlanItem[]): number {
   return items.filter((item) => item.state.kind === "in_plan").length;
+}
+
+/**
+ * Where a slot's checkout lives.
+ *
+ * One expression, used by the row and by the panel's own button, so the two
+ * cannot come to point at different screens.
+ */
+export function checkoutHref(eventId: string, vendorId: string): string {
+  return `/checkout?event=${encodeURIComponent(eventId)}&vendor=${encodeURIComponent(vendorId)}`;
+}
+
+/**
+ * The businesses whose in-plan slots can be checked out, in the planner's order.
+ *
+ * A cart is one vendor's items, so the panel's single button is only honest
+ * while one business is waiting. Two is two bookings, two agreements and two
+ * cards taken, and the row control is where that is done.
+ */
+export function checkoutVendors(
+  items: readonly PlanItem[],
+): Array<{ vendorId: string; vendorName: string }> {
+  const seen = new Map<string, string>();
+
+  for (const item of items) {
+    if (item.state.kind !== "in_plan" || !item.vendorId) continue;
+    if (!seen.has(item.vendorId)) seen.set(item.vendorId, item.vendorName ?? "this business");
+  }
+
+  return [...seen].map(([vendorId, vendorName]) => ({ vendorId, vendorName }));
 }
 
 /** The categories a vendor is booked into, in the order the planner lists them. */

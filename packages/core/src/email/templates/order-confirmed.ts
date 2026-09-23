@@ -14,7 +14,14 @@ export const orderConfirmed: EmailTemplate = {
     "",
     "Thanks for booking {{service_name}} for {{event_name}} on {{event_date}}.",
     "",
-    "Your deposit of {{deposit_amount}} is paid and the balance of {{balance_amount}} will be charged on {{balance_date}}. You can cancel free of charge for the next 48 hours.",
+    "Your deposit of {{deposit_amount}} is paid and the balance of {{balance_amount}} will be charged on {{balance_date}}.",
+    "",
+    // The free-cancellation window is the policy's, not the platform's: it is
+    // 168 hours under `flexible` and none at all under `strict`. So the message
+    // names the policy rather than quoting an hour count that would be wrong
+    // for two templates out of three, and the order's own screen carries the
+    // date it actually closes on.
+    "This booking is made under the {{policy_name}} cancellation policy. Your order page shows exactly how long free cancellation runs.",
     "",
     "Order {{order_reference}}.",
     "",
@@ -29,6 +36,7 @@ export const orderConfirmed: EmailTemplate = {
     "deposit_amount",
     "balance_amount",
     "balance_date",
+    "policy_name",
     "order_reference",
     "brand_name",
   ],

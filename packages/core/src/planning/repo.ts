@@ -239,6 +239,14 @@ export type ItemRow = {
   serviceName: string | null;
   servicePackageId: string | null;
   servicePackageName: string | null;
+  /**
+   * The business behind the chosen service.
+   *
+   * Carried because an order belongs to one vendor, so a checkout is started
+   * per vendor and the planner is where that control lives. One more column off
+   * a join the slot list already makes.
+   */
+  vendorId: string | null;
   vendorName: string | null;
   quantity: number;
   arrivalTime: string | null;
@@ -288,6 +296,7 @@ export async function listItems(db: DbExecutor, eventId: string): Promise<ItemRo
       serviceName: services.title,
       servicePackageId: eventItems.servicePackageId,
       servicePackageName: servicePackages.name,
+      vendorId: services.vendorId,
       vendorName: vendors.name,
       quantity: eventItems.quantity,
       arrivalTime: eventItems.arrivalTime,
@@ -491,6 +500,16 @@ export type PaymentSummaryRow = {
   nextChargeAt: Date | null;
   nextCharge: bigint;
   nextChargeStatus: NextChargeStatus | null;
+  /**
+   * The last four digits of the card that next charge will be taken on.
+   *
+   * Read off the settled deposit for that same order, because that is the card
+   * the off-session charge actually uses. Null when no charge is coming, and
+   * null on a booking whose deposit settled before the digits were recorded —
+   * both are ordinary, and the screen says "the card the deposit was taken on"
+   * rather than inventing four numbers.
+   */
+  nextChargeCard: string | null;
 };
 
 /**
@@ -516,7 +535,33 @@ export async function paymentSummary(db: DbExecutor, eventId: string): Promise<P
     .where(and(eq(orders.eventId, eventId), eq(payments.state, "succeeded")));
 
   const [next] = await db
-    .select({ due: orders.balanceDueAt, amount: orders.balanceAmount, state: orders.state })
+    .select({
+      due: orders.balanceDueAt,
+      amount: orders.balanceAmount,
+      state: orders.state,
+      /**
+       * A correlated subquery rather than a second round trip: this screen is
+       * one domain call per render, and a join would multiply the order by its
+       * payments. `refunded` counts, because a partly refunded booking is still
+       * charged on the card its deposit was taken on.
+       *
+       * **The outer column is written through the table, not through the
+       * column.** A column object inside a fragment is rendered *unqualified*
+       * when the query it sits in has no joins — so `${orders.id}` becomes a
+       * bare `"id"`, which inside this subquery binds to `p.id` instead. That
+       * compares a payment's own id to an order id, matches nothing, and
+       * answers null for every card there is: a silent wrong answer, with no
+       * error anywhere and a green query plan.
+       */
+      card: sql<string | null>`(
+        select p.card_last4 from ${payments} p
+        where p.order_id = ${orders}."id"
+          and p.state in ('succeeded', 'refunded')
+          and p.card_last4 is not null
+        order by p.succeeded_at desc nulls last
+        limit 1
+      )`,
+    })
     .from(orders)
     .where(
       and(
@@ -534,6 +579,7 @@ export async function paymentSummary(db: DbExecutor, eventId: string): Promise<P
     nextChargeAt: next?.due ?? null,
     nextCharge: next?.amount ?? 0n,
     nextChargeStatus: next ? (next.state === "action_required" ? "attention" : "scheduled") : null,
+    nextChargeCard: next?.card ?? null,
   };
 }
 

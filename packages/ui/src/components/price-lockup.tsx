@@ -46,23 +46,32 @@ export function PriceLockup({
   className?: string;
 }) {
   return (
-    <dl
-      className={cx("m-0 grid gap-[7px] border-t border-hairline pt-[14px] text-[14px]", className)}
-    >
-      {rows.map((row, index) => (
-        <Row key={index} row={row} />
-      ))}
+    <div className={cx("grid gap-[7px]", className)}>
+      <dl className="m-0 grid gap-[7px] border-t border-hairline pt-[14px] text-[14px]">
+        {rows.map((row, index) => (
+          <Row key={index} row={row} />
+        ))}
+      </dl>
 
       {group && group.length > 0 ? (
-        // A nested `<div>` inside a `<dl>` is what the spec allows for grouping,
-        // and the wash is the canvas's own sub-panel fill (line 1176).
-        <div className="mt-[7px] grid gap-[7px] rounded-card bg-glass-wash px-[13px] py-[11px]">
+        /*
+         * **A second list, not a nested one.** Each row is already a `<div>`
+         * wrapping its own `dt`/`dd` pair, which is the grouping HTML allows —
+         * but only one level of it. Putting the panel's rows inside a further
+         * `<div>` leaves their `dt`s two levels down, which is not a definition
+         * list at all: axe reports `definition-list` and `dlitem`, both
+         * serious, on the one screen here that takes money.
+         *
+         * The wash is the canvas's own sub-panel fill (line 1176), and it sits
+         * on the wrapper rather than inside the list.
+         */
+        <dl className="m-0 mt-[7px] grid gap-[7px] rounded-card bg-glass-wash px-[13px] py-[11px] text-[14px]">
           {group.map((row, index) => (
             <Row key={index} row={row} />
           ))}
-        </div>
+        </dl>
       ) : null}
-    </dl>
+    </div>
   );
 }
 

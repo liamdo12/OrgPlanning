@@ -1,5 +1,4 @@
 import { record } from "../audit/service.js";
-import * as catalog from "../catalog/repo.js";
 import type { CoreContext, DbExecutor } from "../context.js";
 import {
   CapacityConflictError,
@@ -15,8 +14,8 @@ import {
   type OrderParties,
 } from "../identity/policies.js";
 import { isAuthenticated } from "../identity/actor.js";
-import { computeOrderMoney } from "../payments/money.js";
-import { buildPaymentPlan } from "../payments/plan.js";
+import { assertAgreement, type CheckoutExpectation } from "./agreement.js";
+import { priceCart } from "./cart.js";
 import * as repo from "./repo.js";
 import { orderEmailFacts } from "../email/order-facts.js";
 import { queueTransactional } from "../email/service.js";
@@ -37,7 +36,7 @@ import {
   retiresPaymentLinks,
   type OrderState,
 } from "./transitions.js";
-import { retirePaymentLinks } from "../payments/repo.js";
+import { netCaptured, retirePaymentLinks } from "../payments/repo.js";
 import * as reference from "../reference/repo.js";
 
 /**
@@ -171,6 +170,20 @@ function isCapacityOverlap(error: unknown): boolean {
 export type CheckoutRequest = {
   eventId: string;
   lines: readonly CheckoutLine[];
+  /**
+   * The figures the screen displayed, so the transaction can refuse to charge
+   * anything else.
+   *
+   * Optional: a caller with nothing on screen — a test, a job — has consented
+   * to nothing and states nothing, and no agreement is recorded for it. When it
+   * is present the four figures are compared against what this transaction
+   * would actually charge, and a difference aborts the whole checkout.
+   *
+   * It is not an input to the price. Prices come from the catalogue; this only
+   * decides whether to go ahead, so "a checkout that accepted an amount would
+   * accept a smaller one" still holds.
+   */
+  expectation?: CheckoutExpectation | undefined;
 };
 
 export type CheckoutResult = {
@@ -203,6 +216,11 @@ export type CheckoutResult = {
  * **The date is held before the money is taken.** The capacity block goes in
  * inside this transaction; if the exclusion constraint refuses it, nobody has
  * been charged, because nothing has been charged yet.
+ *
+ * And one rule about coming back: **the customer's own unfinished attempt at
+ * the same cart is resumed, not repeated.** The capacity constraint does not
+ * know whose order holds a date, so without this a customer who closed the tab
+ * is refused their own hold for thirty minutes with no way out.
  */
 export async function createCheckout(
   ctx: CoreContext,
@@ -271,59 +289,25 @@ export async function createCheckout(
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
     const eventEnd = eventEndInstant(event.eventDate, timeZone);
 
-    const priced = await catalog.priceServices(
-      tx,
-      request.lines.map((line) => line.serviceId),
-    );
-    const packages = await catalog.pricePackages(
-      tx,
-      request.lines
-        .filter((line) => line.servicePackageId)
-        .map((line) => ({
-          serviceId: line.serviceId,
-          servicePackageId: line.servicePackageId as string,
-        })),
-    );
+    // The catalogue's prices, the service's own terms, the split and the
+    // payment plan — the same function a quote runs, so the figures a screen
+    // showed and the figures this transaction charges cannot be two
+    // implementations of one rule.
+    const carts = await priceCart(tx, request, {
+      pricing,
+      terms,
+      now,
+      eventStart,
+      timeZone,
+    });
 
-    // Grouped by vendor, because an order belongs to one.
-    const byVendor = new Map<string, Array<{ line: CheckoutLine; priced: catalog.PricedLine }>>();
-
-    for (const line of request.lines) {
-      const service = priced.get(line.serviceId);
-      // The same answer for "no such service" and "that vendor is not approved":
-      // a suspended business's catalogue must not become a way to learn it
-      // exists and has been suspended.
-      if (!service || !catalog.bookable(service)) {
-        throw new NotFoundError("That service cannot be booked.");
-      }
-
-      let description = service.description;
-      let unitPrice = service.unitPrice;
-
-      if (line.servicePackageId) {
-        const tier = packages.get(line.servicePackageId);
-        if (!tier) throw new NotFoundError("That service cannot be booked.");
-        description = `${service.description} · ${tier.name}`;
-        unitPrice = tier.unitPrice;
-      }
-
-      const group = byVendor.get(service.vendorId) ?? [];
-      group.push({ line, priced: { ...service, description, unitPrice } });
-      byVendor.set(service.vendorId, group);
-    }
-
-    // The terms, read from the policy each service is sold under rather than
-    // taken from the request. `flexible` is 10%, `moderate` 20%, `strict` 30%,
-    // and each carries its own free-cancellation window.
-    //
-    // One query per distinct template rather than one per line: a cart of six
-    // services under the same policy is six round trips otherwise.
-    const templates = new Map<string, repo.PolicyTerms>();
-    for (const templateId of new Set(
-      [...priced.values()].map((line) => line.policyTemplateId).filter((id) => id !== null),
-    )) {
-      const template = await repo.loadPolicyTemplate(tx, templateId);
-      if (template) templates.set(templateId, template);
+    // One expectation describes one booking. A cart spanning two vendors is two
+    // orders with two totals, and applying one set of figures to both would
+    // either refuse a legitimate checkout or approve a charge nobody saw.
+    if (request.expectation && carts.length !== 1) {
+      throw new ValidationError("This cart is more than one booking, and was agreed as one.", {
+        expectation: "ambiguous",
+      });
     }
 
     const checkout = await repo.insertCheckout(tx, {
@@ -338,60 +322,49 @@ export async function createCheckout(
 
     const created: CheckoutResult["orders"] = [];
 
-    for (const [vendorId, group] of byVendor) {
-      const items = group.map(({ line, priced: priceLine }) => ({
-        serviceId: priceLine.serviceId,
-        servicePackageId: line.servicePackageId ?? null,
-        description: priceLine.description,
-        quantity: line.quantity,
-        unitPrice: priceLine.unitPrice,
-        lineTotal: priceLine.unitPrice * BigInt(line.quantity),
-        currency: priceLine.currency,
-      }));
-
-      const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0n);
-      const first = group[0]?.priced as catalog.PricedLine;
-
-      // Summing amounts in two currencies produces a number in neither. Nothing
-      // in this milestone sells in anything but CAD, which is exactly why a
-      // check is cheap now and a migration later.
-      if (items.some((item) => item.currency !== first.currency)) {
-        throw new ValidationError("A booking cannot mix currencies.", { currency: "mixed" });
-      }
-
-      // An order carries one `policy_template_id`, so the lines under it have
-      // to agree on the terms. Picking the first line's, or the cheapest, takes
-      // a deposit on a cancellation policy the customer was never shown — and
-      // records terms on the order that half its services were not sold under.
-      if (group.some(({ priced: line }) => line.policyTemplateId !== first.policyTemplateId)) {
-        throw new ValidationError("A booking cannot mix cancellation policies.", {
-          policy: "mixed",
-        });
-      }
-
-      // Absent is an ordinary answer: a service with no policy attached is sold
-      // at the platform's own deposit rate, which is what that setting is for.
-      const template = first.policyTemplateId ? templates.get(first.policyTemplateId) : undefined;
-      const depositBps = template?.depositBps ?? terms.defaultDepositBps;
-      const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
-
-      const money = computeOrderMoney({
-        subtotal,
-        vendorHstRegistered: first.vendorHstRegistered,
-        commissionBps: pricing.commissionBps,
-        hstBps: pricing.hstBps,
+    for (const { vendorId, lines: items, template, money, plan, currency } of carts) {
+      // The customer's own abandoned attempt at this exact cart, if there is
+      // one. Returned as it stands rather than re-priced: resuming means paying
+      // the order that already holds the date, and `chargeDeposit` finds its
+      // open attempt and hands back the same client secret.
+      const resumed = await repo.findResumableOrder(tx, {
+        userId: actor.userId,
+        eventId: request.eventId,
+        vendorId,
+        lines: items,
       });
 
-      const plan = buildPaymentPlan({
+      if (resumed) {
+        // Checked against the order that exists rather than against the freshly
+        // computed figures: resuming charges what that order says, so that is
+        // what the customer has to have agreed to.
+        const figures = {
+          total: resumed.total,
+          depositAmount: resumed.depositAmount,
+          balanceAmount: resumed.balanceAmount,
+          balanceDueAt: resumed.balanceDueAt,
+        };
+
+        if (request.expectation) {
+          assertAgreement(request.expectation, figures);
+          await repo.recordAgreement(tx, resumed.id, { at: now, ...figures });
+        }
+
+        created.push({ id: resumed.id, reference: resumed.reference, vendorId, ...figures });
+        continue;
+      }
+
+      const figures = {
         total: money.total,
-        now,
-        eventStart,
-        depositBps,
-        balanceLeadDays: terms.balanceLeadDays,
-        coolingWindowHours,
-        fullPaymentBelow: terms.fullPaymentBelow,
-        timeZone,
-      });
+        depositAmount: plan.depositAmount,
+        balanceAmount: plan.balanceAmount,
+        balanceDueAt: plan.balanceDueAt,
+      };
+
+      // Before the row, the capacity hold and the queued work. Raised here, the
+      // transaction rolls all three back, so a refused agreement leaves no
+      // order behind and no date held.
+      if (request.expectation) assertAgreement(request.expectation, figures);
 
       const order = await repo.insertOrder(tx, {
         reference: await repo.nextReference(tx),
@@ -405,7 +378,7 @@ export async function createCheckout(
         commissionTax: money.commissionTax,
         depositAmount: plan.depositAmount,
         balanceAmount: plan.balanceAmount,
-        currency: first.currency,
+        currency,
         // The template the lines were actually priced under, so the order's
         // record of its own terms cannot disagree with the deposit it charged.
         policyTemplateId: template?.id ?? null,
@@ -427,13 +400,27 @@ export async function createCheckout(
 
       await repo.insertItems(tx, order.id, items);
 
+      if (request.expectation) {
+        await repo.recordAgreement(tx, order.id, { at: now, ...figures });
+      }
+
+      // The planner's slots, pointed at the booking they produced. Without this
+      // the hub shows `In plan` for a service that has been paid for, and the
+      // budget counts it as committed rather than spent.
+      await repo.linkEventItems(tx, {
+        orderId: order.id,
+        eventId: request.eventId,
+        serviceIds: items.map((item) => item.serviceId),
+        now,
+      });
+
       // The date, held before anything is charged. A clash surfaces as the
       // exclusion constraint refusing the insert, which rolls the whole
       // checkout back — including the orders already written above.
-      for (const { priced: priceLine } of group) {
+      for (const item of items) {
         try {
           await repo.holdCapacity(tx, {
-            serviceId: priceLine.serviceId,
+            serviceId: item.serviceId,
             orderId: order.id,
             from: eventStart,
             until: eventEnd,
@@ -445,7 +432,7 @@ export async function createCheckout(
           // and the day in hand — outside the loop they are gone, and a screen
           // that cannot say which date is taken cannot offer another.
           if (!isCapacityOverlap(error)) throw error;
-          throw new CapacityConflictError(priceLine.serviceId, event.eventDate);
+          throw new CapacityConflictError(item.serviceId, event.eventDate);
         }
       }
 
@@ -475,20 +462,22 @@ export async function createCheckout(
             reference: order.reference,
             total: money.total.toString(),
             state: "pending_payment",
+            // `jsonb` holds no `bigint`, so cents travel as text rather than
+            // being narrowed to a `number` that silently rounds above C$90bn.
+            ...(request.expectation
+              ? {
+                  agreedTotal: figures.total.toString(),
+                  agreedDepositAmount: figures.depositAmount.toString(),
+                  agreedBalanceAmount: figures.balanceAmount.toString(),
+                  agreedBalanceDueAt: figures.balanceDueAt?.toISOString() ?? null,
+                }
+              : {}),
           },
         },
         tx,
       );
 
-      created.push({
-        id: order.id,
-        reference: order.reference,
-        vendorId,
-        total: money.total,
-        depositAmount: plan.depositAmount,
-        balanceAmount: plan.balanceAmount,
-        balanceDueAt: plan.balanceDueAt,
-      });
+      created.push({ id: order.id, reference: order.reference, vendorId, ...figures });
     }
 
     return { checkoutId: checkout.id, orders: created };
@@ -819,15 +808,72 @@ export async function resolveIssue(
   });
 }
 
-/** Ends a booking. The refund, if there is one, is the payments domain's call. */
+/**
+ * Ends a booking. The refund, if there is one, is the payments domain's call.
+ *
+ * **One case is recorded for a person rather than settled here.** A booking
+ * under the flexible policy has a hundred and sixty-eight hours of free
+ * cancellation; a balance that fails has seventy-two hours of grace. So an
+ * event a fortnight out can have the platform cancel for non-payment while the
+ * customer's own policy still promised their money back — the two windows are
+ * set by different rules and neither knows about the other.
+ *
+ * What is owed then depends on why the card failed and whether the customer
+ * still wants the booking, which nothing here can derive. Refunding
+ * automatically would give money back on a booking somebody still wants;
+ * refunding nothing would keep money a policy promised to return. So the fact
+ * is written onto the cancellation's own audit entry, where somebody can read
+ * it: the window, when it closes, and how much is actually held.
+ *
+ * On the entry rather than in a second row, because two audit rows for one
+ * decision is two things that can be read apart. And guarded by what has
+ * actually been captured, so an unpaid checkout expiring thirty minutes into
+ * its own cooling window — every one of them — does not raise a question about
+ * money nobody ever paid.
+ */
 export async function cancelOrder(
   ctx: CoreContext,
   actor: Actor,
   orderId: string,
   action = "order.cancel",
 ): Promise<OrderChange> {
-  assertCanActOnOrder(actor, await parties(ctx, orderId));
-  return applyTransition(ctx, actor, orderId, "cancelled", { action });
+  const order = await repo.load(ctx.db, orderId);
+  if (!order) throw new NotFoundError("No such order.");
+
+  assertCanActOnOrder(actor, { id: order.id, userId: order.userId, vendorId: order.vendorId });
+
+  const review = await refundReview(ctx, order);
+
+  return applyTransition(ctx, actor, orderId, "cancelled", {
+    action,
+    ...(review ? { auditAfter: review } : {}),
+  });
+}
+
+/**
+ * The fact a cancellation inside an open free window has to carry.
+ *
+ * Read outside the transition's own lock, which is safe because
+ * `cooling_window_ends_at` is immutable after checkout — `repo.setState` never
+ * writes it — so there is no later value for this to be stale against.
+ */
+async function refundReview(
+  ctx: CoreContext,
+  order: repo.OrderRow,
+): Promise<Record<string, unknown> | undefined> {
+  const endsAt = order.coolingWindowEndsAt;
+  if (!endsAt || endsAt.getTime() <= ctx.clock.now().getTime()) return undefined;
+
+  const held = await netCaptured(ctx.db, order.id);
+  if (held <= 0n) return undefined;
+
+  return {
+    refundReview: "free_window_open",
+    freeWindowEndsAt: endsAt.toISOString(),
+    // `jsonb` holds no `bigint`, and the amount is the whole reason somebody
+    // would open this entry.
+    capturedAmount: held.toString(),
+  };
 }
 
 export type OrderDetail = {

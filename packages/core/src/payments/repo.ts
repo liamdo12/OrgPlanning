@@ -36,6 +36,14 @@ export type PaymentRow = {
   providerChargeId: string | null;
   failureCode: string | null;
   failureMessage: string | null;
+  /**
+   * The last four digits of the card this attempt settled on, if known.
+   *
+   * Null while an attempt is open, and null when the provider did not report a
+   * card — a declined off-session charge does not always come back with one
+   * attached, and a message says "your card" then.
+   */
+  cardLast4: string | null;
   succeededAt: Date | null;
   /**
    * When the attempt row was written, which is how old its idempotency key is.
@@ -59,6 +67,7 @@ const paymentColumns = {
   providerChargeId: payments.providerChargeId,
   failureCode: payments.failureCode,
   failureMessage: payments.failureMessage,
+  cardLast4: payments.cardLast4,
   succeededAt: payments.succeededAt,
   openedAt: payments.createdAt,
 };
@@ -108,6 +117,26 @@ export async function attachProviderIntent(
     .update(payments)
     .set({ providerPaymentIntentId: intent.id, providerChargeId: intent.chargeId })
     .where(eq(payments.id, paymentId));
+}
+
+/**
+ * Records which card a charge settled on, once and only once.
+ *
+ * `is null` in the predicate rather than a plain `set`: the provider is asked
+ * about an intent more than once over a booking's life, and a later answer that
+ * came back without a card — an expand that was left off, a retrieve after the
+ * method was detached — must not overwrite digits already known. A row that
+ * already has them is left alone.
+ */
+export async function attachCardLast4(
+  db: DbExecutor,
+  paymentId: string,
+  last4: string,
+): Promise<void> {
+  await db
+    .update(payments)
+    .set({ cardLast4: last4 })
+    .where(and(eq(payments.id, paymentId), isNull(payments.cardLast4)));
 }
 
 export async function markPaymentSucceeded(

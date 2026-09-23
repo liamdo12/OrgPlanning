@@ -18,16 +18,15 @@ import { describe, expect, it } from "vitest";
  * a tax rate in a screen is a second implementation of the money rules, and
  * the day it disagrees somebody is quoted one deposit and billed another.
  *
- * Scoped to the discovery screens, which are the ones that exist. The other
- * customer screens should join this list as they land — a rule that walks a
- * directory somebody else is still writing fails for reasons that are not
- * about money.
+ * Scoped to the screens that exist. The rest should join this list as they
+ * land — a rule that walks a directory somebody else is still writing fails
+ * for reasons that are not about money.
  */
 
 const group = fileURLToPath(new URL(".", import.meta.url));
 
-/** The discovery screens and the components they draw with. */
-const OWNED = ["page.tsx", "_components", "services", "saved"];
+/** The discovery screens, the checkout and the orders it produces. */
+const OWNED = ["page.tsx", "_components", "services", "saved", "checkout", "orders"];
 
 function walk(path: string): string[] {
   if (!existsSync(path)) return [];

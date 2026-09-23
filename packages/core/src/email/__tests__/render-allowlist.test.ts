@@ -37,6 +37,34 @@ describe("merge fields", () => {
       expect(field.sample.length).toBeGreaterThan(0);
     }
   });
+
+  it("treats the cancellation policy's name as open", () => {
+    // It is a term of the sale the recipient agreed to, and every customer
+    // under the same template sees the same word — so unlike a payment link it
+    // is safe in a body written once and sent to everybody.
+    expect(isRestricted("policy_name")).toBe(false);
+  });
+});
+
+describe("the booking confirmation", () => {
+  const template = builtInTemplates().find((candidate) => candidate.key === "order_confirmed");
+
+  it("is a template this platform ships", () => {
+    expect(template).toBeDefined();
+  });
+
+  it("names the policy the booking was made under", () => {
+    // The free window is 168 hours under `flexible` and none under `strict`,
+    // so a confirmation that quoted one figure would be wrong for two
+    // templates out of three. Naming the policy is what makes it right for all
+    // of them.
+    expect(template?.allowedFields).toContain("policy_name");
+    expect(tokensIn(template?.body ?? "")).toContain("policy_name");
+  });
+
+  it("no longer promises a window it cannot keep", () => {
+    expect(template?.body).not.toContain("48 hours");
+  });
 });
 
 describe("the allowlist", () => {

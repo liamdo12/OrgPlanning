@@ -29,6 +29,19 @@ export const payments = app.table(
     offSession: timestamp("off_session_at", { withTimezone: true }),
     failureCode: text("failure_code"),
     failureMessage: text("failure_message"),
+    /**
+     * The last four digits of the card this attempt settled on.
+     *
+     * The only thing about a payment instrument stored here, and the reason it
+     * is stored at all is that a customer whose balance was declined has to be
+     * told which card to fix, and the planner says which card the balance will
+     * be taken on. Everything else about the card stays at the provider.
+     *
+     * Null while an attempt is still open, and null when the provider did not
+     * report one — a declined off-session charge does not always come back with
+     * a card attached, and the message says "your card" then.
+     */
+    cardLast4: text("card_last4"),
     succeededAt: timestamp("succeeded_at", { withTimezone: true }),
     failedAt: timestamp("failed_at", { withTimezone: true }),
     ...timestamps,

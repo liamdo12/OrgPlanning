@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   capacityBlocks,
   checkouts,
+  eventItems,
   events,
   jobs,
   orderItems,
@@ -153,6 +154,31 @@ export type NewOrder = {
   isDemo: boolean;
 };
 
+/**
+ * Records what the customer was shown when they authorised the booking.
+ *
+ * Written in the checkout's own transaction, from the same figures it just
+ * compared against, so the order's terms and its consent record cannot
+ * disagree. Left unwritten when the caller stated nothing — an agreement
+ * nobody made is not a row to invent.
+ */
+export async function recordAgreement(
+  db: DbExecutor,
+  orderId: string,
+  agreement: { at: Date; total: bigint; depositAmount: bigint; balanceAmount: bigint; balanceDueAt: Date | null },
+): Promise<void> {
+  await db
+    .update(orders)
+    .set({
+      agreedAt: agreement.at,
+      agreedTotal: agreement.total,
+      agreedDepositAmount: agreement.depositAmount,
+      agreedBalanceAmount: agreement.balanceAmount,
+      agreedBalanceDueAt: agreement.balanceDueAt,
+    })
+    .where(eq(orders.id, orderId));
+}
+
 export async function insertOrder(db: DbExecutor, input: NewOrder): Promise<OrderRow> {
   const [row] = await db
     .insert(orders)
@@ -194,6 +220,91 @@ export function listItems(db: DbExecutor, orderId: string) {
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId))
     .orderBy(orderItems.createdAt);
+}
+
+/**
+ * A `pending_payment` order of this customer's that is the same cart again.
+ *
+ * The exclusion constraint is on `(service_id, during)` and does not know whose
+ * order holds the block, so a customer who abandons a checkout and comes back
+ * collides with **their own** hold and is told the date is gone — for thirty
+ * minutes, with no way out, because a customer cannot cancel a
+ * `pending_payment` order. Resuming is what gives them the date back.
+ *
+ * **The item set has to match exactly**, because resuming means charging the
+ * order that already exists: its lines, its total and its terms. Returning it
+ * for a *different* cart would take a deposit for something other than what was
+ * on screen.
+ *
+ * Every candidate is locked. The expiry job cancels through `loadForUpdate`, so
+ * without the lock a checkout could resume an order the runner is in the middle
+ * of releasing and hand back a client secret for a booking that no longer holds
+ * a date. The lock is taken after the event's, never before, which is the same
+ * order `loadEventForOrder({forUpdate})` establishes — `applyTransition` locks
+ * the order and reads the event unlocked, so no path takes the pair the other
+ * way round.
+ */
+export async function findResumableOrder(
+  db: DbExecutor,
+  input: {
+    userId: string;
+    eventId: string;
+    vendorId: string;
+    lines: ReadonlyArray<{
+      serviceId: string;
+      servicePackageId: string | null;
+      quantity: number;
+    }>;
+  },
+): Promise<OrderRow | undefined> {
+  const candidates = await db
+    .select(orderColumns)
+    .from(orders)
+    .where(
+      and(
+        eq(orders.userId, input.userId),
+        eq(orders.eventId, input.eventId),
+        eq(orders.vendorId, input.vendorId),
+        eq(orders.state, "pending_payment"),
+      ),
+    )
+    .for("update");
+
+  const wanted = cartFingerprint(input.lines);
+
+  for (const candidate of candidates) {
+    const items = await listItems(db, candidate.id);
+    if (
+      cartFingerprint(
+        items.map((item) => ({
+          serviceId: item.serviceId ?? "",
+          servicePackageId: item.servicePackageId,
+          quantity: item.quantity,
+        })),
+      ) === wanted
+    ) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * What a cart contains, as one comparable value.
+ *
+ * Sorted, so two carts holding the same lines in a different order are the same
+ * cart — a customer re-entering a checkout has no control over the order their
+ * plan's slots come back in. The quantity is part of the key: the same service
+ * twice over is a different booking and a different price.
+ */
+function cartFingerprint(
+  lines: ReadonlyArray<{ serviceId: string; servicePackageId: string | null; quantity: number }>,
+): string {
+  return lines
+    .map((line) => `${line.serviceId}:${line.servicePackageId ?? ""}:${line.quantity}`)
+    .sort()
+    .join("|");
 }
 
 /**
@@ -450,6 +561,44 @@ const ORDER_JOB_TYPES = [
   "balance_grace_expiry",
   "auto_complete_order",
 ] as const satisfies readonly ScheduledJobType[];
+
+/**
+ * Points the event's slots at the order that was placed from them.
+ *
+ * Written in the checkout's own transaction, because this is what makes the
+ * planner notice a booking at all: the slot's state is derived from the order
+ * it names, so a slot that names nothing still reads `In plan` after the
+ * deposit has been taken.
+ *
+ * Matched on the service rather than on the slot id, because the checkout
+ * request names services — the customer chose the listing, and which category
+ * slot it sits in is the planner's arrangement. Slots already naming an older
+ * order are repointed: the column is provenance for *this* slot, and a
+ * cancelled booking that has been replaced is not what the row should still
+ * be about.
+ *
+ * Answers how many slots it claimed, which is zero for a booking made from
+ * somewhere other than a plan.
+ */
+export async function linkEventItems(
+  db: DbExecutor,
+  input: { orderId: string; eventId: string; serviceIds: readonly string[]; now: Date },
+): Promise<number> {
+  if (input.serviceIds.length === 0) return 0;
+
+  const linked = await db
+    .update(eventItems)
+    .set({ orderId: input.orderId, updatedAt: input.now })
+    .where(
+      and(
+        eq(eventItems.eventId, input.eventId),
+        inArray(eventItems.serviceId, [...input.serviceIds]),
+      ),
+    )
+    .returning({ id: eventItems.id });
+
+  return linked.length;
+}
 
 /** Opens a cart. The draft is kept so an abandoned one stays explainable. */
 export async function insertCheckout(

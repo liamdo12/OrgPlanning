@@ -107,6 +107,7 @@ jobs:
         -e SUPABASE_ANON_KEY=ci-anon
         -e SUPABASE_SERVICE_ROLE_KEY=ci-service
         -e STRIPE_SECRET_KEY=sk_test_ci
+        -e STRIPE_PUBLISHABLE_KEY=pk_test_ci
         -e STRIPE_WEBHOOK_SECRET=whsec_ci
         -e RESEND_API_KEY=re_ci
         -e EMAIL_FROM=ci@example.com

@@ -50,6 +50,15 @@ export type StripeFake = StripePort & {
   completeOnboarding(accountId: string): void;
   /** Settles a hosted checkout, as the customer finishing on the provider's page does. */
   settleCheckoutSession(paymentIntentId: string): void;
+  /**
+   * Settles an intent, as a customer completing the card form does.
+   *
+   * The same thing `settleCheckoutSession` does — the difference between the
+   * two is where the customer was, not what happens to the intent — so one
+   * implementation under two honest names, rather than a test reaching for the
+   * hosted-checkout verb to describe an Elements payment.
+   */
+  settlePaymentIntent(paymentIntentId: string): void;
 };
 
 type Recorded = { kind: string; id: string; idempotencyKey: string | null };
@@ -80,6 +89,23 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
   /** Returns what this key produced before, if the fake still remembers it. */
   function replay<T>(key: string): T | undefined {
     return byKey.get(key) as T | undefined;
+  }
+
+  /** An intent the customer has finished paying, wherever they did it. */
+  function settle(paymentIntentId: string): void {
+    const intent = intents.get(paymentIntentId);
+    if (!intent) throw new Error(`This fake has no intent ${paymentIntentId}.`);
+
+    intents.set(paymentIntentId, {
+      ...intent,
+      status: "succeeded",
+      chargeId: nextId("ch"),
+      paymentMethodId: nextId("pm"),
+      // A settled intent has a card attached, and the provider reports its last
+      // four digits. The fake's one card, so a test can assert the value rather
+      // than merely that something is there.
+      cardLast4: "4242",
+    });
   }
 
   return {
@@ -236,16 +262,13 @@ export function createStripeFake(options: { mode?: "test" | "live" } = {}): Stri
       return Promise.resolve(session);
     },
 
-    settleCheckoutSession(paymentIntentId) {
-      const intent = intents.get(paymentIntentId);
-      if (!intent) throw new Error(`This fake has no intent ${paymentIntentId}.`);
-      intents.set(paymentIntentId, {
-        ...intent,
-        status: "succeeded",
-        chargeId: nextId("ch"),
-        paymentMethodId: nextId("pm"),
-      });
-    },
+    settlePaymentIntent: settle,
+
+    // The customer was on the provider's own page rather than in the card form
+    // on ours, which changes nothing about what happens to the intent.
+    // Delegated rather than repeated, and a plain function rather than `this.…`
+    // so a destructured handle still works.
+    settleCheckoutSession: settle,
 
     findPaymentIntentByMetadata({ orderId, paymentId }) {
       for (const intent of intents.values()) {

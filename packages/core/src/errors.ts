@@ -80,6 +80,59 @@ export class CapacityConflictError extends AppError {
   }
 }
 
+/** The four figures a customer consents to when they authorise a booking. */
+export type AgreedFigures = {
+  total: bigint;
+  depositAmount: bigint;
+  balanceAmount: bigint;
+  /** Null when the whole amount is taken at checkout. */
+  balanceDueAt: Date | null;
+};
+
+/**
+ * The booking would cost something other than what the customer agreed to.
+ *
+ * A checkout re-reads the platform's rates inside its own transaction, so an
+ * administrator saving a new commission between the screen rendering and the
+ * button being pressed changes the price of a booking somebody has already read
+ * and consented to. Recording that consent anyway would produce an agreement
+ * for an amount nobody saw.
+ *
+ * So the screen states what it displayed and this is the refusal. The figures
+ * that would actually be charged travel on the error, because the only useful
+ * thing a screen can do with this is show them and ask again — re-quoting would
+ * be a third reading of the rates and could differ from both.
+ *
+ * Nothing is written when this is raised: it is thrown inside the checkout's
+ * transaction, so no order, no capacity block and no queued work survive it.
+ */
+export class AgreementMismatchError extends AppError {
+  override name = "AgreementMismatchError";
+
+  constructor(readonly terms: AgreedFigures) {
+    super("The price of this booking has changed since it was shown to you.");
+  }
+}
+
+/**
+ * The event cannot be changed while one of its bookings is still live.
+ *
+ * A `ValidationError` so that every caller already handling a refused form
+ * keeps working, and a subclass so the one fact a screen needs — which booking
+ * — is a field rather than something to be read back out of a sentence.
+ */
+export class BookingLiveError extends ValidationError {
+  override name = "BookingLiveError";
+
+  constructor(
+    message: string,
+    /** The booking in the way, as the customer sees it named. */
+    readonly reference: string,
+  ) {
+    super(message, { eventDate: "booked", reference });
+  }
+}
+
 /** Too many attempts in the window. */
 export class RateLimitedError extends AppError {
   override name = "RateLimitedError";

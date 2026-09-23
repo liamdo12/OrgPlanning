@@ -4,7 +4,7 @@ import { BudgetBar } from "./budget-bar";
 import { DaySchedule } from "./day-schedule";
 import { EventSwitcherForm } from "./event-switcher-form";
 import { PaymentsPanel } from "./payments-panel";
-import { SlotList, inPlanCount } from "./slot-list";
+import { SlotList, checkoutVendors, inPlanCount } from "./slot-list";
 
 /**
  * The planner, lines 884–933.
@@ -66,9 +66,11 @@ export function EventHubView({
       <div className="grid grid-cols-[repeat(auto-fit,minmax(270px,1fr))] gap-[18px]">
         <DaySchedule entries={hub.schedule} />
         <PaymentsPanel
+          eventId={hub.id}
           payments={hub.payments}
           currency={hub.currency}
           inPlan={inPlanCount(hub.items)}
+          vendors={checkoutVendors(hub.items)}
         />
       </div>
     </section>
