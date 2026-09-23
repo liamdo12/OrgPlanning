@@ -170,7 +170,7 @@ function actions(eventId: string, item: PlanItem) {
         <>
           <Deferred label="Get quotes" reason={PLAN_B} />
           <Link
-            href={`/services?category=${encodeURIComponent(item.categorySlug)}`}
+            href={`/services?cat=${encodeURIComponent(item.categorySlug)}`}
             className="oc-button oc-button--primary oc-button--sm"
           >
             Find {item.categoryName.toLowerCase()}
