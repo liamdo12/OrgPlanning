@@ -1,5 +1,4 @@
 import { record } from "../audit/service.js";
-import * as catalog from "../catalog/repo.js";
 import type { CoreContext, DbExecutor } from "../context.js";
 import {
   CapacityConflictError,
@@ -15,8 +14,7 @@ import {
   type OrderParties,
 } from "../identity/policies.js";
 import { isAuthenticated } from "../identity/actor.js";
-import { computeOrderMoney } from "../payments/money.js";
-import { buildPaymentPlan } from "../payments/plan.js";
+import { priceCart } from "./cart.js";
 import * as repo from "./repo.js";
 import { orderEmailFacts } from "../email/order-facts.js";
 import { queueTransactional } from "../email/service.js";
@@ -271,60 +269,17 @@ export async function createCheckout(
     const eventStart = eventStartInstant(event.eventDate, event.startTime, timeZone);
     const eventEnd = eventEndInstant(event.eventDate, timeZone);
 
-    const priced = await catalog.priceServices(
-      tx,
-      request.lines.map((line) => line.serviceId),
-    );
-    const packages = await catalog.pricePackages(
-      tx,
-      request.lines
-        .filter((line) => line.servicePackageId)
-        .map((line) => ({
-          serviceId: line.serviceId,
-          servicePackageId: line.servicePackageId as string,
-        })),
-    );
-
-    // Grouped by vendor, because an order belongs to one.
-    const byVendor = new Map<string, Array<{ line: CheckoutLine; priced: catalog.PricedLine }>>();
-
-    for (const line of request.lines) {
-      const service = priced.get(line.serviceId);
-      // The same answer for "no such service" and "that vendor is not approved":
-      // a suspended business's catalogue must not become a way to learn it
-      // exists and has been suspended.
-      if (!service || !catalog.bookable(service)) {
-        throw new NotFoundError("That service cannot be booked.");
-      }
-
-      let description = service.description;
-      let unitPrice = service.unitPrice;
-
-      if (line.servicePackageId) {
-        const tier = packages.get(line.servicePackageId);
-        if (!tier) throw new NotFoundError("That service cannot be booked.");
-        description = `${service.description} · ${tier.name}`;
-        unitPrice = tier.unitPrice;
-      }
-
-      const group = byVendor.get(service.vendorId) ?? [];
-      group.push({ line, priced: { ...service, description, unitPrice } });
-      byVendor.set(service.vendorId, group);
-    }
-
-    // The terms, read from the policy each service is sold under rather than
-    // taken from the request. `flexible` is 10%, `moderate` 20%, `strict` 30%,
-    // and each carries its own free-cancellation window.
-    //
-    // One query per distinct template rather than one per line: a cart of six
-    // services under the same policy is six round trips otherwise.
-    const templates = new Map<string, repo.PolicyTerms>();
-    for (const templateId of new Set(
-      [...priced.values()].map((line) => line.policyTemplateId).filter((id) => id !== null),
-    )) {
-      const template = await repo.loadPolicyTemplate(tx, templateId);
-      if (template) templates.set(templateId, template);
-    }
+    // The catalogue's prices, the service's own terms, the split and the
+    // payment plan — the same function a quote runs, so the figures a screen
+    // showed and the figures this transaction charges cannot be two
+    // implementations of one rule.
+    const carts = await priceCart(tx, request, {
+      pricing,
+      terms,
+      now,
+      eventStart,
+      timeZone,
+    });
 
     const checkout = await repo.insertCheckout(tx, {
       userId: actor.userId,
@@ -338,61 +293,7 @@ export async function createCheckout(
 
     const created: CheckoutResult["orders"] = [];
 
-    for (const [vendorId, group] of byVendor) {
-      const items = group.map(({ line, priced: priceLine }) => ({
-        serviceId: priceLine.serviceId,
-        servicePackageId: line.servicePackageId ?? null,
-        description: priceLine.description,
-        quantity: line.quantity,
-        unitPrice: priceLine.unitPrice,
-        lineTotal: priceLine.unitPrice * BigInt(line.quantity),
-        currency: priceLine.currency,
-      }));
-
-      const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0n);
-      const first = group[0]?.priced as catalog.PricedLine;
-
-      // Summing amounts in two currencies produces a number in neither. Nothing
-      // in this milestone sells in anything but CAD, which is exactly why a
-      // check is cheap now and a migration later.
-      if (items.some((item) => item.currency !== first.currency)) {
-        throw new ValidationError("A booking cannot mix currencies.", { currency: "mixed" });
-      }
-
-      // An order carries one `policy_template_id`, so the lines under it have
-      // to agree on the terms. Picking the first line's, or the cheapest, takes
-      // a deposit on a cancellation policy the customer was never shown — and
-      // records terms on the order that half its services were not sold under.
-      if (group.some(({ priced: line }) => line.policyTemplateId !== first.policyTemplateId)) {
-        throw new ValidationError("A booking cannot mix cancellation policies.", {
-          policy: "mixed",
-        });
-      }
-
-      // Absent is an ordinary answer: a service with no policy attached is sold
-      // at the platform's own deposit rate, which is what that setting is for.
-      const template = first.policyTemplateId ? templates.get(first.policyTemplateId) : undefined;
-      const depositBps = template?.depositBps ?? terms.defaultDepositBps;
-      const coolingWindowHours = template?.freeCancellationHours ?? terms.coolingWindowHours;
-
-      const money = computeOrderMoney({
-        subtotal,
-        vendorHstRegistered: first.vendorHstRegistered,
-        commissionBps: pricing.commissionBps,
-        hstBps: pricing.hstBps,
-      });
-
-      const plan = buildPaymentPlan({
-        total: money.total,
-        now,
-        eventStart,
-        depositBps,
-        balanceLeadDays: terms.balanceLeadDays,
-        coolingWindowHours,
-        fullPaymentBelow: terms.fullPaymentBelow,
-        timeZone,
-      });
-
+    for (const { vendorId, lines: items, template, money, plan, currency } of carts) {
       const order = await repo.insertOrder(tx, {
         reference: await repo.nextReference(tx),
         userId: actor.userId,
@@ -405,7 +306,7 @@ export async function createCheckout(
         commissionTax: money.commissionTax,
         depositAmount: plan.depositAmount,
         balanceAmount: plan.balanceAmount,
-        currency: first.currency,
+        currency,
         // The template the lines were actually priced under, so the order's
         // record of its own terms cannot disagree with the deposit it charged.
         policyTemplateId: template?.id ?? null,
@@ -430,10 +331,10 @@ export async function createCheckout(
       // The date, held before anything is charged. A clash surfaces as the
       // exclusion constraint refusing the insert, which rolls the whole
       // checkout back — including the orders already written above.
-      for (const { priced: priceLine } of group) {
+      for (const item of items) {
         try {
           await repo.holdCapacity(tx, {
-            serviceId: priceLine.serviceId,
+            serviceId: item.serviceId,
             orderId: order.id,
             from: eventStart,
             until: eventEnd,
@@ -445,7 +346,7 @@ export async function createCheckout(
           // and the day in hand — outside the loop they are gone, and a screen
           // that cannot say which date is taken cannot offer another.
           if (!isCapacityOverlap(error)) throw error;
-          throw new CapacityConflictError(priceLine.serviceId, event.eventDate);
+          throw new CapacityConflictError(item.serviceId, event.eventDate);
         }
       }
 
