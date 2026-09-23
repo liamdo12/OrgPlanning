@@ -5,7 +5,9 @@ import {
   APP_ROOT,
   actionsUnder,
   defaultExportedFunction,
+  exportedFunctions,
   firstStatement,
+  isRouteFile,
   label,
   pagesUnder,
   parse,
@@ -149,13 +151,40 @@ describe("the customer layout", () => {
 });
 
 describe("route handlers", () => {
-  it("has none inside the customer group", () => {
-    // The admin registry checks every handler under `src/app` against an exact
-    // set. One added here would need an entry there and a gate of its own as
-    // its first statement; failing at that point is how the conversation
-    // starts. The event switcher is a form for exactly this reason — a cookie
-    // needs a server action, and an action is already covered above.
-    const handlers = walk(customerRoot).filter((path) => path.endsWith("route.ts"));
-    expect(handlers.map(label)).toEqual([]);
+  const handlers = walk(customerRoot)
+    .filter((path) => isRouteFile(customerRoot, path, "route.ts"))
+    .map((path) => ({ path, name: label(path) }));
+
+  it("finds the handlers", () => {
+    // The calendar file is the first one in this group, and it is here rather
+    // than as a server action because the result is a **file**: a handler is
+    // linkable and re-downloadable, and the gate registry already walks
+    // handlers, so it costs an entry rather than a new kind of surface. A
+    // walker that found none would make the case below vacuous.
+    expect(handlers.length).toBeGreaterThanOrEqual(1);
   });
+
+  it.each(handlers.map((handler) => [handler.name, handler] as const))(
+    "%s gates itself with requireCustomerActor as its first statement",
+    (_name, handler) => {
+      // A layout does not run for a route handler, so nothing else would refuse
+      // an anonymous request. The admin registry separately checks that every
+      // handler under `src/app` is listed in its own set, so one added here
+      // cannot be invisible to both.
+      const exported = exportedFunctions(parse(handler.path)).filter((fn) =>
+        HTTP_METHODS.has(fn.name),
+      );
+
+      expect(exported.length, `${handler.name} exports no HTTP method`).toBeGreaterThanOrEqual(1);
+
+      for (const method of exported) {
+        expect(firstStatement(method.body), `${handler.name}#${method.name}`).toContain(
+          "requireCustomerActor()",
+        );
+      }
+    },
+  );
 });
+
+/** What Next routes to in a `route.ts`. Anything else there is a helper. */
+const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);

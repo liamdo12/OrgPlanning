@@ -4,6 +4,13 @@ import type { OrderState } from "@occasion/core";
 /**
  * How serious an order's state looks.
  *
+ * Shared rather than per screen, now that the customer's own list and the
+ * admin queue both draw a badge for the same nine values. A second mapping is
+ * how one screen learns about a state the other does not: a booking whose
+ * balance was declined is `action_required` on both, and a screen that had
+ * never heard of it would render a bare badge on the one state somebody has to
+ * act on.
+ *
  * Three of the pairs are the prototype's own, lines 2723–2728: `confirmed` is
  * the settled green, `fulfilled` and `action req.` are the amber, and
  * `cancelled` and `completed` are both the neutral wash — an ended booking is

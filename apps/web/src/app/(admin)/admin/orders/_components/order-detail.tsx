@@ -2,7 +2,7 @@ import Link from "next/link";
 import { StatusBadge } from "@occasion/ui";
 import { formatMoney, orderPayoutAllowed, type AdminOrderDetail } from "@occasion/core";
 import { OrderActions } from "./order-actions";
-import { toneFor } from "./state-tone";
+import { toneFor } from "../../../../../lib/order-state-tone";
 
 /**
  * One order's whole record.

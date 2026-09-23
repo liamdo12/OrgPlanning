@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
+import { listOrdersForCustomer } from "@occasion/core";
 import { customerViewer } from "../../lib/auth-guard";
 import { createRequestContext } from "../../lib/core";
 import { resolveActiveEvent } from "../../lib/active-event";
 import { CustomerShell } from "./_components/customer-shell";
+
+/** How many bookings the header's strip shows. The canvas draws three. */
+const BOOKED_IN_STRIP = 3;
 
 /** Rendered per request: nothing it shows exists at build time. */
 export const dynamic = "force-dynamic";
@@ -35,11 +39,20 @@ export default async function CustomerLayout({ children }: { children: ReactNode
   // chip would be chrome for a surface they are about to be redirected off.
   const viewer = await customerViewer();
 
-  const active = viewer ? await resolveActiveEvent(ctx, viewer) : undefined;
+  // Two bounded reads for somebody signed in, and none at all for a visitor.
+  // The strip is three rows off one indexed query, which is what makes it
+  // affordable in chrome that every screen renders.
+  const [active, booked] = viewer
+    ? await Promise.all([
+        resolveActiveEvent(ctx, viewer),
+        listOrdersForCustomer(ctx, viewer, { limit: BOOKED_IN_STRIP }),
+      ])
+    : [undefined, []];
 
   return (
     <CustomerShell
       {...(viewer ? { email: viewer.email } : {})}
+      booked={booked}
       // The switcher's options arrive with the event read that also fills in
       // `resolveActiveEvent`. Until then the chip offers the one thing that
       // works: somewhere to make an event.

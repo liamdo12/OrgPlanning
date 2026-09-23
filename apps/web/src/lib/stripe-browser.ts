@@ -3,10 +3,11 @@ import { loadStripe, type Stripe } from "@stripe/stripe-js";
 /**
  * The provider's browser SDK, loaded once per key.
  *
- * **It reads no environment.** `getEnv()` parses the whole `process.env`
- * object, which Next cannot inline into a client bundle, and `env.ts` has no
- * `server-only` guard — importing it here would list every server key by name
- * in a file the browser downloads. A `NEXT_PUBLIC_` variable is no better: it
+ * **It reads no environment**, which the secrets suite checks by reading this
+ * file. `getEnv()` parses the whole environment object, which Next cannot
+ * inline into a client bundle, and `env.ts` has no `server-only` guard —
+ * importing it here would list every server key by name in a file the browser
+ * downloads. A `NEXT_PUBLIC_` variable is no better: it
  * inlines at **build** time, and this app's container image is built with no
  * environment on purpose, so the deployed checkout would render with no card
  * field while `pnpm dev` and CI both looked healthy.

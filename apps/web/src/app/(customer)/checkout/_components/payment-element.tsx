@@ -117,8 +117,20 @@ function PayForm({
 
   const ready = stripe !== null && elements !== null;
 
-  async function pay(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+  /**
+   * The submit handler, which has to be synchronous.
+   *
+   * `onSubmit` is called for its effect and its return value is discarded, so
+   * handing it a promise means nothing is watching for a rejection — which is
+   * how an unhandled one ends up in the console instead of on the screen. The
+   * work is in `pay`, and every path through it already reports what happened.
+   */
+  function onSubmit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    void pay();
+  }
+
+  async function pay(): Promise<void> {
     if (!stripe || !elements || !canPay(state, ready)) return;
 
     setState((current) => ({ ...current, submitting: true, error: null }));
@@ -187,7 +199,7 @@ function PayForm({
 
   return (
     <form
-      onSubmit={pay}
+      onSubmit={onSubmit}
       noValidate
       // Line 1145: two columns that become one when there is no room for two.
       className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-start gap-[24px]"
