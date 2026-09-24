@@ -8,6 +8,7 @@ import {
   openSeededListing,
   openSeededOrder,
 } from "../fixtures/customer.js";
+import { NEW_CUSTOMER_STATE } from "../fixtures/state.js";
 
 /**
  * The customer surface, for somebody not using a mouse or not seeing the
@@ -136,6 +137,25 @@ test("the screen a finished booking lands on has no serious accessibility failur
   await auditable(page, `/orders/${orderId}/confirmed`);
 
   expect(serious(await audit(page))).toEqual([]);
+});
+
+test.describe("an account that has planned nothing", () => {
+  test.use({ storageState: NEW_CUSTOMER_STATE });
+
+  test("the planner a new account lands on has no serious accessibility failures", async ({
+    page,
+  }) => {
+    await page.goto("/events");
+    await auditable(page, "/events");
+
+    // The empty state, not a planner with nothing in it. The two are different
+    // screens, and this one is a hero with its own heading, two calls to action
+    // and three numbered steps — the part of the surface a seeded customer can
+    // never reach.
+    await expect(page.getByText("No events yet")).toBeVisible();
+
+    expect(serious(await audit(page))).toEqual([]);
+  });
 });
 
 test("the login screen has no serious accessibility failures", async ({ page }) => {

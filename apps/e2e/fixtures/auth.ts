@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { ADMIN_EMAIL, CUSTOMER_EMAIL, SIGN_IN_PASSWORD } from "./seed.js";
+import { ADMIN_EMAIL, CUSTOMER_EMAIL, NEW_CUSTOMER_EMAIL, SIGN_IN_PASSWORD } from "./seed.js";
 
 /**
  * Signing in the way a person does.
@@ -50,4 +50,9 @@ export async function signInAsAdmin(page: Page, next = "/admin/vendors"): Promis
 /** Signed in, in good standing, and holding no admin role. */
 export async function signInAsCustomer(page: Page, next = "/"): Promise<void> {
   await signIn(page, CUSTOMER_EMAIL, next);
+}
+
+/** The same door, for the account the suite provisions with nothing in it. */
+export async function signInAsNewCustomer(page: Page, next = "/"): Promise<void> {
+  await signIn(page, NEW_CUSTOMER_EMAIL, next);
 }
