@@ -1,3 +1,4 @@
+import { record } from "../audit/service.js";
 import type { CoreContext } from "../context.js";
 import { NotFoundError } from "../errors.js";
 import type { Actor } from "../identity/actor.js";
@@ -190,6 +191,13 @@ function freeCancellation(
  *
  * `assertCanPayOrder`: extending the time to pay is part of paying, so it is
  * the customer whose card it is, or an administrator helping them.
+ *
+ * **It is audited**, because what it moves is a hold on somebody else's
+ * calendar. A vendor asking why their Saturday was unavailable for another half
+ * hour has one place to find out, and the entry names the person and the
+ * deadline they pushed it to. Written in the same transaction as the move, and
+ * only when something actually moved: an order whose expiry has already fired
+ * has nothing to explain.
  */
 export async function extendCheckoutWindow(
   ctx: CoreContext,
@@ -198,13 +206,29 @@ export async function extendCheckoutWindow(
 ): Promise<{ runAfter: Date | null }> {
   assertCanPayOrder(actor, await parties(ctx, orderId));
 
-  const runAfter = await rearmQueuedJob(ctx.db, {
-    type: "expire_unpaid",
-    dedupeKey: dedupeKey("expire_unpaid", orderId),
-    runAfter: new Date(ctx.clock.now().getTime() + CHECKOUT_WINDOW_MINUTES * 60_000),
-  });
+  return ctx.db.transaction(async (tx) => {
+    const runAfter = await rearmQueuedJob(tx, {
+      type: "expire_unpaid",
+      dedupeKey: dedupeKey("expire_unpaid", orderId),
+      runAfter: new Date(ctx.clock.now().getTime() + CHECKOUT_WINDOW_MINUTES * 60_000),
+    });
 
-  return { runAfter: runAfter ?? null };
+    if (!runAfter) return { runAfter: null };
+
+    await record(
+      ctx,
+      actor,
+      {
+        action: "order.extend_checkout_window",
+        entityType: "order",
+        entityId: orderId,
+        after: { expiresAt: runAfter.toISOString() },
+      },
+      tx,
+    );
+
+    return { runAfter };
+  });
 }
 
 /**

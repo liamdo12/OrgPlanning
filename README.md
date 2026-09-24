@@ -3,10 +3,12 @@
 Toronto event-services marketplace. A pnpm + Turborepo monorepo whose backend
 lives in framework-independent domain packages, deployed as one Next.js app.
 
-Implementation plan:
-[`plans/260915-2246-occasion-monorepo-admin-first/plan.md`](plans/260915-2246-occasion-monorepo-admin-first/plan.md).
-This milestone builds the **admin view** completely; customer and vendor views
-are scoped in Phase 13 and built afterwards.
+Two implementation plans, in the order they were built:
+[`plans/260915-2246-occasion-monorepo-admin-first/plan.md`](plans/260915-2246-occasion-monorepo-admin-first/plan.md)
+built the **admin view** completely, and
+[`plans/260921-1411-customer-booking-spine-with-foundation/plan.md`](plans/260921-1411-customer-booking-spine-with-foundation/plan.md)
+built the **customer booking spine** on top of it — browse, plan an event, check
+out, and cancel inside the window. The **vendor view** is not built.
 
 ## Requirements
 
@@ -225,17 +227,65 @@ an admin, and selecting a different role chip grants nothing. The active role
 is presentation, and is recorded on every audit row.
 
 Roles and account status are re-read from the database on every request that
-asks for an actor — that is the rule for all new code, and today the admin gate
-and the auth actions are the only callers, because no other route exists yet.
-`users.sessions_valid_after` is moved forward by suspension, role grant and role
-revocation, and a token issued before it (or carrying no issue time) is
-rejected, so a revocation takes effect on the next request rather than whenever
-the token would have expired.
+asks for an actor — the admin gate, the customer gate and the auth actions all
+go through it, on every route. `users.sessions_valid_after` is moved forward by
+suspension, role grant and role revocation, and a token issued before it (or
+carrying no issue time) is rejected, so a revocation takes effect on the next
+request rather than whenever the token would have expired.
 
-The gate for server actions and route handlers is `requireAdminActor()` in
-`apps/web/src/lib/auth-guard.ts`. `(admin)/layout.tsx` redirects for the sake of
-the person browsing and is **not** the boundary: Next.js does not run a layout
-for a server action.
+The gates live in `apps/web/src/lib/auth-guard.ts`, and there are four of them
+because the surface and the answer to a refusal both differ:
+
+| Surface                                 | Gate                     | A refusal |
+| --------------------------------------- | ------------------------ | --------- |
+| Admin page                              | `requireAdminPage()`     | redirect  |
+| Admin server action or route handler    | `requireAdminActor()`    | throw     |
+| Customer page                           | `requireCustomerPage()`  | redirect  |
+| Customer server action or route handler | `requireCustomerActor()` | throw     |
+
+Each is the **first statement** of the function it guards. A page that threw
+would log an exception for every anonymous visitor and render the error
+boundary, because Next renders the layout and the page in parallel and the
+layout's redirect does not spare the page. Neither `(admin)/layout.tsx` nor
+`(customer)/layout.tsx` is the boundary: Next.js does not run a layout for a
+server action, and `(customer)/layout.tsx` could not gate anyway, because the
+public screens are inside it.
+
+The customer gate is **status-based, not role-based**, and it refuses an
+administrator on purpose. The object policies admit an administrator to any
+event or order on the platform, so one on the customer screens would be reading
+somebody else's plans through a UI built on the assumption that everything shown
+belongs to the person looking.
+
+### The customer routes
+
+Three are public. Everything else sends an anonymous visitor to the login screen
+and returns them afterwards.
+
+| Route                                 | Gate                     |
+| ------------------------------------- | ------------------------ |
+| `/`                                   | public                   |
+| `/services`                           | public                   |
+| `/services/[slug]`                    | public                   |
+| `/saved`                              | `requireCustomerPage()`  |
+| `/events`                             | `requireCustomerPage()`  |
+| `/events/new`                         | `requireCustomerPage()`  |
+| `/events/[eventId]`                   | `requireCustomerPage()`  |
+| `/events/[eventId]/edit`              | `requireCustomerPage()`  |
+| `/checkout`                           | `requireCustomerPage()`  |
+| `/orders`                             | `requireCustomerPage()`  |
+| `/orders/[orderId]`                   | `requireCustomerPage()`  |
+| `/orders/[orderId]/confirmed`         | `requireCustomerPage()`  |
+| `/orders/[orderId]/calendar` (`.ics`) | `requireCustomerActor()` |
+
+Ten server actions sit behind those screens, in six `actions.ts` files, and each
+calls `requireCustomerActor()` first. Being public is an entry on a named list
+with a reason beside it, not the absence of a gate:
+`apps/web/src/customer-authorization.test.ts` fails a page that is neither
+gated nor listed, fails a listed page that gates itself, and fails a fourth
+entry on the list. `apps/web/src/admin-authorization.test.ts` does the same for
+the admin tree and separately lists every `route.ts` under `src/app` with what
+stands in for a session on it.
 
 ## Signing in
 

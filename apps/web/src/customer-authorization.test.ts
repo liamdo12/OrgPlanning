@@ -68,6 +68,20 @@ describe("customer pages", () => {
     expect(Object.keys(PUBLIC_PAGES).filter((name) => !present.has(name))).toEqual([]);
   });
 
+  it("keeps the public list to exactly these three routes", () => {
+    // The set, not one entry at a time. Every other case reads this list as an
+    // excuse — listed, therefore no gate is required — so a fourth entry with a
+    // plausible sentence beside it turns a gated screen public and passes
+    // everything else here. This is the only case that says what the list is
+    // allowed to contain, which is why the paths are written out rather than
+    // derived from the list being checked.
+    expect(Object.keys(PUBLIC_PAGES).sort()).toEqual([
+      "src/app/(customer)/page.tsx",
+      "src/app/(customer)/services/[slug]/page.tsx",
+      "src/app/(customer)/services/page.tsx",
+    ]);
+  });
+
   it.each(pages.map((page) => [page.name, page] as const))(
     "%s gates itself, or is on the public list",
     (_name, page) => {
@@ -124,6 +138,20 @@ describe("customer server actions", () => {
     for (const path of files) {
       expect(readFileSync(path, "utf8").startsWith('"use server"'), label(path)).toBe(true);
     }
+  });
+
+  it("keeps the directive inside the files this suite reads", () => {
+    // `actionsUnder` opens `actions.ts` and nothing else, so the directive at
+    // the top of a page, or inside one function of a component, is a POST
+    // target every case above is blind to — and the gate it is missing would
+    // not be missed by anything. There are none under this tree, which makes
+    // now the one moment saying so costs nothing.
+    const stray = walk(customerRoot)
+      .filter((path) => !path.endsWith("actions.ts"))
+      .filter((path) => readFileSync(path, "utf8").includes('"use server"'))
+      .map(label);
+
+    expect(stray).toEqual([]);
   });
 });
 
