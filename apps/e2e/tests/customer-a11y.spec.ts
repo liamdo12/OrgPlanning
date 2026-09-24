@@ -5,7 +5,6 @@ import {
   makeEventActive,
   openCheckoutForPlannedLine,
   openSeededEvent,
-  openSeededListing,
   openSeededOrder,
 } from "../fixtures/customer.js";
 import { NEW_CUSTOMER_STATE } from "../fixtures/state.js";
@@ -31,6 +30,20 @@ import { NEW_CUSTOMER_STATE } from "../fixtures/state.js";
  * only ones that fail the admin sweep.
  */
 
+/**
+ * The listing that draws every part of the media block at once.
+ *
+ * Six pictures: enough for the carousel to page, for its dots to be worth
+ * having, and for the strip to overflow into a "+N" tile that opens the
+ * gallery. Named, because the seed's pictures are deliberately uneven — one
+ * listing has a single frame and one has none — and "the first card" is how a
+ * sweep ends up auditing a component that degraded instead of one that drew.
+ */
+const LISTING_WITH_PICTURES = "balloon-and-floral-installs";
+
+/** The listing seeded with nothing to show, which is its own rendering. */
+const LISTING_WITHOUT_PICTURES = "bridal-and-table-bouquets";
+
 const SCREENS: ReadonlyArray<{
   name: string;
   path: string;
@@ -43,9 +56,12 @@ const SCREENS: ReadonlyArray<{
     shows: (page) => page.locator("a[href^='/services?cat=']").first(),
   },
   {
+    // The carousel lives on the card rather than on the listing, so this is
+    // where it is audited — and what is asked for is a card that has enough
+    // pictures to draw its dots, not merely a card.
     name: "the results page",
     path: "/services",
-    shows: (page) => page.locator("article a[href^='/services/']").first(),
+    shows: (page) => page.getByRole("button", { name: /^Show picture 2 of / }).first(),
   },
   {
     name: "the shortlist",
@@ -86,8 +102,31 @@ test("a listing's own page has no serious accessibility failures", async ({ page
   // are on the page being audited rather than absent from it. Both read the
   // active event, and neither draws without one.
   await makeEventActive(page, "Sarah's 30th");
-  const slug = await openSeededListing(page);
-  await auditable(page, `/services/${slug}`);
+  await page.goto(`/services/${LISTING_WITH_PICTURES}`);
+  await auditable(page, `/services/${LISTING_WITH_PICTURES}`);
+
+  // Named rather than "whichever card sorted first", and then checked: the
+  // pictures per listing are deliberately uneven, and the first card can be one
+  // of the two seeded to degrade — a single frame, or none at all. Auditing one
+  // of those and reporting "the photo strip is clean" would be a pass over a
+  // component that never drew. The strip shows four and this listing has six,
+  // so the count it holds back is the control that opens the gallery.
+  await expect(
+    page.getByRole("button", { name: /^Open all \d+ pictures of / }),
+    "the listing drew no gallery to audit",
+  ).toHaveText(/^\+\d+ photos$/);
+
+  expect(serious(await audit(page))).toEqual([]);
+});
+
+test("a listing with no pictures has no serious accessibility failures", async ({ page }) => {
+  // The other end of the same component. What stands in for the photographs is
+  // a gradient with the business's initials on it, and the strip and the
+  // carousel both have to answer for having nothing to show.
+  await makeEventActive(page, "Sarah's 30th");
+  await page.goto(`/services/${LISTING_WITHOUT_PICTURES}`);
+  await auditable(page, `/services/${LISTING_WITHOUT_PICTURES}`);
+  await expect(page.getByRole("button", { name: /^Show picture / })).toHaveCount(0);
 
   expect(serious(await audit(page))).toEqual([]);
 });
