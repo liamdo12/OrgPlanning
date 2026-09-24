@@ -146,7 +146,17 @@ export function MonthGrid({
               // to "any date" once one is picked.
               onClick={() => onSelect(selected ? undefined : day)}
               className={cx(
-                "aspect-square min-h-[40px] cursor-pointer rounded-tile border text-[13px] font-semibold",
+                // 44px of height. The canvas's cell is 40 (line 348), under the
+                // target floor in both axes, and the height is the axis that is
+                // free: seven 44s do not fit across the 304px a 360px screen
+                // leaves inside the panel, however the gaps are spent.
+                //
+                // `w-full` is what keeps the width the column's. Without it the
+                // square ratio takes the raised height as the width too, the
+                // row grows past the panel, and the panel — which hides its own
+                // horizontal overflow — cuts the last column off the screen.
+                // The residual 39px width at a phone is a recorded divergence.
+                "aspect-square min-h-[44px] w-full cursor-pointer rounded-tile border text-[13px] font-semibold",
                 selected
                   ? "border-role bg-role text-surface"
                   : "border-glass-edge-soft bg-chip text-ink",
@@ -185,14 +195,22 @@ function MonthStep({
   onPress: () => void;
 }) {
   return (
+    // 44px of control around the 32px the row draws, the same way the save
+    // heart is padded: a month step is one of the smallest things on the
+    // screen and moving a month is not a press anybody should have to aim at.
     <button
       type="button"
       aria-label={label}
       disabled={disabled}
       onClick={onPress}
-      className="size-[32px] cursor-pointer rounded-pill border border-glass-edge-soft bg-chip text-[15px] disabled:cursor-not-allowed disabled:opacity-[0.55]"
+      className="grid size-[44px] cursor-pointer place-items-center border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-[0.55]"
     >
-      <span aria-hidden="true">{glyph}</span>
+      <span
+        aria-hidden="true"
+        className="grid size-[32px] place-items-center rounded-pill border border-glass-edge-soft bg-chip text-[15px]"
+      >
+        {glyph}
+      </span>
     </button>
   );
 }
