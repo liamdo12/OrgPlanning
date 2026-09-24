@@ -98,3 +98,80 @@ export async function openSeededListing(page: Page, category?: string): Promise<
 
   return slug;
 }
+
+/**
+ * Opens one of this customer's bookings, and returns its id and reference.
+ *
+ * Off the list rather than out of the seed: which bookings exist is the seed's
+ * business, and a uuid or a reference typed into a spec passes until the day
+ * the seed changes and then fails on a screen that is working.
+ */
+export async function openSeededOrder(
+  page: Page,
+): Promise<{ orderId: string; reference: string }> {
+  await page.goto("/orders");
+
+  // The row's own control names the booking it opens, which is the only thing
+  // on the list carrying the reference in a machine-readable place.
+  const view = page.getByRole("link", { name: /^View \S+ with / }).first();
+  await expect(view, "the orders list showed no booking").toBeVisible();
+
+  const href = (await view.getAttribute("href")) ?? "";
+  const reference = (await view.getAttribute("aria-label"))?.split(" ")[1] ?? "";
+  const orderId = href.split("/").pop() ?? "";
+  expect(orderId, "the orders list named no booking to open").toMatch(UUID);
+
+  await view.click();
+  await page.waitForURL(`**/orders/${orderId}`);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  return { orderId, reference };
+}
+
+/**
+ * The checkout for a business the active event has a line waiting on.
+ *
+ * It plans one first when the planner has none, because the specs run at two
+ * widths against a single reseed and the pass before this one may have bought
+ * or emptied the slot that was there. Reached by following the planner's own
+ * control: the query it carries is the contract between the two screens, and a
+ * spec that built the address itself would keep passing after the planner
+ * stopped producing it.
+ */
+export async function openCheckoutForPlannedLine(page: Page): Promise<void> {
+  await page.goto("/events");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  // The row's control, not the panel's "Check out 1 item in plan" — the two
+  // lead to the same screen, and the row is the one a slot always has.
+  const checkout = page.getByRole("link", { name: "Check out", exact: true }).first();
+  if ((await checkout.count()) === 0) await planALine(page);
+
+  await expect(checkout, "the planner offered nothing to check out").toBeVisible();
+  await checkout.click();
+  await page.waitForURL(/\/checkout\?/);
+}
+
+/** Puts the first listing of an empty slot's category into the active event. */
+async function planALine(page: Page): Promise<void> {
+  const eventName = (await page.getByRole("heading", { level: 1 }).textContent())?.trim() ?? "";
+
+  // The planner draws an event without the cookie being set; the listing's
+  // booking card does not, and offers "Choose an event" instead of the button
+  // this follows. So the event the planner is showing is made the active one.
+  await makeEventActive(page, eventName);
+
+  const find = page.getByRole("link", { name: /^Find / }).first();
+  await expect(find, "the planner had no empty slot left to fill").toBeVisible();
+  await find.click();
+  await page.waitForURL(/\/services\?cat=/);
+
+  const listing = page.locator("article a[href^='/services/']").first();
+  await expect(listing, "the category the planner named had no listing").toBeVisible();
+  await listing.click();
+  await page.waitForURL(/\/services\/[^/]+$/);
+
+  const title = (await page.getByRole("heading", { level: 1 }).textContent())?.trim() ?? "";
+  await page.getByRole("button", { name: `Add ${title} to ${eventName}` }).click();
+  await page.waitForURL(/\/events/);
+}
