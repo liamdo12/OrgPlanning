@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Input, Toast, ToastRegion } from "@occasion/ui";
+import { Button, Input } from "@occasion/ui";
 import { decideReportAction, type ModerationActionState } from "../actions";
+import { useDecisionOutcome } from "./decision-outcome";
 
 /**
  * The decision on one report.
@@ -35,13 +36,15 @@ export function DecisionForm({
   hint?: string;
 }) {
   const router = useRouter();
-  const [reported, setReported] = useState<ModerationActionState | null>(null);
+  const announce = useDecisionOutcome();
 
   const [state, submit, pending] = useActionState(
     async (previous: ModerationActionState, form: FormData) => {
       const next = await decideReportAction(previous, form);
       if (!next.error) {
-        setReported(next);
+        // Announced above the queue before the refresh, because the refresh
+        // takes this card — and anything rendered inside it — away.
+        if (next.message) announce(next.message);
         // The action revalidates the path; this is what makes the open page
         // re-read it without a full navigation.
         router.refresh();
@@ -85,14 +88,6 @@ export function DecisionForm({
           })}
         </div>
       </form>
-
-      {reported?.message ? (
-        <ToastRegion>
-          <Toast tone="success" onDismiss={() => setReported(null)}>
-            {reported.message}
-          </Toast>
-        </ToastRegion>
-      ) : null}
     </>
   );
 }

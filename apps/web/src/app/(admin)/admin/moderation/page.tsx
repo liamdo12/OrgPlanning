@@ -10,6 +10,7 @@ import { LoadMore } from "../../_components/load-more";
 import { requireAdminPage } from "../../../../lib/auth-guard";
 import { createRequestContext } from "../../../../lib/core";
 import { ReportFilters, type FilterChoice } from "./_components/report-filters";
+import { DecisionOutcomeRegion } from "./_components/decision-outcome";
 import { ReportCard } from "./_components/report-card";
 
 /** Rendered per request: nothing it shows exists at build time. */
@@ -108,11 +109,13 @@ export default async function AdminModerationPage({
           }
         />
       ) : (
-        <div className="grid gap-4">
-          {list.rows.map((report) => (
-            <ReportCard key={report.id} report={report} />
-          ))}
-        </div>
+        <DecisionOutcomeRegion>
+          <div className="grid gap-4">
+            {list.rows.map((report) => (
+              <ReportCard key={report.id} report={report} />
+            ))}
+          </div>
+        </DecisionOutcomeRegion>
       )}
 
       {list.nextCursor ? <LoadMore href={`/admin/moderation?${nextPage.toString()}`} /> : null}
