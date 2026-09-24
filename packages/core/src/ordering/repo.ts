@@ -165,7 +165,13 @@ export type NewOrder = {
 export async function recordAgreement(
   db: DbExecutor,
   orderId: string,
-  agreement: { at: Date; total: bigint; depositAmount: bigint; balanceAmount: bigint; balanceDueAt: Date | null },
+  agreement: {
+    at: Date;
+    total: bigint;
+    depositAmount: bigint;
+    balanceAmount: bigint;
+    balanceDueAt: Date | null;
+  },
 ): Promise<void> {
   await db
     .update(orders)

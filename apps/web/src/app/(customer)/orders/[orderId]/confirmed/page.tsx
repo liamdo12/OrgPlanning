@@ -29,11 +29,7 @@ export const dynamic = "force-dynamic";
  *
  * Keyed on the order id, like every other route here.
  */
-export default async function ConfirmedPage({
-  params,
-}: {
-  params: Promise<{ orderId: string }>;
-}) {
+export default async function ConfirmedPage({ params }: { params: Promise<{ orderId: string }> }) {
   const actor = await requireCustomerPage();
   const ctx = createRequestContext();
   const { orderId } = await params;
@@ -84,13 +80,8 @@ export default async function ConfirmedPage({
         <Row label="Booking" value={orderStateLabel(order.state)} />
         <Row label="Business" value={order.vendorName} />
         {order.eventName ? <Row label="Event" value={order.eventName} /> : null}
-        {order.eventDate ? (
-          <Row label="Date" value={formatCalendarDay(order.eventDate)} />
-        ) : null}
-        <Row
-          label="Paid so far"
-          value={formatMoney(detail.money.captured, order.currency)}
-        />
+        {order.eventDate ? <Row label="Date" value={formatCalendarDay(order.eventDate)} /> : null}
+        <Row label="Paid so far" value={formatMoney(detail.money.captured, order.currency)} />
         {order.balanceAmount > 0n && order.balanceDueAt ? (
           <Row
             label={`Balance on ${formatDay(order.balanceDueAt)}`}

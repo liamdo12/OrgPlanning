@@ -103,11 +103,7 @@ function Booked({ detail }: { detail: CustomerOrderDetail }) {
         ))}
         <Line label="Subtotal" value={formatMoney(detail.order.subtotal, detail.order.currency)} />
         <Line label="Tax" value={formatMoney(detail.order.tax, detail.order.currency)} />
-        <Line
-          label="Total"
-          value={formatMoney(detail.order.total, detail.order.currency)}
-          strong
-        />
+        <Line label="Total" value={formatMoney(detail.order.total, detail.order.currency)} strong />
       </dl>
     </GlassPanel>
   );
@@ -165,7 +161,11 @@ function Agreement({ detail }: { detail: CustomerOrderDetail }) {
   const agreed = order.agreement;
 
   return (
-    <GlassPanel as="section" aria-labelledby="agreed-heading" className="mt-[18px] rounded-overlay p-5">
+    <GlassPanel
+      as="section"
+      aria-labelledby="agreed-heading"
+      className="mt-[18px] rounded-overlay p-5"
+    >
       <h2 id="agreed-heading" className="m-0 mb-[10px] text-subhead">
         What you agreed to
       </h2>

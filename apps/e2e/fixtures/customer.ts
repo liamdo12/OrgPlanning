@@ -106,9 +106,7 @@ export async function openSeededListing(page: Page, category?: string): Promise<
  * business, and a uuid or a reference typed into a spec passes until the day
  * the seed changes and then fails on a screen that is working.
  */
-export async function openSeededOrder(
-  page: Page,
-): Promise<{ orderId: string; reference: string }> {
+export async function openSeededOrder(page: Page): Promise<{ orderId: string; reference: string }> {
   await page.goto("/orders");
 
   // The row's own control names the booking it opens, which is the only thing

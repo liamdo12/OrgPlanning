@@ -630,9 +630,9 @@ describe.skipIf(!url)("the booking spine", () => {
 
       // Not "forbidden": a different answer for "not yours" and "no such row"
       // turns an id in a URL into a way to find out which bookings exist.
-      await expect(
-        getOrderForCustomer(ctx, sarah, theirs?.id as string),
-      ).rejects.toBeInstanceOf(NotFoundError);
+      await expect(getOrderForCustomer(ctx, sarah, theirs?.id as string)).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
     });
 
     it("reads back what was bought, what was paid and what was agreed", async () => {
@@ -679,9 +679,9 @@ describe.skipIf(!url)("the booking spine", () => {
         returning id
       `;
 
-      await expect(
-        createCheckout(ctx, ada, request(hers?.id as string)),
-      ).resolves.toMatchObject({ orders: [{ vendorId }] });
+      await expect(createCheckout(ctx, ada, request(hers?.id as string))).resolves.toMatchObject({
+        orders: [{ vendorId }],
+      });
     });
 
     it("refuses once the free window has closed, and says so", async () => {

@@ -205,8 +205,8 @@ function VendorPanel({ quote, eventName }: { quote: QuotedOrder; eventName: stri
 
       <p className="mt-[12px] mb-0 text-[13.5px] text-pretty text-body">
         For {eventName}. Free cancellation until{" "}
-        <strong className="font-bold text-ink">{formatDay(quote.coolingWindowEndsAt)}</strong>; after
-        that the vendor&rsquo;s own cancellation policy applies.
+        <strong className="font-bold text-ink">{formatDay(quote.coolingWindowEndsAt)}</strong>;
+        after that the vendor&rsquo;s own cancellation policy applies.
       </p>
     </section>
   );
