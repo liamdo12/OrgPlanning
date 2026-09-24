@@ -73,7 +73,13 @@ export default async function ConfirmedPage({
           : "Your card has been accepted and we are waiting for the payment to settle. Nothing else is needed from you — refresh this page in a moment and it will say so."}
       </p>
 
-      <GlassPanel as="div" className="mb-[18px] rounded-overlay p-5">
+      {/*
+       * A description list, not a run of `<p>`s with two spans. Every row here
+       * is a label and the value it belongs to — two of them money — and read
+       * as paragraphs they arrive as seven labels followed by seven values,
+       * with nothing tying "Balance on Dec 13" to the amount beside it.
+       */}
+      <GlassPanel as="dl" className="mb-[18px] rounded-overlay p-5">
         <Row label="Order" value={order.reference} />
         <Row label="Booking" value={orderStateLabel(order.state)} />
         <Row label="Business" value={order.vendorName} />
@@ -128,11 +134,18 @@ function summary(detail: CustomerOrderDetail): string {
     : `${paid} Order ${order.reference}.`;
 }
 
+/**
+ * One labelled figure.
+ *
+ * The pair is wrapped, which is the grouping a description list allows — and
+ * only one level of it. A further wrapper would leave the `dt`s two levels down
+ * and stop being a description list at all.
+ */
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <p className="m-0 flex justify-between gap-[14px] border-b border-hairline py-[9px] text-[14px] last:border-b-0">
-      <span className="text-body">{label}</span>
-      <span className="text-right font-semibold">{value}</span>
-    </p>
+    <div className="flex justify-between gap-[14px] border-b border-hairline py-[9px] text-[14px] last:border-b-0">
+      <dt className="m-0 text-body">{label}</dt>
+      <dd className="m-0 text-right font-semibold">{value}</dd>
+    </div>
   );
 }
