@@ -32,7 +32,8 @@ import {
   resolveOrderIssue,
   retryBalance,
 } from "../src/ordering/admin-service.js";
-import { raiseIssue } from "../src/ordering/service.js";
+import { createCheckout, raiseIssue } from "../src/ordering/service.js";
+import { extendCheckoutWindow } from "../src/ordering/customer-service.js";
 import { recordExternalRefund } from "../src/payments/service.js";
 import {
   requeueJob,
@@ -67,6 +68,7 @@ import {
 import { builtInTemplate } from "../src/email/templates/index.js";
 import { createStripeFake, type StripeFake } from "../src/testing/stripe-fake.js";
 import { createDatabaseContext, ownerSql, resetDatabase, testDatabaseUrl } from "./harness.js";
+import { exportedFunctions } from "./surface.js";
 
 /**
  * Nothing an administrator changes happens quietly.
@@ -448,6 +450,29 @@ const CASES: readonly Case[] = [
       ),
     run: (c, a, s) =>
       removeItemFromPlan(c, a, { eventId: s.eventId, categoryId: s.plannedCategoryId }),
+  },
+
+  // ---- the customer's own checkout ----------------------------------------
+  {
+    screen: "checkout",
+    what: "holding the date open for another payment attempt",
+    actor: "accountHolder",
+    action: "order.extend_checkout_window",
+    entityType: "order",
+    // No `entity`: the order is made here rather than seeded, so there is no
+    // fixture id to name. The case books a real one, because the deadline being
+    // moved has to exist — `rearmQueuedJob` matches a queued row and writes
+    // nothing when there is none, so a case pointed at a seeded confirmed order
+    // would assert an entry the function is right not to have written.
+    run: async (c, a, s) => {
+      const checkout = await createCheckout(c, a, {
+        eventId: s.eventId,
+        lines: [{ serviceId: s.plannableServiceId, quantity: 1 }],
+      });
+      const [order] = checkout.orders;
+      if (!order) throw new Error("the checkout produced no order to extend");
+      return extendCheckoutWindow(c, a, order.id);
+    },
   },
 
   // ---- operations and email ----------------------------------------------
@@ -940,11 +965,13 @@ describe.skipIf(!url)("audit coverage", () => {
     expect(claimed.filter((action) => !inSource.has(action))).toEqual([]);
   });
 
-  it("sees the action families the domain has yet to write", () => {
-    // The customer's own screens are next, and none of their actions exists
-    // yet. A prefix the pattern does not list is invisible to the scan above,
-    // and invisible passes: the first `planning.*` entry would arrive with
-    // nothing requiring anybody to have read one back.
+  it("sees an action family before the domain has written one", () => {
+    // A prefix the pattern does not list is invisible to the scan above, and
+    // invisible passes: the first entry under it would arrive with nothing
+    // requiring anybody to have read one back. `planning.*` is here as the
+    // worked example — five of them are in source now and every one has a case
+    // — and the other two are still hypothetical, which is the state this case
+    // is meant to cover.
     //
     // A copy without the global flag, because `.exec` on the shared one moves
     // its `lastIndex` and the next caller starts mid-file.
@@ -957,6 +984,33 @@ describe.skipIf(!url)("audit coverage", () => {
     ]) {
       expect([action, pattern.exec(`action: "${action}",`)?.[1]]).toEqual([action, action]);
     }
+  });
+
+  /**
+   * Mutations that deliberately write nothing at all.
+   *
+   * The scan above reads action strings out of the domain's own source, so the
+   * most it can ever report is an action nobody reads back. A function that
+   * records nothing is invisible to it, and invisible passes — which makes "no
+   * entry" and "no decision" look identical to every case in this file. This
+   * list is the difference between the two, and it is the record of an
+   * inspection rather than the output of one.
+   *
+   * Each name is checked against the barrel below, so a function that is
+   * renamed or deleted takes its excuse with it.
+   */
+  const NO_AUDIT: Readonly<Record<string, string>> = {
+    toggleSaved:
+      "A shortlist is the caller's own bookmark on a listing anybody can already open. " +
+      "It changes nothing another person can observe, the same control undoes it, and a " +
+      "row per tap would be noise in the log somebody reads to settle a dispute. The " +
+      "table itself is the state, and it is the caller's.",
+  };
+
+  it("keeps the deliberate silences pointed at real functions", () => {
+    const surface = new Set(exportedFunctions().map((fn) => fn.name));
+
+    expect(Object.keys(NO_AUDIT).filter((name) => !surface.has(name))).toEqual([]);
   });
 
   describe("money the platform moved by itself", () => {
