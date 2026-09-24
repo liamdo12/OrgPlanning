@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import { authAttempts, userRoles, users } from "@occasion/db/schema";
 import { createDb } from "@occasion/db";
 import { reseedDemo } from "@occasion/db/testing";
@@ -106,7 +106,10 @@ function required(name: string): string {
   return value;
 }
 
-function serviceRoleClient(): SupabaseClient {
+// The return type is inferred: `SupabaseClient`'s own default parameters are
+// not the ones `createClient` produces, and naming it widens nothing while
+// making the assignment unsafe.
+function serviceRoleClient() {
   return createClient(required("SUPABASE_URL"), required("SUPABASE_SERVICE_ROLE_KEY"), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
@@ -119,7 +122,7 @@ function serviceRoleClient(): SupabaseClient {
  * rebuilt every run and the accounts that sign in to them are not.
  */
 async function giveProviderLogin(
-  supabase: SupabaseClient,
+  supabase: ReturnType<typeof serviceRoleClient>,
   email: string,
   fullName: string,
 ): Promise<void> {

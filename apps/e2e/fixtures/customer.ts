@@ -129,6 +129,54 @@ export async function openSeededOrder(
 }
 
 /**
+ * The one booking on this account that can still be called off for nothing.
+ *
+ * Found by opening the bookings and looking for the control, rather than by
+ * naming a reference: which booking is inside its free window is a property of
+ * the seed and of when the seed last ran, and a spec that named one would fail
+ * on the day the seed changed for reasons that have nothing to do with
+ * cancelling.
+ */
+export async function openCancellableBooking(
+  page: Page,
+): Promise<{ orderId: string; reference: string; vendorName: string }> {
+  await page.goto("/orders");
+
+  const views = page.getByRole("link", { name: /^View \S+ with / });
+  // Waited for before they are read: reading the list off the DOM does not
+  // wait for it the way an assertion does, and an empty list looks exactly like
+  // a list that has not arrived.
+  await expect(views.first(), "the orders list showed no booking").toBeVisible();
+
+  const rows = await views.evaluateAll((links) =>
+    links.map((link) => ({
+      href: link.getAttribute("href") ?? "",
+      label: link.getAttribute("aria-label") ?? "",
+    })),
+  );
+
+  for (const row of rows) {
+    await page.goto(row.href);
+    // The booking, not the screen that says it is coming: `/orders` streams
+    // behind a loading boundary, and a control counted on the fallback is a
+    // control counted as absent.
+    const name = page.getByRole("heading", { level: 1 });
+    await expect(name, `${row.label} did not render`).toBeVisible();
+
+    const cancel = page.getByRole("button", { name: "Cancel this booking" });
+    if ((await cancel.count()) === 0) continue;
+
+    return {
+      orderId: row.href.split("/").pop() ?? "",
+      reference: row.label.split(" ")[1] ?? "",
+      vendorName: ((await name.textContent()) ?? "").trim(),
+    };
+  }
+
+  throw new Error("No booking on this account is inside its free cancellation window.");
+}
+
+/**
  * The checkout for a business the active event has a line waiting on.
  *
  * It plans one first when the planner has none, because the specs run at two
@@ -139,17 +187,29 @@ export async function openSeededOrder(
  * stopped producing it.
  */
 export async function openCheckoutForPlannedLine(page: Page): Promise<void> {
-  await page.goto("/events");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await ensurePlannedLine(page);
 
   // The row's control, not the panel's "Check out 1 item in plan" — the two
   // lead to the same screen, and the row is the one a slot always has.
   const checkout = page.getByRole("link", { name: "Check out", exact: true }).first();
-  if ((await checkout.count()) === 0) await planALine(page);
-
   await expect(checkout, "the planner offered nothing to check out").toBeVisible();
   await checkout.click();
   await page.waitForURL(/\/checkout\?/);
+}
+
+/**
+ * Leaves the active event with at least one line chosen but not yet bought.
+ *
+ * Its own export because two journeys need the same starting point and neither
+ * may assume the other ran: the specs run at two widths against one reseed, so
+ * the pass before this one may have bought or emptied the slot that was there.
+ */
+export async function ensurePlannedLine(page: Page): Promise<void> {
+  await page.goto("/events");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+
+  const checkout = page.getByRole("link", { name: "Check out", exact: true });
+  if ((await checkout.count()) === 0) await planALine(page);
 }
 
 /** Puts the first listing of an empty slot's category into the active event. */
