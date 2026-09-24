@@ -18,7 +18,7 @@ export const metadata = { title: "Booking confirmed · Occasion" };
 export const dynamic = "force-dynamic";
 
 /**
- * The confirmation, lines 1224–1245.
+ * The confirmation, lines 1188–1201.
  *
  * **It reports the order's state, never the browser's result.** A successful
  * card confirmation means the provider accepted the card; the booking is
@@ -124,7 +124,7 @@ export default async function ConfirmedPage({
   );
 }
 
-/** Line 1228: what was paid, and until when it can be undone for nothing. */
+/** Line 1191: what was paid, and until when it can be undone for nothing. */
 function summary(detail: CustomerOrderDetail): string {
   const { order, money, freeCancellation } = detail;
   const paid = `${formatMoney(money.captured, order.currency)} paid.`;

@@ -227,7 +227,7 @@ function WherePanel({
   return (
     <SearchPanelGroup legend="Where is the event">
       <div className="mb-3 max-w-[460px]">
-        {/* The prototype's placeholder is the only label it has (line 305); a
+        {/* The prototype's placeholder is the only label it has (line 303); a
             placeholder disappears the moment anyone types, so the field gets a
             real one and keeps the placeholder as the example it is. */}
         <label htmlFor={fieldId} className="sr-only">

@@ -169,7 +169,7 @@ export function MonthGrid({
         })}
       </div>
 
-      {/* Line 352. */}
+      {/* Line 351. */}
       <label className="mt-3 flex cursor-pointer items-center gap-[9px] text-[13.5px] text-body">
         <input
           type="checkbox"

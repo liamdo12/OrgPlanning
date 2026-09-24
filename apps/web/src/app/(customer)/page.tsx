@@ -19,7 +19,7 @@ export const metadata = { title: "Explore · Occasion" };
 /** Rendered per request: the feed, the counts and the shortlist are all live. */
 export const dynamic = "force-dynamic";
 
-/** Line 655: the canvas draws four featured cards. */
+/** Line 2329: the canvas takes the first four listings as its featured row. */
 const FEATURED = 4;
 
 /**

@@ -3,11 +3,11 @@ import { cx } from "../lib/cx";
 /**
  * `★ 4.9 (86)`.
  *
- * Lines 732, 773 and 807 — the card, the detail heading and a review row all
+ * Lines 732, 773 and 808 — the card, the detail heading and a review row all
  * draw the same glyphs. The first two carry a count, because an average with
  * no count behind it says nothing; the third is one person's own rating, where
  * a count of one is noise, so `count` is optional and the canvas draws it
- * without one (line 807).
+ * without one (line 808).
  *
  * The star is decorative and the bracketed number is not one a screen reader
  * can place, so the visible text is hidden from the accessibility tree and a

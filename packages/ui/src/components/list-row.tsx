@@ -4,7 +4,7 @@ import { cx } from "../lib/cx";
 /**
  * A person or a business, one per card.
  *
- * Line 1677: a glass card at radius 22 with 15px padding, an avatar, a
+ * Line 1675: a glass card at radius 22 with 15px padding, an avatar, a
  * two-line identity that takes the remaining width, and actions that wrap
  * underneath on a narrow screen.
  *

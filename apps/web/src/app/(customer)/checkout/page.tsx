@@ -22,7 +22,7 @@ export const metadata = { title: "Confirm and pay · Occasion" };
 export const dynamic = "force-dynamic";
 
 /**
- * Confirm and pay, lines 1142–1187.
+ * Confirm and pay, lines 1142–1185.
  *
  * **One business.** `createCheckout` opens an order per vendor and
  * `chargeDeposit` takes one order and returns one client secret, so a

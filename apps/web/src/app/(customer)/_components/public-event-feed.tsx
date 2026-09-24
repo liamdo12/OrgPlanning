@@ -15,7 +15,7 @@ import { MediaPlaceholder } from "./media-placeholder";
  *
  * Two things the canvas draws are not here, because there is nothing behind
  * them. The kind pill ("Birthday", "Wedding", line 594) has no column, and the
- * price line (line 603) would be money about a stranger's event — which is
+ * price line (line 601) would be money about a stranger's event — which is
  * exactly what the projection refuses. The card carries the booked count in
  * that corner instead, which is a real number about a real event.
  *

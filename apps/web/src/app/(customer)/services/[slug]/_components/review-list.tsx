@@ -29,7 +29,7 @@ export function ReviewList({
         <GlassCard key={review.id} as="article" className="p-[16px]">
           <p className="m-0 mb-[6px] flex flex-wrap items-baseline gap-[6px] text-[13.5px] text-body">
             {/* No count: this is one person's own rating, and "(1)" beside it
-                reads as an average of a single review. Line 807. */}
+                reads as an average of a single review. Line 808. */}
             <Rating average={review.rating} />
             <span aria-hidden="true">·</span>
             <span>{review.authorName}</span>

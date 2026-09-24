@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * A blank event.
  *
  * Its own heading, intro and call to action rather than the edit screen with
- * fields emptied (line 2369): somebody arriving here has nothing yet, and the
+ * fields emptied (lines 2368–2371): somebody arriving here has nothing yet, and the
  * copy that tells an owner their vendors will see a change is meaningless to
  * them.
  *
