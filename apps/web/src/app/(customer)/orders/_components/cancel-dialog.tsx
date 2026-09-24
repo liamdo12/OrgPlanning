@@ -5,7 +5,11 @@ import { Button, Dialog } from "@occasion/ui";
 import { cancelOwnBookingAction, type CancelState } from "../[orderId]/actions";
 
 /**
- * Cancelling a booking, lines 1189–1196 of the order's own screen.
+ * Cancelling a booking, which the canvas has no control for.
+ *
+ * What it has is the sentence this dialog repeats — "You can cancel free of
+ * charge until…", line 1191 — on a confirmation that then offers no way to do
+ * it. The control is a divergence, recorded with the rest of the order screen.
  *
  * **Only drawn while cancelling is actually free.** Outside the window the
  * screen says what cancelling would cost instead of offering a button that

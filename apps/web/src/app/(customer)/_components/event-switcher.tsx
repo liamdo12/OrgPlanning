@@ -118,7 +118,7 @@ export function EventSwitcher({
   );
 }
 
-/** Line 391: a pill, 7px 13px, 13.5px/600. */
+/** Line 389: a pill, 7px 13px, 13.5px/600. */
 const CHIP =
   "flex items-center gap-2 rounded-pill border border-glass-edge-soft bg-glass-wash px-[13px] py-[7px] text-[13.5px] font-semibold whitespace-nowrap text-ink";
 

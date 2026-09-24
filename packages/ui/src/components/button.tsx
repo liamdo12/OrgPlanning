@@ -9,7 +9,7 @@ import { cx } from "../lib/cx";
  *
  *   primary   solid role fill, one per screen (line 566)
  *   secondary glass with a role-coloured edge on hover (line 515)
- *   ghost     an outline until hovered, for repeated row actions (line 1852)
+ *   ghost     an outline until hovered, for repeated row actions (line 1685)
  *   danger    a warm outline, never a red fill (line 2629)
  *
  * The last one is the prototype's judgement and worth keeping: "Suspend" sits

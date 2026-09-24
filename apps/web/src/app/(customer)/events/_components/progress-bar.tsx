@@ -1,5 +1,5 @@
 /**
- * A 9px track with a filled portion, line 896.
+ * A 9px track with a filled portion, line 895.
  *
  * Route-local: the budget bar is its only consumer, and a bar that exists once
  * belongs beside the screen that draws it rather than in the shared kit.

@@ -51,7 +51,7 @@ export function EventEmptyState() {
           </Link>
           {/*
             Outlined, with **no translucent fill**. The prototype washes this
-            button with 12% of the surface colour over the green (line 866),
+            button with 12% of the surface colour over the green (line 865),
             which lightens the background just enough to take its own label
             under the contrast floor — axe catches it at both widths. The label
             on the plain fill clears it, and the border carries the edge the

@@ -11,7 +11,7 @@ import { OrderSummary } from "./order-summary";
 import { IDLE, canPay, onDeclined, type PayFormState } from "./can-pay";
 
 /**
- * The card fields, the agreement, the summary and Pay — lines 1146–1187.
+ * The card fields, the agreement, the summary and Pay — lines 1145–1183.
  *
  * One `<form>` across both columns, because the agreement and the button it
  * enables sit in different halves of the canvas's layout and a button outside

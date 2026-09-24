@@ -1,7 +1,7 @@
 import { PriceLockup, type PriceRow } from "@occasion/ui";
 
 /**
- * The sticky order summary, lines 1166–1187.
+ * The sticky order summary, lines 1169–1182.
  *
  * `PriceLockup` with its `group`, which is the component's own name for the
  * canvas's washed sub-panel at line 1176 — the deposit and the balance sit in

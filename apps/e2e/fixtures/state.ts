@@ -21,5 +21,14 @@ const here = fileURLToPath(new URL(".", import.meta.url));
 export const ADMIN_STATE = `${here}../.auth/admin.json`;
 export const CUSTOMER_STATE = `${here}../.auth/customer.json`;
 
+/**
+ * The customer who has planned nothing.
+ *
+ * A second session rather than a second use of the first: what the screens show
+ * an account with no events is a state of its own, and the only way to reach it
+ * is to be somebody who has none.
+ */
+export const NEW_CUSTOMER_STATE = `${here}../.auth/new-customer.json`;
+
 /** No cookies at all: the state an anonymous visitor arrives in. */
 export const ANONYMOUS_STATE = { cookies: [], origins: [] };

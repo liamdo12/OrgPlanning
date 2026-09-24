@@ -57,7 +57,15 @@ export function SearchPill({ today }: { today: string }) {
   return (
     // The panel is positioned against this, so it stays under the header and
     // inside the header's own column rather than against the viewport.
-    <div className="relative flex min-w-0 flex-1">
+    //
+    // `flex: 1 1 260px`, line 225 — the basis is what makes that true at a
+    // phone width. With a basis of zero this box shrinks to whatever the header
+    // row has left, which is 95px at 360, while the panel hanging off it keeps
+    // its own 332px minimum: the panel then started at the control's left edge
+    // and ran 109px past the right edge of the screen, taking two columns of
+    // the calendar with it. At 260 the row wraps instead, the search control
+    // takes a line of its own, and the panel lands inside the gutter.
+    <div className="relative flex min-w-0 flex-[1_1_260px]">
       {/*
        * The swap is on wrappers rather than on the controls themselves: both
        * carry `flex` of their own, and two display utilities on one element are

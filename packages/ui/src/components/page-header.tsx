@@ -7,7 +7,7 @@ import { cx } from "../lib/cx";
  * The serif heading is the prototype's one piece of display type: Instrument
  * Serif at `clamp(27px, 4vw, 40px)`, weight 400 (line 1795). The blurb is 14px
  * body colour, capped at 66 characters so a wide screen does not turn it into
- * one long line (line 1833).
+ * one long line (line 1835).
  *
  * Actions sit on the title's row and wrap beneath it on a phone (line 1661).
  */

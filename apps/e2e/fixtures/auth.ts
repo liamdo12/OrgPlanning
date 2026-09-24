@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { ADMIN_EMAIL, CUSTOMER_EMAIL, SIGN_IN_PASSWORD } from "./seed.js";
+import { ADMIN_EMAIL, CUSTOMER_EMAIL, NEW_CUSTOMER_EMAIL, SIGN_IN_PASSWORD } from "./seed.js";
 
 /**
  * Signing in the way a person does.
@@ -12,7 +12,17 @@ import { ADMIN_EMAIL, CUSTOMER_EMAIL, SIGN_IN_PASSWORD } from "./seed.js";
  */
 async function signIn(page: Page, email: string, next: string): Promise<void> {
   await page.goto(`/login?next=${encodeURIComponent(next)}`);
+  await submitSignIn(page, email);
+}
 
+/**
+ * The same form, on the login screen the app has already sent us to.
+ *
+ * Its own export for the journey that arrives here by being refused something:
+ * that journey's whole point is the address it was asking for travelling with
+ * the redirect, so it must not navigate to a login screen of its own making.
+ */
+export async function submitSignIn(page: Page, email: string): Promise<void> {
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(SIGN_IN_PASSWORD);
   await page.getByRole("button", { name: "Log in" }).click();
@@ -50,4 +60,9 @@ export async function signInAsAdmin(page: Page, next = "/admin/vendors"): Promis
 /** Signed in, in good standing, and holding no admin role. */
 export async function signInAsCustomer(page: Page, next = "/"): Promise<void> {
   await signIn(page, CUSTOMER_EMAIL, next);
+}
+
+/** The same door, for the account the suite provisions with nothing in it. */
+export async function signInAsNewCustomer(page: Page, next = "/"): Promise<void> {
+  await signIn(page, NEW_CUSTOMER_EMAIL, next);
 }

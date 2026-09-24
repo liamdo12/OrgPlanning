@@ -1,5 +1,5 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { audit, auditable, serious } from "../fixtures/a11y.js";
 import { ADMIN_STATE } from "../fixtures/state.js";
 
 /**
@@ -9,9 +9,9 @@ import { ADMIN_STATE } from "../fixtures/state.js";
  * of the same problem: the nav becomes a tab bar, panels become drawers, and
  * contrast against the glass backdrop changes with the layout behind it.
  *
- * Only `serious` and `critical` findings fail. axe's `moderate` bucket is
- * largely advisory and a suite that fails on all four is a suite somebody
- * switches off — which is how the two that matter stop being checked.
+ * The pass itself, what fails a run, and the rule that a screen proves it is
+ * the screen that was asked for before it is measured, are all in
+ * `fixtures/a11y.ts` — shared with the customer sweep rather than copied.
  */
 
 const SCREENS = [
@@ -30,25 +30,6 @@ const SCREENS = [
   { name: "settings", path: "/admin/settings" },
 ] as const;
 
-/**
- * Next's development overlay is not part of the product.
- *
- * It injects its own root, and its findings would be reported against every
- * screen while being unfixable from this repository.
- */
-async function audit(page: Page) {
-  return new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .exclude("nextjs-portal")
-    .analyze();
-}
-
-function serious(results: Awaited<ReturnType<typeof audit>>) {
-  return results.violations
-    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
-    .map((violation) => `${violation.id}: ${violation.help} (${violation.nodes.length})`);
-}
-
 // Signed in once, in `auth.setup.ts`. Signing in per test spent the platform's
 // login allowance on setup and then failed against its own brute-force limit.
 test.use({ storageState: ADMIN_STATE });
@@ -56,7 +37,7 @@ test.use({ storageState: ADMIN_STATE });
 for (const screen of SCREENS) {
   test(`${screen.name} has no serious accessibility failures`, async ({ page }) => {
     await page.goto(screen.path);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await auditable(page, screen.path);
 
     expect(serious(await audit(page))).toEqual([]);
   });
@@ -67,7 +48,7 @@ test("the login screen has no serious accessibility failures", async ({ page }) 
   // session; signed in, this redirects away.
   await page.context().clearCookies();
   await page.goto("/login");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await auditable(page, "/login");
 
   expect(serious(await audit(page))).toEqual([]);
 });

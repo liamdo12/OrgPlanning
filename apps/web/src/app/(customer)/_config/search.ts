@@ -32,7 +32,7 @@ export const SEARCH_CATEGORIES: readonly SearchChoice[] = [
   { slug: "decorations", name: "Decorations" },
 ];
 
-/** Source: `whereOptions`, line 2201 — the prototype's own "Popular areas". */
+/** Source: `whereOptions`, line 2200 — the prototype's own "Popular areas". */
 export const SEARCH_AREAS: readonly SearchChoice[] = [
   { slug: "liberty-village", name: "Liberty Village" },
   { slug: "downtown-core", name: "Downtown core" },
@@ -51,7 +51,7 @@ export const GUESTS_MIN = 5;
 export const GUESTS_MAX = 500;
 export const GUESTS_STEP = 5;
 
-/** What the pill shows when a field has no selection. Lines 2267–2271. */
+/** What the pill shows when a field has no selection. Line 2188. */
 export const ANY_CATEGORY = "Any service";
 export const ANY_AREA = "All of Toronto";
 
@@ -62,7 +62,7 @@ export type SearchSelection = {
   /** An ISO date, `YYYY-MM-DD`. */
   when?: string | undefined;
   guests?: number | undefined;
-  /** The prototype's ±3 days, line 352. */
+  /** The prototype's ±3 days, line 351. */
   flex?: boolean | undefined;
 };
 
@@ -139,7 +139,7 @@ export function nameOf(list: readonly SearchChoice[], slug: string | undefined, 
 }
 
 /**
- * The date, as the pill shows it. Line 2270 renders "Mar 20".
+ * The date, as the pill shows it. Line 2180 renders "Mar 20".
  *
  * Parsed as UTC deliberately: an ISO date is a calendar day, and letting the
  * runtime read it in the local zone shifts it by one west of Greenwich.

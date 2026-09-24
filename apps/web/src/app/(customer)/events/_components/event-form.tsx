@@ -21,7 +21,7 @@ import { dirtyWarning } from "./dirty-warning";
 
 const INITIAL: EventFormState = {};
 
-/** The prototype's own labels, line 990, against the column's three values. */
+/** The prototype's own labels, line 2385, against the column's three values. */
 const VISIBILITIES = [
   { value: "private", label: "Private" },
   { value: "shared", label: "Guests with the link" },

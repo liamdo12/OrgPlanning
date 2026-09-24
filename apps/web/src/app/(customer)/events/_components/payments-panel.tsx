@@ -93,7 +93,7 @@ export function PaymentsPanel({
 
       {/*
         One button per business, because an order is a booking with one of them
-        and the prototype's single control (line 930) draws a cart that has
+        and the prototype's single control (line 929) draws a cart that has
         exactly one. Two businesses in plan is two bookings, and a control that
         said "Check out 3 items" while starting one of them would be lying
         about which three.
@@ -103,7 +103,7 @@ export function PaymentsPanel({
           key={vendor.vendorId}
           href={checkoutHref(eventId, vendor.vendorId)}
           // `primary`, even though the prototype draws this one light on the
-          // green (line 930): every other variant is *faded* when its state
+          // green (line 929): every other variant is *faded* when its state
           // changes, and a faded label on this fill is well under the contrast
           // floor. The primary variant is the one with a vetted colour pair.
           className="oc-button oc-button--primary oc-button--md mb-2 w-full justify-center rounded-card no-underline"
@@ -115,7 +115,7 @@ export function PaymentsPanel({
   );
 }
 
-/** "3 items in plan", line 930. */
+/** "3 items in plan", line 929. */
 function countLabel(inPlan: number): string {
   return `${inPlan} ${inPlan === 1 ? "item" : "items"} in plan`;
 }
