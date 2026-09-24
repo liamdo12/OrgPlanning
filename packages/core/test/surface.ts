@@ -36,19 +36,20 @@ export type ExportedFunction = {
 /**
  * What an entity id looks like in a parameter name.
  *
- * `id`, `ids`, `reference` and `token` on their own, or a camelCase name ending
- * in one of them. The capital is what keeps `paid`, `valid` and `void` out of
- * it, and is the reason this is a pattern rather than a list somebody has to
- * remember to extend.
+ * `id`, `ids`, `reference`, `token` and `slug` on their own, or a camelCase name
+ * ending in one of them. The capital is what keeps `paid`, `valid` and `void`
+ * out of it, and is the reason this is a pattern rather than a list somebody has
+ * to remember to extend.
  *
- * A reference and a token are entity ids in every way that matters here: each
- * one names exactly one row, and a function that accepts one and no actor is a
- * way into that row with no gate on it. A booking reference is the number on
- * the receipt, and a payment link's token is the whole authority for the page
- * it opens — the fact that neither is a uuid is why they were missed, not a
- * reason they are safe.
+ * A reference, a token and a slug are entity ids in every way that matters
+ * here: each one names exactly one row, and a function that accepts one and no
+ * actor is a way into that row with no gate on it. A booking reference is the
+ * number on the receipt, a payment link's token is the whole authority for the
+ * page it opens, and a slug is what a listing's own URL is keyed on — the fact
+ * that none of the three is a uuid is why they were missed, not a reason they
+ * are safe.
  */
-const ENTITY_ID = /^(id|ids|reference|token)$|[a-z0-9](Id|Ids|Reference|Token)$/;
+const ENTITY_ID = /^(id|ids|reference|token|slug)$|[a-z0-9](Id|Ids|Reference|Token|Slug)$/;
 
 export function namesEntityId(name: string): boolean {
   return ENTITY_ID.test(name);

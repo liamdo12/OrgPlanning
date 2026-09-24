@@ -22,6 +22,7 @@ import { listPublicEventFeed } from "../src/catalog/feed.js";
 import { quoteCheckout } from "../src/catalog/quote-checkout.js";
 import { listSaved, toggleSaved } from "../src/catalog/saved.js";
 import { searchServices } from "../src/catalog/search.js";
+import { getPublicService, listPublicServices } from "../src/catalog/service.js";
 import {
   approveVendor,
   blockVendor,
@@ -84,7 +85,12 @@ import {
   updateEvent,
 } from "../src/planning/service.js";
 import { decideReport, getReport, reportContent } from "../src/moderation/service.js";
-import { deleteCategory, moveCategory, updateCategory } from "../src/reference/service.js";
+import {
+  createCategory,
+  deleteCategory,
+  moveCategory,
+  updateCategory,
+} from "../src/reference/service.js";
 import { getEmailView, setMarketingConsent } from "../src/email/service.js";
 import { createDatabaseContext, ownerSql, resetDatabase, testDatabaseUrl } from "./harness.js";
 import { entityIds, exportedFunctions, takesActor } from "./surface.js";
@@ -193,6 +199,8 @@ type Subjects = {
   /** The seeded report against Terrace Rentals' profile line. */
   reportId: string;
   categoryId: string;
+  /** The same category by the name the browse filter is keyed on. */
+  categorySlug: string;
   /**
    * Content nobody has reported yet.
    *
@@ -451,6 +459,19 @@ const REGISTRY: readonly Entry[] = [
     // public, and a guest count that leaves as a band rather than a number.
     allow: EVERYONE,
     call: (c, a) => listPublicEventFeed(c, a),
+  },
+  {
+    name: "getPublicService",
+    // A listing by its slug, with the same conditions on the row: a draft and a
+    // suspended business's page are `NotFoundError` to everybody, which is a
+    // fact about the row rather than about who asked.
+    allow: EVERYONE,
+    call: (c, a, s) => getPublicService(c, a, s.serviceSlug),
+  },
+  {
+    name: "listPublicServices",
+    allow: EVERYONE,
+    call: (c, a, s) => listPublicServices(c, a, { categorySlug: s.categorySlug }),
   },
   {
     name: "listSaved",
@@ -728,6 +749,16 @@ const REGISTRY: readonly Entry[] = [
 
   // ---- categories ---------------------------------------------------------
   {
+    name: "createCategory",
+    // Here because the slug it accepts is a *proposed* one rather than a row it
+    // reads, which the pattern cannot tell apart and should not try to: a name
+    // that decides which row is touched is worth a decision whichever direction
+    // it points, and the answer here is the same `requireAdmin` the rest of this
+    // section gives.
+    allow: ADMIN,
+    call: (c, a) => createCategory(c, a, { name: "Matrix", slug: "matrix-category" }),
+  },
+  {
     name: "updateCategory",
     allow: ADMIN,
     call: (c, a, s) => updateCategory(c, a, s.categoryId, { name: "Matrix" }),
@@ -863,8 +894,8 @@ describe.skipIf(!url)("authorization matrix", () => {
     const [report] = await sql<{ id: string }[]>`
       select id from app.planning_org_content_reports where target_type = 'vendor_profile'
     `;
-    const [category] = await sql<{ id: string }[]>`
-      select id from app.planning_org_categories where slug = 'decorations'
+    const [category] = await sql<{ id: string; slug: string }[]>`
+      select id, slug from app.planning_org_categories where slug = 'decorations'
     `;
     const [neighbourhood] = await sql<{ id: string }[]>`
       select id from app.planning_org_neighbourhoods where slug = 'liberty-village'
@@ -905,6 +936,7 @@ describe.skipIf(!url)("authorization matrix", () => {
       disputeId: dispute?.id as string,
       reportId: report?.id as string,
       categoryId: category?.id as string,
+      categorySlug: category?.slug as string,
       unreportedVendorId: order?.vendor_id as string,
     };
 
