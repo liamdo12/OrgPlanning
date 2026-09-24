@@ -16,8 +16,12 @@ import {
 } from "../src/identity/admin-service.js";
 import { inviteAdmin, revokeAdminInvite } from "../src/identity/invites.js";
 import { serviceAvailability } from "../src/catalog/availability.js";
+import { listCategoriesForBrowse } from "../src/catalog/categories.js";
+import { getServiceDetail } from "../src/catalog/detail.js";
+import { listPublicEventFeed } from "../src/catalog/feed.js";
 import { quoteCheckout } from "../src/catalog/quote-checkout.js";
-import { toggleSaved } from "../src/catalog/saved.js";
+import { listSaved, toggleSaved } from "../src/catalog/saved.js";
+import { searchServices } from "../src/catalog/search.js";
 import {
   approveVendor,
   blockVendor,
@@ -75,6 +79,7 @@ import {
   createEvent,
   eventHub,
   getEvent,
+  listEventsForOwner,
   removeItemFromPlan,
   updateEvent,
 } from "../src/planning/service.js";
@@ -173,6 +178,14 @@ type Subjects = {
   /** Where a new event is held. Reference data, and no authority of its own. */
   neighbourhoodId: string;
   serviceId: string;
+  /**
+   * The same listing by the name its public page is keyed on.
+   *
+   * A slug names exactly one row, so it is an entity id in every way that
+   * matters here — it is just not a uuid, which is the only reason it took this
+   * long to be treated as one.
+   */
+  serviceSlug: string;
   jobId: string;
   inviteId: string;
   /** The seeded complaint against TO-4188. */
@@ -196,6 +209,20 @@ type Entry = {
   name: string;
   /** The identities that must *not* be refused. */
   allow: readonly Identity[];
+  /**
+   * The subject is a row somebody owns, so the refusal must be `NotFoundError`
+   * and may be nothing else.
+   *
+   * `isRefusal` below admits `ForbiddenError` and `UnauthenticatedError` too,
+   * and that is right for a call that names no row: "sign in" and "this account
+   * is suspended" are honest answers about the *caller*. They are the wrong
+   * answer about somebody else's order, because "you may not see order X"
+   * confirms order X exists and turns the id parameter into an enumeration
+   * oracle. Marking the entry is what asserts that difference instead of
+   * assuming it — an object policy could be replaced by a role check tomorrow
+   * and every row here would still pass.
+   */
+  owned?: true;
   call: (ctx: CoreContext, actor: Actor, subjects: Subjects) => Promise<unknown>;
 };
 
@@ -216,6 +243,26 @@ const PAY_ORDER: readonly Identity[] = ["customer", ...ADMIN];
  * screen rather than given a view of it that nothing can do anything with.
  */
 const OWN_EVENT: readonly Identity[] = ["customer"];
+
+/**
+ * The four sets above that name an object policy.
+ *
+ * `owned` is written on each entry, so it can be left off one. An entry built
+ * from one of these sets exercises a row with an owner whatever its author
+ * remembered to write, and the last test in this file holds the two together.
+ *
+ * `quoteCheckout` and `createCheckout` spell their own `["customer"]` out
+ * instead of reusing `OWN_EVENT`, and that is why they are not here: both
+ * answer anonymous with `UnauthenticatedError` before any event is loaded,
+ * deliberately, so that a screen can offer to sign somebody in rather than
+ * telling them their cart does not exist.
+ */
+const OWNED_FAMILIES: readonly (readonly Identity[])[] = [
+  READ_ORDER,
+  ACT_ON_ORDER,
+  PAY_ORDER,
+  OWN_EVENT,
+];
 
 /**
  * Planning an event of one's own: anybody signed in except an administrator.
@@ -367,14 +414,68 @@ const REGISTRY: readonly Entry[] = [
     call: (c, a, s) => toggleSaved(c, a, s.serviceId),
   },
 
+  // ---- the catalogue, with nothing to key on ------------------------------
+  //
+  // None of the five below takes a caller-supplied entity id, so the
+  // completeness test at the bottom of this file will never ask for them. They
+  // are here because that test is a floor and this registry is the record: a
+  // read that answers the whole internet is still a decision somebody made, and
+  // the two that are scoped to the caller's own rows are a decision about
+  // *where the scope comes from*. Left out, each would make the same claim by
+  // silence.
+  {
+    name: "searchServices",
+    // The results screen. Published listings of approved businesses, filtered
+    // in the query — so there is no row here belonging to anybody.
+    allow: EVERYONE,
+    call: (c, a) => searchServices(c, a),
+  },
+  {
+    name: "getServiceDetail",
+    // A listing's own page. `saved` is the one part of the answer that differs
+    // by caller, and it is read from the caller's own shortlist rather than
+    // supplied, so no identity can ask about somebody else's.
+    allow: EVERYONE,
+    call: (c, a, s) => getServiceDetail(c, a, s.serviceSlug),
+  },
+  {
+    name: "listCategoriesForBrowse",
+    allow: EVERYONE,
+    call: (c, a) => listCategoriesForBrowse(c, a),
+  },
+  {
+    name: "listPublicEventFeed",
+    // The one read here that touches a stranger's `events` rows. It is public
+    // by decision — the feed is the prototype's "what Toronto is planning" —
+    // and the query is what keeps it honest: only events their owners marked
+    // public, and a guest count that leaves as a band rather than a number.
+    allow: EVERYONE,
+    call: (c, a) => listPublicEventFeed(c, a),
+  },
+  {
+    name: "listSaved",
+    // Nobody is refused, and that is not the same as nobody being filtered: an
+    // account that may not act gets an empty list rather than an error, because
+    // a shortlist is a screen to sign into rather than a row to be turned away
+    // from. The rest is keyed on the caller's own user id.
+    allow: EVERYONE,
+    call: (c, a) => listSaved(c, a),
+  },
+
   // ---- orders, through the lifecycle -------------------------------------
-  { name: "getOrder", allow: READ_ORDER, call: (c, a, s) => getOrder(c, a, s.orderId) },
+  {
+    name: "getOrder",
+    allow: READ_ORDER,
+    owned: true,
+    call: (c, a, s) => getOrder(c, a, s.orderId),
+  },
   {
     name: "getOrderForCustomer",
     // The read policy, not the pay policy. The projection carries nothing a
     // vendor's staff may not see — payments, refunds and what is held, and no
     // transfers — so it is the same set `getOrder` admits.
     allow: READ_ORDER,
+    owned: true,
     call: (c, a, s) => getOrderForCustomer(c, a, s.orderId),
   },
   {
@@ -394,23 +495,37 @@ const REGISTRY: readonly Entry[] = [
     // who could hold their own date open indefinitely is a vendor taking it off
     // the market for nothing.
     allow: PAY_ORDER,
+    owned: true,
     call: (c, a, s) => extendCheckoutWindow(c, a, s.orderId),
   },
-  { name: "autoComplete", allow: ACT_ON_ORDER, call: (c, a, s) => autoComplete(c, a, s.orderId) },
+  {
+    name: "autoComplete",
+    allow: ACT_ON_ORDER,
+    owned: true,
+    call: (c, a, s) => autoComplete(c, a, s.orderId),
+  },
   {
     name: "cancelOrder",
     allow: ACT_ON_ORDER,
+    owned: true,
     call: (c, a, s) => cancelOrder(c, a, s.orderId, "order.cancel"),
   },
-  { name: "markFulfilled", allow: ACT_ON_ORDER, call: (c, a, s) => markFulfilled(c, a, s.orderId) },
+  {
+    name: "markFulfilled",
+    allow: ACT_ON_ORDER,
+    owned: true,
+    call: (c, a, s) => markFulfilled(c, a, s.orderId),
+  },
   {
     name: "raiseIssue",
     allow: ACT_ON_ORDER,
+    owned: true,
     call: (c, a, s) => raiseIssue(c, a, s.orderId, "matrix"),
   },
   {
     name: "resolveIssue",
     allow: ACT_ON_ORDER,
+    owned: true,
     call: (c, a, s) => resolveIssue(c, a, s.orderId, "fulfilled", "matrix"),
   },
   {
@@ -466,9 +581,15 @@ const REGISTRY: readonly Entry[] = [
   {
     name: "addItemToPlan",
     allow: OWN_EVENT,
+    owned: true,
     call: (c, a, s) => addItemToPlan(c, a, { eventId: s.eventId, serviceId: s.serviceId }),
   },
-  { name: "cancelEvent", allow: OWN_EVENT, call: (c, a, s) => cancelEvent(c, a, s.eventId) },
+  {
+    name: "cancelEvent",
+    allow: OWN_EVENT,
+    owned: true,
+    call: (c, a, s) => cancelEvent(c, a, s.eventId),
+  },
   {
     name: "createEvent",
     allow: PLANS_OWN_EVENT,
@@ -479,35 +600,61 @@ const REGISTRY: readonly Entry[] = [
         neighbourhoodId: s.neighbourhoodId,
       }),
   },
-  { name: "eventHub", allow: OWN_EVENT, call: (c, a, s) => eventHub(c, a, s.eventId) },
-  { name: "getEvent", allow: OWN_EVENT, call: (c, a, s) => getEvent(c, a, s.eventId) },
+  { name: "eventHub", allow: OWN_EVENT, owned: true, call: (c, a, s) => eventHub(c, a, s.eventId) },
+  { name: "getEvent", allow: OWN_EVENT, owned: true, call: (c, a, s) => getEvent(c, a, s.eventId) },
   {
     name: "removeItemFromPlan",
     allow: OWN_EVENT,
+    owned: true,
     call: (c, a, s) => removeItemFromPlan(c, a, { eventId: s.eventId, categoryId: s.categoryId }),
   },
   {
     name: "updateEvent",
     allow: OWN_EVENT,
+    owned: true,
     call: (c, a, s) => updateEvent(c, a, s.eventId, { guestCount: 61 }),
+  },
+  {
+    name: "listEventsForOwner",
+    // No entity id at all, so nothing mechanical will ever ask for this row —
+    // and the whole point of a registry is that a decision is written down
+    // rather than inferred from silence. The actor *is* the scope: the query is
+    // keyed on their own user id, so there is no other person's event to
+    // refuse. `requireUser` is the only refusal, and it turns away anonymous
+    // and suspended.
+    allow: SIGNED_IN,
+    call: (c, a) => listEventsForOwner(c, a),
   },
 
   // ---- money -------------------------------------------------------------
-  { name: "chargeDeposit", allow: PAY_ORDER, call: (c, a, s) => chargeDeposit(c, a, s.orderId) },
-  { name: "chargeBalance", allow: PAY_ORDER, call: (c, a, s) => chargeBalance(c, a, s.orderId) },
+  {
+    name: "chargeDeposit",
+    allow: PAY_ORDER,
+    owned: true,
+    call: (c, a, s) => chargeDeposit(c, a, s.orderId),
+  },
+  {
+    name: "chargeBalance",
+    allow: PAY_ORDER,
+    owned: true,
+    call: (c, a, s) => chargeBalance(c, a, s.orderId),
+  },
   {
     name: "refundWithinCoolingWindow",
     allow: PAY_ORDER,
+    owned: true,
     call: (c, a, s) => refundWithinCoolingWindow(c, a, s.orderId),
   },
   {
     name: "getOrderMoney",
     allow: ACT_ON_ORDER,
+    owned: true,
     call: (c, a, s) => getOrderMoney(c, a, s.orderId),
   },
   {
     name: "transferShare",
     allow: ACT_ON_ORDER,
+    owned: true,
     call: (c, a, s) => transferShare(c, a, s.orderId, "deposit_share"),
   },
   {
@@ -697,8 +844,9 @@ describe.skipIf(!url)("authorization matrix", () => {
     const [order] = await sql<{ id: string; vendor_id: string; event_id: string }[]>`
       select id, vendor_id, event_id from app.planning_org_orders where reference = 'TO-4192'
     `;
-    const [service] = await sql<{ id: string }[]>`
-      select id from app.planning_org_services where vendor_id = ${order?.vendor_id as string} limit 1
+    const [service] = await sql<{ id: string; slug: string }[]>`
+      select id, slug from app.planning_org_services
+      where vendor_id = ${order?.vendor_id as string} limit 1
     `;
     const [job] = await sql<{ id: string }[]>`select id from app.planning_org_jobs limit 1`;
     const [jonah] = await sql<{ id: string }[]>`
@@ -751,6 +899,7 @@ describe.skipIf(!url)("authorization matrix", () => {
       freeEventId: free?.id as string,
       neighbourhoodId: neighbourhood?.id as string,
       serviceId: service?.id as string,
+      serviceSlug: service?.slug as string,
       jobId: job?.id as string,
       inviteId: invite.id,
       disputeId: dispute?.id as string,
@@ -822,6 +971,15 @@ describe.skipIf(!url)("authorization matrix", () => {
       expect(isRefusal(error), `${entry.name} refused ${identity} with ${String(error)}`).toBe(
         true,
       );
+
+      // Which refusal, for the rows that have an owner. Anything else here
+      // confirms the row exists to somebody who may not read it.
+      if (entry.owned) {
+        expect(
+          error instanceof NotFoundError,
+          `${entry.name} refused ${identity} with ${String(error)}, not NotFoundError`,
+        ).toBe(true);
+      }
     });
 
     it.each(entry.allow)("does not refuse %s on authorization grounds", async (identity) => {
@@ -857,6 +1015,14 @@ describe.skipIf(!url)("authorization matrix", () => {
     );
 
     expect(stale).toEqual([]);
+  });
+
+  it("asks every owned-object family for the refusal that names no row", () => {
+    const unmarked = REGISTRY.filter(
+      (entry) => OWNED_FAMILIES.includes(entry.allow) && !entry.owned,
+    ).map((entry) => entry.name);
+
+    expect(unmarked).toEqual([]);
   });
 
   it("tries every identity somewhere", () => {
