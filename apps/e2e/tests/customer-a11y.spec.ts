@@ -1,11 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { audit, auditable, serious } from "../fixtures/a11y.js";
 import {
-  audit,
   customerSession,
   makeEventActive,
   openSeededEvent,
   openSeededListing,
-  serious,
 } from "../fixtures/customer.js";
 
 /**
@@ -40,13 +39,7 @@ test.use(customerSession);
 for (const screen of SCREENS) {
   test(`${screen.name} has no serious accessibility failures`, async ({ page }) => {
     await page.goto(screen.path);
-
-    // Still on the screen that was asked for. Four of these need a session, and
-    // a session that has quietly gone answers every one of them with the login
-    // screen — which has an `h1` too, so this sweep would have audited that one
-    // page six times and reported six passes.
-    expect(new URL(page.url()).pathname, `${screen.path} did not render`).toBe(screen.path);
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await auditable(page, screen.path);
 
     expect(serious(await audit(page))).toEqual([]);
   });
@@ -81,8 +74,7 @@ test("the login screen has no serious accessibility failures", async ({ page }) 
   // one; signed in, this redirects away.
   await page.context().clearCookies();
   await page.goto("/login");
-  expect(new URL(page.url()).pathname).toBe("/login");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await auditable(page, "/login");
 
   expect(serious(await audit(page))).toEqual([]);
 });

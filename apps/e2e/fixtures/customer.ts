@@ -1,9 +1,8 @@
-import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { CUSTOMER_STATE } from "./state.js";
 
 /**
- * Reaching the customer's own screens, and auditing them.
+ * Reaching the customer's own screens. Auditing one is `a11y.ts`.
  *
  * Sarah is already the suite's customer and already signed in once by the setup
  * project, so nothing here signs anybody in: it reuses the session that was
@@ -20,54 +19,6 @@ import { CUSTOMER_STATE } from "./state.js";
 export const customerSession = { storageState: CUSTOMER_STATE };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * axe over one page.
- *
- * Next's development overlay injects a root of its own, and its findings would
- * be reported against every screen while being unfixable from this repository.
- */
-export async function audit(page: Page): ReturnType<AxeBuilder["analyze"]> {
-  // Audited once the screen has settled. Cards enter on a 0.3s fade, and
-  // `opacity` composites through every child — so text that passes at rest is
-  // measured part-transparent and reported as a contrast failure, on a
-  // different number of elements every run depending on where the frame fell.
-  // An animation that repeats for ever is excluded rather than waited on,
-  // because waiting for it is waiting for nothing.
-  await page.waitForFunction(() =>
-    document.getAnimations().every((animation) => {
-      if (animation.playState !== "running") return true;
-      return animation.effect?.getComputedTiming().iterations === Number.POSITIVE_INFINITY;
-    }),
-  );
-
-  return new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .exclude("nextjs-portal")
-    .analyze();
-}
-
-/**
- * The findings that fail a run.
- *
- * axe's `moderate` bucket is largely advisory, and a suite that fails on all
- * four is a suite somebody switches off — which is how the two that matter stop
- * being checked.
- */
-export function serious(results: Awaited<ReturnType<typeof audit>>): string[] {
-  return results.violations
-    .filter((violation) => violation.impact === "serious" || violation.impact === "critical")
-    .map((violation) => {
-      // The offending elements, not only how many. A contrast failure reported
-      // as a number sends whoever reads it hunting through a whole screen for
-      // the pair that broke.
-      const where = violation.nodes
-        .slice(0, 3)
-        .map((node) => node.target.join(" "))
-        .join(" | ");
-      return `${violation.id}: ${violation.help} (${violation.nodes.length}) — ${where}`;
-    });
-}
 
 /**
  * The planner for one of this customer's seeded events, and the event's id.
